@@ -4,7 +4,7 @@ import { StatTile } from '@/components/ui/stat';
 import { LoadingRow } from '@/components/ui/spinner';
 import { OrderCharts } from '@/components/dashboard/charts';
 import { NewOrder } from '@/components/dashboard/new-order';
-import { formatApproxUsd } from '@/lib/format';
+import { formatBalanceUsd } from '@/lib/format';
 import { useMe, useOrderStats } from '@/lib/hooks';
 
 export default function DashboardPage() {
@@ -25,7 +25,7 @@ export default function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatTile
               label="Balance"
-              value={formatApproxUsd(stats.data.balanceMicro)}
+              value={formatBalanceUsd(stats.data.balanceMicro)}
               accent="success"
               icon={<span>▦</span>}
             />

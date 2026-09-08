@@ -1,6 +1,7 @@
 export {
   formatUsd,
   formatApproxUsd,
+  formatBalanceUsd,
   formatSignedUsd,
   microToUsd,
   usdToMicro,

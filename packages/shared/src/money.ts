@@ -59,11 +59,19 @@ export function formatUsd(micro: number, options: FormatUsdOptions = {}): string
 }
 
 /**
- * Balance display: the "≈" prefix the dashboard uses, rounded to cents.
- * (Prices keep sub-cent precision; a wallet balance does not.)
+ * Wallet-balance display: always exactly two decimals, no symbol prefix noise.
+ *   4_995_947 -> "$5.00"   (prices keep sub-cent precision; a balance does not)
+ */
+export function formatBalanceUsd(micro: number, options?: FormatUsdOptions): string {
+  return formatUsd(micro, { minDecimals: 2, maxDecimals: 2, ...options });
+}
+
+/**
+ * Balance display with a leading "≈" (rounded to cents). Kept for anywhere that
+ * wants to signal the rounding; most balance UIs use `formatBalanceUsd`.
  */
 export function formatApproxUsd(micro: number, options?: FormatUsdOptions): string {
-  return `≈ ${formatUsd(micro, { minDecimals: 2, maxDecimals: 2, ...options })}`;
+  return `≈ ${formatBalanceUsd(micro, options)}`;
 }
 
 /** Signed display for ledger rows: "+$0.26" / "-$0.26". */

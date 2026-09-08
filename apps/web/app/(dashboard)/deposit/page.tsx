@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Field, TextInput } from '@/components/ui/field';
 import { CopyButton } from '@/components/ui/copy-button';
-import { formatApproxUsd, formatUsd, usdToMicro } from '@/lib/format';
+import { formatBalanceUsd, formatUsd, usdToMicro } from '@/lib/format';
 import { ApiError } from '@/lib/api';
 import { useConfirmDeposit, useCreateDeposit, useWallet } from '@/lib/hooks';
 
@@ -67,7 +67,7 @@ export default function DepositPage() {
       <Card className="flex items-center justify-between border-[rgba(70,177,123,0.25)] p-5">
         <span className="text-xs uppercase tracking-widest text-faint">Available balance</span>
         <span className="font-mono text-lg text-success">
-          {formatApproxUsd(wallet.data?.balanceMicro ?? 0)}
+          {formatBalanceUsd(wallet.data?.balanceMicro ?? 0)}
         </span>
       </Card>
 

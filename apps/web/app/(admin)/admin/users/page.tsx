@@ -9,7 +9,7 @@ import { Tabs } from '@/components/ui/tabs';
 import { TextInput } from '@/components/ui/field';
 import { LoadingRow } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-import { formatApproxUsd, formatShortDateTime } from '@/lib/format';
+import { formatBalanceUsd, formatShortDateTime } from '@/lib/format';
 import { useAdminUsers } from '@/lib/admin-hooks';
 
 export default function AdminUsersPage() {
@@ -85,7 +85,7 @@ export default function AdminUsersPage() {
                   <td className="px-4 py-3">
                     {u.isVerified ? <Badge tone="success">verified</Badge> : <Badge tone="warning">unverified</Badge>}
                   </td>
-                  <td className="px-4 py-3 font-mono">{formatApproxUsd(u.balanceMicro)}</td>
+                  <td className="px-4 py-3 font-mono">{formatBalanceUsd(u.balanceMicro)}</td>
                   <td className="px-4 py-3 font-mono text-muted">{u.ordersCount}</td>
                   <td className="px-4 py-3 text-muted">{formatShortDateTime(u.createdAt)}</td>
                 </tr>

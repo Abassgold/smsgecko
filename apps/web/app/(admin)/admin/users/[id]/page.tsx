@@ -11,7 +11,7 @@ import { Field, TextInput } from '@/components/ui/field';
 import { Modal } from '@/components/ui/modal';
 import { LoadingRow } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-import { formatShortDateTime, formatUsd, parseUsd } from '@/lib/format';
+import { formatBalanceUsd, formatShortDateTime, formatUsd, parseUsd } from '@/lib/format';
 import { ApiError } from '@/lib/api';
 import { useAdjustBalance, useAdminUser, useUpdateUser } from '@/lib/admin-hooks';
 
@@ -62,7 +62,7 @@ export default function AdminUserDetailPage() {
         <div className="text-right">
           <div className="text-xs uppercase tracking-widest text-faint">Balance</div>
           <div className="font-mono text-2xl font-semibold text-success">
-            {formatUsd(u.balanceMicro)}
+            {formatBalanceUsd(u.balanceMicro)}
           </div>
         </div>
       </div>

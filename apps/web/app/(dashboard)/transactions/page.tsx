@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { LoadingRow } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { API_BASE } from '@/lib/api';
-import { formatApproxUsd, formatShortDateTime, formatSignedUsd } from '@/lib/format';
+import { formatBalanceUsd, formatShortDateTime, formatSignedUsd } from '@/lib/format';
 import { useTransactions, useWallet } from '@/lib/hooks';
 
 const TABS = [
@@ -46,7 +46,7 @@ export default function TransactionsPage() {
         <span className="text-xs uppercase tracking-widest text-faint">Available balance</span>
         <div className="flex items-center gap-3">
           <span className="font-mono text-lg text-success">
-            {formatApproxUsd(wallet.data?.balanceMicro ?? 0)}
+            {formatBalanceUsd(wallet.data?.balanceMicro ?? 0)}
           </span>
           <a
             href={`${API_BASE}/v1/transactions/export.csv`}

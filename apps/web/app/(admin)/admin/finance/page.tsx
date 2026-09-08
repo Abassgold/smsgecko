@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
 import { LoadingRow } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
-import { formatShortDateTime, formatSignedUsd, formatUsd } from '@/lib/format';
+import { formatBalanceUsd, formatShortDateTime, formatSignedUsd, formatUsd } from '@/lib/format';
 import { useAdminDeposits, useAdminTransactions, useUpdateDeposit } from '@/lib/admin-hooks';
 
 export default function AdminFinancePage() {
@@ -70,7 +70,7 @@ function TransactionsTable() {
                 <td className={`px-4 py-3 text-right font-mono ${t.amountMicro >= 0 ? 'text-success' : 'text-danger'}`}>
                   {formatSignedUsd(t.amountMicro)}
                 </td>
-                <td className="px-4 py-3 text-right font-mono text-muted">{formatUsd(t.balanceAfterMicro)}</td>
+                <td className="px-4 py-3 text-right font-mono text-muted">{formatBalanceUsd(t.balanceAfterMicro)}</td>
               </tr>
             ))}
           </tbody>

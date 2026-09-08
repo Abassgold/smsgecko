@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 import { LoadingRow } from '@/components/ui/spinner';
 import { CopyButton } from '@/components/ui/copy-button';
 import { ApiKeys } from '@/components/dashboard/api-keys';
-import { formatApproxUsd } from '@/lib/format';
+import { formatBalanceUsd } from '@/lib/format';
 import { useMe } from '@/lib/hooks';
 
 export default function SettingsPage() {
@@ -30,7 +30,7 @@ export default function SettingsPage() {
           <dt className="text-faint">Email</dt>
           <dd>{u.email}</dd>
           <dt className="text-faint">Balance</dt>
-          <dd className="font-mono text-success">{formatApproxUsd(u.balanceMicro)}</dd>
+          <dd className="font-mono text-success">{formatBalanceUsd(u.balanceMicro)}</dd>
           <dt className="text-faint">Member since</dt>
           <dd>{new Date(u.createdAt).toLocaleDateString('en')}</dd>
         </dl>

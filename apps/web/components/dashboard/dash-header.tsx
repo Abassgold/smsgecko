@@ -7,7 +7,7 @@ import { Container } from '@/components/ui/container';
 import { Logo } from '@/components/marketing/logo';
 import { NotificationBell } from './notification-bell';
 import { cn } from '@/lib/cn';
-import { formatApproxUsd } from '@/lib/format';
+import { formatBalanceUsd } from '@/lib/format';
 import { useLogout, useMe, useWallet } from '@/lib/hooks';
 
 const NAV = [
@@ -53,7 +53,7 @@ export function DashHeader() {
 
         <div className="ml-auto flex items-center gap-3 md:ml-0">
           <span className="rounded-full border border-border bg-surface/60 px-3 py-1.5 font-mono text-sm text-success">
-            {formatApproxUsd(balanceMicro)}
+            {formatBalanceUsd(balanceMicro)}
           </span>
           <NotificationBell />
           <div className="relative">
