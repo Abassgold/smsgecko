@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Tabs } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,7 @@ const TABS = [
 ];
 
 export default function OrdersPage() {
+  const router = useRouter();
   const [tab, setTab] = useState('all');
   const [page, setPage] = useState(1);
   const orders = useOrders(tab, page);
@@ -68,12 +70,11 @@ export default function OrdersPage() {
                 {orders.data.items.map((o) => (
                   <tr
                     key={o.id}
-                    className="border-b border-border last:border-0 hover:bg-surface-2/50"
+                    onClick={() => router.push(`/orders/${o.id}`)}
+                    className="cursor-pointer border-b border-border last:border-0 hover:bg-surface-2/50"
                   >
                     <td className="px-5 py-3">
-                      <Link href={`/orders/${o.id}`} className="font-mono text-xs text-accent">
-                        #{o.id.slice(-8)}
-                      </Link>
+                      <span className="font-mono text-xs text-accent">#{o.id.slice(-8)}</span>
                     </td>
                     <td className="px-5 py-3">{o.service.name}</td>
                     <td className="px-5 py-3 text-muted">
