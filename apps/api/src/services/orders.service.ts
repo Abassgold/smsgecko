@@ -10,6 +10,7 @@ import { rentWithFallback, releaseNumber } from '../providers/sms/registry.js';
 import { getSettings } from '../lib/settings.js';
 import { credit, debit } from '../lib/ledger.js';
 import { refundWaitingOrder } from '../lib/orderLifecycle.js';
+import { holdRemainingSeconds, minHoldSecondsFor } from '../lib/providerPolicy.js';
 import { conflict, forbidden, notFound, paymentRequired, unprocessable } from '../lib/errors.js';
 
 function isDuplicateKey(err: unknown): boolean {
@@ -93,7 +94,11 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
     providerCostMicro: rent.result.costMicro ?? null,
     ...(body.idempotencyKey ? { idempotencyKey: body.idempotencyKey } : {}),
     deliverAt: rent.result.mockDeliverAt ?? null,
-    expiresAt: new Date(Date.now() + settings.orderTtlSeconds * 1000),
+    // Never auto-expire before the provider's minimum hold — some upstreams
+    // still bill us for the number until then (mirrors FloZap's per-provider grace).
+    expiresAt: new Date(
+      Date.now() + Math.max(settings.orderTtlSeconds, minHoldSecondsFor(rent.providerKey)) * 1000,
+    ),
   };
 
   const offerId = offer._id;
@@ -222,6 +227,16 @@ export async function cancelOrder(user: UserDoc, orderId: string): Promise<Order
     throw conflict(`Order is already ${order.status}`);
   }
   if (order.otpCode) throw conflict('Order already received a code');
+
+  // Some providers still bill us if the number is dropped too early — hold the
+  // user's cancel until the provider's minimum hold has elapsed (FloZap parity).
+  const holdLeft = holdRemainingSeconds(order);
+  if (holdLeft > 0) {
+    const mins = Math.ceil(holdLeft / 60);
+    throw conflict(
+      `This number can't be canceled yet — ${order.providerLabel ?? order.provider} holds it for a few more minutes. Try again in about ${mins} minute${mins === 1 ? '' : 's'}.`,
+    );
+  }
 
   const canceled = await refundWaitingOrder(order._id, 'canceled');
   if (!canceled) {
