@@ -17,6 +17,7 @@ import type {
   RegisterBody,
   ServiceView,
   TransactionView,
+  VerifyEmailBody,
   WalletResponse,
 } from '@smsgecko/shared';
 import { apiFetch } from './api';
@@ -63,6 +64,22 @@ export function useLogout() {
   return useMutation({
     mutationFn: () => apiFetch<{ ok: true }>('/v1/auth/logout', { method: 'POST' }),
     onSuccess: () => qc.clear(),
+  });
+}
+
+export function useVerifyEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: VerifyEmailBody) =>
+      apiFetch<AuthResponse>('/v1/auth/verify-email', { method: 'POST', body }),
+    onSuccess: (data) => qc.setQueryData(['me'], data),
+  });
+}
+
+export function useResendVerification() {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{ ok: true }>('/v1/auth/resend-verification', { method: 'POST' }),
   });
 }
 

@@ -79,9 +79,24 @@ export function PasswordField({
 
 /* ---------- gradient submit button with arrow / spinner ---------- */
 
-export function SubmitButton({ label, loading }: { label: string; loading: boolean }) {
+export function SubmitButton({
+  label,
+  loading,
+  type = 'submit',
+  onClick,
+}: {
+  label: string;
+  loading: boolean;
+  type?: 'submit' | 'button';
+  onClick?: () => void;
+}) {
   return (
-    <button type="submit" className={cn('auth-btn', loading && 'loading')} disabled={loading}>
+    <button
+      type={type}
+      onClick={onClick}
+      className={cn('auth-btn', loading && 'loading')}
+      disabled={loading}
+    >
       <span className="btn-text">{label}</span>
       <svg
         className="btn-arrow"

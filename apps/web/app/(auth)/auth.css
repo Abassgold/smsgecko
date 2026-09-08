@@ -309,6 +309,35 @@
   display: block;
 }
 
+/* ---------- verify-email ---------- */
+
+.auth-page .verify-note {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.auth-page .verify-note a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.auth-page .verify-ok {
+  color: var(--accent);
+}
+
+.auth-page .verify-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.auth-page .verify-actions .auth-btn {
+  margin-top: 0;
+}
+
 /* ---------- footer links ---------- */
 
 .auth-page .auth-links {

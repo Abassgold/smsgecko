@@ -31,7 +31,7 @@ export function RegisterForm() {
     const code = referralCode.trim();
     register.mutate(
       { email, username: username.trim(), password, ...(code ? { referralCode: code } : {}) },
-      { onSuccess: () => router.replace('/dashboard') },
+      { onSuccess: () => router.replace('/verify-email') },
     );
   };
 

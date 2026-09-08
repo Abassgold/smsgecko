@@ -20,6 +20,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     }
   }, [me.isError, me.error, router]);
 
+  // Signed in but email not confirmed — the dashboard is off-limits until then.
+  const unverified = Boolean(me.data && !me.data.user.isVerified);
+  useEffect(() => {
+    if (unverified) router.replace('/verify-email');
+  }, [unverified, router]);
+
   const unreachable =
     me.isError && !(me.error instanceof ApiError && me.error.status === 401);
 
@@ -28,16 +34,20 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       <DashHeader />
       <main className="flex-1 py-8">
         <Container size="wide">
-          {me.isLoading ? (
+          {me.isLoading || unverified ? (
             <LoadingRow label="Loading your dashboard…" />
           ) : unreachable ? (
             <div className="rounded-2xl border border-border bg-surface/60 p-8 text-center text-sm text-muted">
-              Can&apos;t reach the API. Make sure it&apos;s running on port 4000
-              (<code>npm run dev:api</code>), then{' '}
+              We couldn&apos;t load your dashboard right now. Please{' '}
               <button className="text-accent" onClick={() => me.refetch()}>
                 retry
               </button>
-              .
+              {' '}in a moment.
+              {process.env.NODE_ENV === 'development' && (
+                <span className="mt-2 block text-xs opacity-70">
+                  Dev: is the API running? <code>npm run dev:api</code> (port 4000).
+                </span>
+              )}
             </div>
           ) : (
             children
