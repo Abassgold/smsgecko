@@ -13,6 +13,7 @@ export async function toRow(u: UserDoc): Promise<AdminUserView> {
     username: u.username,
     role: u.role,
     status: u.status,
+    isVerified: u.isVerified,
     balanceMicro: u.balanceMicro,
     ordersCount: await Order.countDocuments({ userId: u._id }),
     createdAt: (u.get('createdAt') as Date).toISOString(),

@@ -89,6 +89,7 @@ export interface AdminUserView {
   username: string;
   role: 'user' | 'admin';
   status: 'active' | 'suspended';
+  isVerified: boolean;
   balanceMicro: number;
   ordersCount: number;
   createdAt: string;

@@ -60,12 +60,13 @@ export default function AdminUsersPage() {
         ) : !users.data || users.data.items.length === 0 ? (
           <EmptyState title="No users match" />
         ) : (
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-[800px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-[11px] uppercase tracking-widest text-faint">
                 <th className="px-4 py-3 font-medium">User</th>
                 <th className="px-4 py-3 font-medium">Role</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Verified</th>
                 <th className="px-4 py-3 font-medium">Balance</th>
                 <th className="px-4 py-3 font-medium">Orders</th>
                 <th className="px-4 py-3 font-medium">Joined</th>
@@ -87,6 +88,9 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-4 py-3">
                     {u.status === 'suspended' ? <Badge tone="danger">suspended</Badge> : <Badge tone="success">active</Badge>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {u.isVerified ? <Badge tone="success">verified</Badge> : <Badge tone="warning">unverified</Badge>}
                   </td>
                   <td className="px-4 py-3 font-mono">{formatApproxUsd(u.balanceMicro)}</td>
                   <td className="px-4 py-3 font-mono text-muted">{u.ordersCount}</td>
@@ -142,7 +146,10 @@ function UserDetail({ id, onClose }: { id: string; onClose: () => void }) {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <div className="font-display text-lg font-semibold">{u.username}</div>
+        <div className="flex items-center gap-2">
+          <span className="font-display text-lg font-semibold">{u.username}</span>
+          {u.isVerified ? <Badge tone="success">verified</Badge> : <Badge tone="warning">unverified</Badge>}
+        </div>
         <div className="text-sm text-muted">{u.email}</div>
         <div className="mt-1 font-mono text-sm text-success">{formatApproxUsd(u.balanceMicro)}</div>
       </div>
