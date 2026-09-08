@@ -15,7 +15,6 @@ import { formatTimeAgo } from '@/lib/format';
 import {
   useAdminProviders,
   useDeleteProvider,
-  useReorderProviders,
   useTestProvider,
   useUpdateProvider,
 } from '@/lib/admin-hooks';
@@ -23,7 +22,6 @@ import {
 export default function AdminProvidersPage() {
   const { data: providers, isLoading } = useAdminProviders();
   const update = useUpdateProvider();
-  const reorder = useReorderProviders();
   const test = useTestProvider();
   const del = useDeleteProvider();
 
@@ -32,22 +30,14 @@ export default function AdminProvidersPage() {
   const [deleting, setDeleting] = useState<ProviderConfigView | null>(null);
   const [testResult, setTestResult] = useState<Record<string, string>>({});
 
-  const move = (index: number, dir: -1 | 1) => {
-    if (!providers) return;
-    const next = [...providers];
-    const j = index + dir;
-    if (j < 0 || j >= next.length) return;
-    [next[index], next[j]] = [next[j]!, next[index]!];
-    reorder.mutate(next.map((p) => p.id));
-  };
-
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-bold">Providers</h1>
           <p className="mt-1 text-sm text-muted">
-            New orders try providers top-to-bottom, falling through to the next on no-stock or error.
+            One provider is active at a time — it drives the storefront catalog and fulfils orders.
+            Turning one on turns the others off.
           </p>
         </div>
         <Button size="sm" onClick={() => setAdding(true)}>
@@ -61,12 +51,11 @@ export default function AdminProvidersPage() {
         <EmptyState title="No providers" description="Add one to start renting numbers." />
       ) : (
         <Card className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-sm">
+          <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-[11px] uppercase tracking-widest text-faint">
-                <th className="px-4 py-3 font-medium">Order</th>
                 <th className="px-4 py-3 font-medium">Provider</th>
-                <th className="px-4 py-3 font-medium">On</th>
+                <th className="px-4 py-3 font-medium">Active</th>
                 <th className="px-4 py-3 font-medium">Health</th>
                 <th className="px-4 py-3 font-medium">Rented / Errors</th>
                 <th className="px-4 py-3 font-medium">Last used</th>
@@ -74,27 +63,8 @@ export default function AdminProvidersPage() {
               </tr>
             </thead>
             <tbody>
-              {providers.map((p, i) => (
+              {providers.map((p) => (
                 <tr key={p.id} className="border-b border-border last:border-0 align-top">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
-                      <span className="w-5 font-mono text-faint">{i + 1}</span>
-                      <button
-                        onClick={() => move(i, -1)}
-                        disabled={i === 0 || reorder.isPending}
-                        className="rounded border border-border px-1.5 text-xs text-muted hover:text-text disabled:opacity-30"
-                      >
-                        ↑
-                      </button>
-                      <button
-                        onClick={() => move(i, 1)}
-                        disabled={i === providers.length - 1 || reorder.isPending}
-                        className="rounded border border-border px-1.5 text-xs text-muted hover:text-text disabled:opacity-30"
-                      >
-                        ↓
-                      </button>
-                    </div>
-                  </td>
                   <td className="px-4 py-3">
                     <div className="font-medium">{p.label}</div>
                     <div className="text-xs text-faint">
@@ -122,7 +92,7 @@ export default function AdminProvidersPage() {
                       <Badge tone="danger">down</Badge>
                     )}
                     {testResult[p.id] ? (
-                      <div className="mt-1 max-w-[14rem] truncate text-xs text-faint">
+                      <div className="mt-1 max-w-56 truncate text-xs text-faint">
                         {testResult[p.id]}
                       </div>
                     ) : null}

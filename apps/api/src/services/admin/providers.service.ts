@@ -45,10 +45,6 @@ export function toProviderView(cfg: ProviderConfigDoc) {
   };
 }
 
-/**
- * Merge a partial config patch into the stored (decrypted) config, dropping
- * masked placeholders so an unchanged secret keeps its real value.
- */
 export function mergeConfigPatch(
   cfg: ProviderConfigDoc,
   patch: Record<string, unknown>,
@@ -61,8 +57,6 @@ export function mergeConfigPatch(
   }
   return next;
 }
-
-/* ---------------- CRUD ---------------- */
 
 export interface CreateProviderInput {
   key: ProviderKey;
@@ -98,8 +92,17 @@ export async function createProvider(body: CreateProviderInput) {
     priority: body.priority,
     configEnc: encryptJson(body.config ?? {}),
   });
+  if (cfg.enabled) await disableOthers(cfg._id);
   bustProviderCache();
   return toProviderView(cfg);
+}
+
+/** Only one provider is active at a time — turning one on turns the rest off. */
+async function disableOthers(keepId: unknown): Promise<void> {
+  await ProviderConfig.updateMany(
+    { _id: { $ne: keepId }, enabled: true },
+    { $set: { enabled: false } },
+  );
 }
 
 export async function getProvider(id: string) {
@@ -124,6 +127,7 @@ export async function updateProvider(id: string, body: UpdateProviderInput) {
     cfg.configEnc = encryptJson(mergeConfigPatch(cfg, body.config));
   }
   await cfg.save();
+  if (cfg.enabled) await disableOthers(cfg._id);
   bustProviderCache();
   return toProviderView(cfg);
 }
