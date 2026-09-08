@@ -1,5 +1,6 @@
 import type { CreateOrderBody } from '@smsgecko/shared';
 import { asyncHandler } from '../lib/asyncHandler.js';
+import { valid } from '../middleware/validate.js';
 import type { IdParams } from '../lib/validation/common.schema.js';
 import type { OrdersQuery } from '../lib/validation/orders.schema.js';
 import { toOrderView } from '../services/orders.mapper.js';
@@ -20,7 +21,7 @@ export const create = asyncHandler(async (req, res) => {
 });
 
 export const list = asyncHandler(async (req, res) => {
-  const { status, page, limit } = req.valid!.query as OrdersQuery;
+  const { status, page, limit } = valid<OrdersQuery>(req, 'query');
   const { items, total, totalPages } = await listOrders(req.authUser!, { status, page, limit });
   res.json({ items: items.map((o) => toOrderView(o)), page, limit, total, totalPages });
 });
@@ -30,13 +31,13 @@ export const stats = asyncHandler(async (req, res) => {
 });
 
 export const getOne = asyncHandler(async (req, res) => {
-  const { id } = req.valid!.params as IdParams;
+  const { id } = valid<IdParams>(req, 'params');
   const { order, messages } = await getOrderWithMessages(req.authUser!, id);
   res.json(toOrderView(order, messages));
 });
 
 export const cancel = asyncHandler(async (req, res) => {
-  const { id } = req.valid!.params as IdParams;
+  const { id } = valid<IdParams>(req, 'params');
   const order = await cancelOrder(req.authUser!, id);
   res.json(toOrderView(order));
 });

@@ -1,4 +1,5 @@
 import { asyncHandler } from '../../lib/asyncHandler.js';
+import { valid } from '../../middleware/validate.js';
 import type { IdParams } from '../../lib/validation/common.schema.js';
 import {
   createProvider,
@@ -21,23 +22,23 @@ export const create = asyncHandler(async (req, res) => {
 });
 
 export const getOne = asyncHandler(async (req, res) => {
-  const { id } = req.valid!.params as IdParams;
+  const { id } = valid<IdParams>(req, 'params');
   res.json(await getProvider(id));
 });
 
 export const update = asyncHandler(async (req, res) => {
-  const { id } = req.valid!.params as IdParams;
+  const { id } = valid<IdParams>(req, 'params');
   res.json(await updateProvider(id, req.body as UpdateProviderInput));
 });
 
 export const remove = asyncHandler(async (req, res) => {
-  const { id } = req.valid!.params as IdParams;
+  const { id } = valid<IdParams>(req, 'params');
   await deleteProvider(id);
   res.json({ ok: true as const });
 });
 
 export const test = asyncHandler(async (req, res) => {
-  const { id } = req.valid!.params as IdParams;
+  const { id } = valid<IdParams>(req, 'params');
   res.json(await testProvider(id));
 });
 

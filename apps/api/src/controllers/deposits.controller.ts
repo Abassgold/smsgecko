@@ -1,5 +1,6 @@
 import type { CreateDepositBody } from '@smsgecko/shared';
 import { asyncHandler } from '../lib/asyncHandler.js';
+import { valid } from '../middleware/validate.js';
 import { env } from '../config/env.js';
 import { forbidden } from '../lib/errors.js';
 import type { IdParams } from '../lib/validation/common.schema.js';
@@ -13,7 +14,7 @@ import {
 } from '../services/deposits.service.js';
 
 export const webhook = asyncHandler(async (req, res) => {
-  const { provider } = req.valid!.params as ProviderParams;
+  const { provider } = valid<ProviderParams>(req, 'params');
   res.json(await handleWebhook(provider, req.body as WebhookBody));
 });
 
@@ -23,12 +24,12 @@ export const create = asyncHandler(async (req, res) => {
 });
 
 export const getOne = asyncHandler(async (req, res) => {
-  const { id } = req.valid!.params as IdParams;
+  const { id } = valid<IdParams>(req, 'params');
   res.json(toDepositView(await getDeposit(req.authUser!, id)));
 });
 
 export const mockConfirmHandler = asyncHandler(async (req, res) => {
   if (!env.PAYMENTS_MOCK) throw forbidden('Mock confirmation is disabled');
-  const { id } = req.valid!.params as IdParams;
+  const { id } = valid<IdParams>(req, 'params');
   res.json(toDepositView(await mockConfirm(req.authUser!, id)));
 });

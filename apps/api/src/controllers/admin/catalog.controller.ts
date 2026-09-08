@@ -1,4 +1,5 @@
 import { asyncHandler } from '../../lib/asyncHandler.js';
+import { valid } from '../../middleware/validate.js';
 import type { IdParams } from '../../lib/validation/common.schema.js';
 import type { AdminOffersQuery, BulkOfferBody } from '../../lib/validation/admin/catalog.schema.js';
 import * as svc from '../../services/admin/catalog.service.js';
@@ -14,12 +15,12 @@ export const createService = asyncHandler(async (req, res) => {
 });
 
 export const updateService = asyncHandler(async (req, res) => {
-  const { id } = req.valid!.params as IdParams;
+  const { id } = valid<IdParams>(req, 'params');
   res.json(await svc.updateService(id, req.body as svc.ServiceInput));
 });
 
 export const deleteService = asyncHandler(async (req, res) => {
-  const { id } = req.valid!.params as IdParams;
+  const { id } = valid<IdParams>(req, 'params');
   await svc.deleteService(id);
   res.json({ ok: true as const });
 });
@@ -35,12 +36,12 @@ export const createCountry = asyncHandler(async (req, res) => {
 });
 
 export const updateCountry = asyncHandler(async (req, res) => {
-  const { id } = req.valid!.params as IdParams;
+  const { id } = valid<IdParams>(req, 'params');
   res.json(await svc.updateCountry(id, req.body as svc.CountryInput));
 });
 
 export const deleteCountry = asyncHandler(async (req, res) => {
-  const { id } = req.valid!.params as IdParams;
+  const { id } = valid<IdParams>(req, 'params');
   await svc.deleteCountry(id);
   res.json({ ok: true as const });
 });
@@ -48,7 +49,7 @@ export const deleteCountry = asyncHandler(async (req, res) => {
 /* ---- offers ---- */
 
 export const listOffers = asyncHandler(async (req, res) => {
-  const query = req.valid!.query as AdminOffersQuery;
+  const query = valid<AdminOffersQuery>(req, 'query');
   const { items, total, totalPages } = await svc.listOffers(query);
   res.json({ items, page: query.page, limit: query.limit, total, totalPages });
 });
@@ -59,13 +60,13 @@ export const createOffer = asyncHandler(async (req, res) => {
 });
 
 export const updateOffer = asyncHandler(async (req, res) => {
-  const { id } = req.valid!.params as IdParams;
+  const { id } = valid<IdParams>(req, 'params');
   await svc.updateOffer(id, req.body as svc.OfferInput);
   res.json({ ok: true as const });
 });
 
 export const deleteOffer = asyncHandler(async (req, res) => {
-  const { id } = req.valid!.params as IdParams;
+  const { id } = valid<IdParams>(req, 'params');
   await svc.deleteOffer(id);
   res.json({ ok: true as const });
 });

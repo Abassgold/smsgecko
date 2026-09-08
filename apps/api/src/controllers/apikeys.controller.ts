@@ -1,4 +1,5 @@
 import { asyncHandler } from '../lib/asyncHandler.js';
+import { valid } from '../middleware/validate.js';
 import type { IdParams } from '../lib/validation/common.schema.js';
 import { createKey, listKeys, revokeKey } from '../services/apikeys.service.js';
 
@@ -12,7 +13,7 @@ export const create = asyncHandler(async (req, res) => {
 });
 
 export const revoke = asyncHandler(async (req, res) => {
-  const { id } = req.valid!.params as IdParams;
+  const { id } = valid<IdParams>(req, 'params');
   await revokeKey(req.authUser!, id);
   res.json({ ok: true as const });
 });
