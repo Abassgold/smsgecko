@@ -1,64 +1,55 @@
-import { z } from 'zod';
-import { ORDER_STATUSES } from '../constants';
-import { objectId } from './common';
+import type { OrderStatus } from '../constants';
 
-export const createOrderBody = z.object({
-  serviceId: objectId,
-  countryId: objectId,
+export interface CreateOrderBody {
+  serviceId: string;
+  countryId: string;
   /** Pin a specific offer; otherwise the cheapest in-stock one is used. */
-  offerId: objectId.optional(),
+  offerId?: string;
   /** Refuse if the chosen offer costs more than this (micro-USD). */
-  maxPriceMicro: z.number().int().positive().optional(),
+  maxPriceMicro?: number;
   /** Retry-safe create: same key for the same user returns the same order. */
-  idempotencyKey: z.string().trim().min(8).max(128).optional(),
-});
-export type CreateOrderBody = z.infer<typeof createOrderBody>;
+  idempotencyKey?: string;
+}
 
-export const smsMessageView = z.object({
-  id: z.string(),
-  sender: z.string(),
-  text: z.string(),
-  parsedOtp: z.string().nullable(),
-  receivedAt: z.string(),
-});
-export type SmsMessageView = z.infer<typeof smsMessageView>;
+export interface SmsMessageView {
+  id: string;
+  sender: string;
+  text: string;
+  parsedOtp: string | null;
+  receivedAt: string;
+}
 
-export const orderView = z.object({
-  id: z.string(),
-  status: z.enum(ORDER_STATUSES),
-  service: z.object({ id: z.string(), name: z.string(), iconKey: z.string() }),
-  country: z.object({ id: z.string(), name: z.string(), code: z.string(), flagEmoji: z.string() }),
-  phoneNumber: z.string(),
-  priceMicro: z.number().int(),
-  otpCode: z.string().nullable(),
-  messages: z.array(smsMessageView),
+export interface OrderView {
+  id: string;
+  status: OrderStatus;
+  service: { id: string; name: string; iconKey: string };
+  country: { id: string; name: string; code: string; flagEmoji: string };
+  phoneNumber: string;
+  priceMicro: number;
+  otpCode: string | null;
+  messages: SmsMessageView[];
   /** Seconds until auto-expiry; 0 once resolved. */
-  secondsLeft: z.number().int().nonnegative(),
-  createdAt: z.string(),
-  completedAt: z.string().nullable(),
-  canceledAt: z.string().nullable(),
-});
-export type OrderView = z.infer<typeof orderView>;
+  secondsLeft: number;
+  createdAt: string;
+  completedAt: string | null;
+  canceledAt: string | null;
+}
 
-export const ordersQuery = z.object({
-  status: z.enum(['all', ...ORDER_STATUSES, 'active']).default('all'),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-});
+/** `status` filter accepts every order status plus `all` and `active`. */
+export type OrdersStatusFilter = OrderStatus | 'all' | 'active';
 
-export const orderStatsResponse = z.object({
-  balanceMicro: z.number().int(),
-  totalOrders: z.number().int(),
-  activeOrders: z.number().int(),
-  completedOrders: z.number().int(),
-  successRate: z.number(), // 0..1
-  spend30dMicro: z.number().int(),
-  series: z.array(
-    z.object({
-      date: z.string(), // YYYY-MM-DD
-      orders: z.number().int(),
-      spendMicro: z.number().int(),
-    }),
-  ),
-});
-export type OrderStatsResponse = z.infer<typeof orderStatsResponse>;
+export interface OrderStatsResponse {
+  balanceMicro: number;
+  totalOrders: number;
+  activeOrders: number;
+  completedOrders: number;
+  /** 0..1 */
+  successRate: number;
+  spend30dMicro: number;
+  series: Array<{
+    /** YYYY-MM-DD */
+    date: string;
+    orders: number;
+    spendMicro: number;
+  }>;
+}

@@ -1,19 +1,16 @@
-import { z } from 'zod';
-import { NOTIFICATION_TYPES } from '../constants';
+import type { NotificationType } from '../constants';
 
-export const notificationView = z.object({
-  id: z.string(),
-  type: z.enum(NOTIFICATION_TYPES),
-  title: z.string(),
-  body: z.string(),
-  orderId: z.string().nullable(),
-  read: z.boolean(),
-  createdAt: z.string(),
-});
-export type NotificationView = z.infer<typeof notificationView>;
+export interface NotificationView {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  orderId: string | null;
+  read: boolean;
+  createdAt: string;
+}
 
-export const notificationsResponse = z.object({
-  items: z.array(notificationView),
-  unreadCount: z.number().int(),
-});
-export type NotificationsResponse = z.infer<typeof notificationsResponse>;
+export interface NotificationsResponse {
+  items: NotificationView[];
+  unreadCount: number;
+}

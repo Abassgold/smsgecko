@@ -9,16 +9,16 @@ import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { AppError } from './lib/errors.js';
 import { attachUser } from './middleware/auth.js';
-import { authRouter } from './modules/auth/auth.routes.js';
-import { apiKeyRouter } from './modules/apikeys/apikeys.routes.js';
-import { v2Router } from './modules/v2/v2.routes.js';
-import { catalogRouter } from './modules/catalog/catalog.routes.js';
-import { orderRouter } from './modules/orders/orders.routes.js';
-import { walletRouter } from './modules/wallet/wallet.routes.js';
-import { depositRouter } from './modules/deposits/deposits.routes.js';
-import { affiliateRouter } from './modules/affiliate/affiliate.routes.js';
-import { notificationRouter } from './modules/notifications/notifications.routes.js';
-import { adminRouter } from './modules/admin/index.js';
+import authRoutes from './routes/auth.routes.js';
+import apiKeyRoutes from './routes/apikeys.routes.js';
+import v2Routes from './routes/v2.routes.js';
+import catalogRoutes from './routes/catalog.routes.js';
+import orderRoutes from './routes/orders.routes.js';
+import walletRoutes from './routes/wallet.routes.js';
+import depositRoutes from './routes/deposits.routes.js';
+import affiliateRoutes from './routes/affiliate.routes.js';
+import notificationRoutes from './routes/notifications.routes.js';
+import adminRoutes from './routes/admin/index.js';
 
 export interface BuildAppOptions {
   /** Disable HTTP request logging (used by tests). */
@@ -56,16 +56,16 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<Application>
     res.json({ ok: true, service: 'smsgecko-api', ts: new Date().toISOString() });
   });
 
-  app.use('/api/v1/auth', authRouter);
-  app.use('/api/v1/catalog', catalogRouter);
-  app.use('/api/v1/orders', orderRouter);
-  app.use('/api/v1', walletRouter);
-  app.use('/api/v1', depositRouter);
-  app.use('/api/v1/affiliate', affiliateRouter);
-  app.use('/api/v1/api-keys', apiKeyRouter);
-  app.use('/api/v1/notifications', notificationRouter);
-  app.use('/api/v1/admin', adminRouter);
-  app.use('/api/v2', v2Router);
+  app.use('/api/v1/auth', authRoutes);
+  app.use('/api/v1/catalog', catalogRoutes);
+  app.use('/api/v1/orders', orderRoutes);
+  app.use('/api/v1', walletRoutes);
+  app.use('/api/v1', depositRoutes);
+  app.use('/api/v1/affiliate', affiliateRoutes);
+  app.use('/api/v1/api-keys', apiKeyRoutes);
+  app.use('/api/v1/notifications', notificationRoutes);
+  app.use('/api/v1/admin', adminRoutes);
+  app.use('/api/v2', v2Routes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

@@ -53,9 +53,13 @@ export async function makeUser(
     payload: { email, password: 'supersecret1' },
   });
   const userId = res.json().user.id as string;
-  if (opts.balanceMicro) {
-    await User.updateOne({ _id: userId }, { $set: { balanceMicro: opts.balanceMicro } });
-  }
+  // Registrations land unverified now (`User.isVerified` defaults false); mark
+  // the account verified so it can exercise `requireVerified` routes. Tests that
+  // care about the verification flow drive it through the API explicitly.
+  await User.updateOne(
+    { _id: userId },
+    { $set: { isVerified: true, ...(opts.balanceMicro ? { balanceMicro: opts.balanceMicro } : {}) } },
+  );
   const cookie = res.cookies.map((c) => `${c.name}=${c.value}`).join('; ');
   return { cookie, userId, email };
 }

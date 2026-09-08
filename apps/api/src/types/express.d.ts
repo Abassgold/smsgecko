@@ -9,6 +9,12 @@ declare global {
       /** Populated by `requireApiKey` on /api/v2 routes. */
       apiUser: UserDoc | null;
       apiKeyDoc: ApiKeyDoc | null;
+      /** Coerced/validated request parts, populated by the `validate` middleware. */
+      valid?: {
+        body?: unknown;
+        query?: unknown;
+        params?: unknown;
+      };
     }
   }
 }
