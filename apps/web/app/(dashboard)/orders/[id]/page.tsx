@@ -1,0 +1,137 @@
+'use client';
+
+import { useEffect, useRef } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Spinner, LoadingRow } from '@/components/ui/spinner';
+import { CopyButton } from '@/components/ui/copy-button';
+import { OrderStatusBadge } from '@/components/dashboard/order-status-badge';
+import { formatCountdown, formatShortDateTime, formatUsd } from '@/lib/format';
+import { ApiError } from '@/lib/api';
+import { useCancelOrder, useOrder } from '@/lib/hooks';
+
+export default function OrderDetailPage() {
+  const params = useParams<{ id: string }>();
+  const id = params.id;
+  const order = useOrder(id, true);
+  const cancel = useCancelOrder();
+  const qc = useQueryClient();
+  const settledRef = useRef(false);
+
+  const status = order.data?.status;
+  useEffect(() => {
+    if (!status || status === 'waiting' || settledRef.current) return;
+    settledRef.current = true;
+    qc.invalidateQueries({ queryKey: ['notifications'] });
+    qc.invalidateQueries({ queryKey: ['wallet'] });
+    qc.invalidateQueries({ queryKey: ['order-stats'] });
+    qc.invalidateQueries({ queryKey: ['orders'] });
+  }, [status, qc]);
+
+  if (order.isLoading) return <LoadingRow label="Loading order…" />;
+  if (order.isError || !order.data) {
+    return (
+      <Card className="p-8 text-center text-sm text-muted">
+        Order not found.{' '}
+        <Link href="/orders" className="text-accent">
+          Back to orders
+        </Link>
+      </Card>
+    );
+  }
+
+  const o = order.data;
+  const waiting = o.status === 'waiting';
+  const refunded = o.status === 'canceled' || o.status === 'expired';
+
+  return (
+    <div className="mx-auto flex max-w-2xl flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <Link href="/orders" className="text-sm text-accent">
+          ← All orders
+        </Link>
+        <span className="font-mono text-xs text-faint">#{o.id.slice(-8)}</span>
+      </div>
+
+      <Card className="p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="font-display text-lg font-semibold">{o.service.name}</div>
+            <div className="text-sm text-muted">
+              {o.country.flagEmoji} {o.country.name} · {formatUsd(o.priceMicro)}
+            </div>
+          </div>
+          <OrderStatusBadge status={o.status} />
+        </div>
+
+        <div className="mt-6 rounded-xl border border-border bg-surface-2 p-4">
+          <div className="text-xs uppercase tracking-widest text-faint">Number</div>
+          <div className="mt-1 flex items-center gap-3">
+            <span className="font-mono text-xl">{o.phoneNumber}</span>
+            <CopyButton value={o.phoneNumber} />
+          </div>
+        </div>
+
+        {waiting ? (
+          <div className="mt-6 flex flex-col items-center gap-3 py-4 text-center">
+            <Spinner className="text-accent" />
+            <div className="text-sm text-muted">Waiting for the verification SMS…</div>
+            <div className="font-mono text-2xl">{formatCountdown(o.secondsLeft)}</div>
+            <div className="text-xs text-faint">Auto-refund when the timer runs out.</div>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-2"
+              disabled={cancel.isPending}
+              onClick={() => cancel.mutate(o.id)}
+            >
+              {cancel.isPending ? 'Canceling…' : 'Cancel & refund'}
+            </Button>
+            {cancel.isError ? (
+              <p className="text-xs text-danger">
+                {cancel.error instanceof ApiError ? cancel.error.message : 'Cancel failed'}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {o.status === 'completed' && o.otpCode ? (
+          <div className="mt-6 rounded-xl border border-[var(--accent-ring)]/40 bg-accent-soft p-5 text-center">
+            <div className="text-xs uppercase tracking-widest text-faint">Verification code</div>
+            <div className="mt-2 flex items-center justify-center gap-3">
+              <span className="font-mono text-3xl tracking-[0.3em] text-text">{o.otpCode}</span>
+              <CopyButton value={o.otpCode} />
+            </div>
+          </div>
+        ) : null}
+
+        {refunded ? (
+          <div className="mt-6 rounded-xl border border-border bg-surface-2 p-4 text-sm text-muted">
+            No code was received before the window closed — the full amount was refunded to your
+            balance.
+          </div>
+        ) : null}
+      </Card>
+
+      {o.messages.length > 0 ? (
+        <Card className="p-6">
+          <h3 className="font-display text-sm font-semibold">Messages</h3>
+          <div className="mt-4 flex flex-col gap-3">
+            {o.messages.map((m) => (
+              <div key={m.id} className="rounded-xl border border-border bg-surface-2 p-4">
+                <div className="flex items-center justify-between text-xs text-faint">
+                  <span>{m.sender}</span>
+                  <span>{formatShortDateTime(m.receivedAt)}</span>
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-text/90">{m.text}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+    </div>
+  );
+}

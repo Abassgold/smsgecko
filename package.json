@@ -1,0 +1,33 @@
+{
+  "name": "smsgecko",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SMSGecko — virtual phone numbers for OTP & verification (full-stack)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c magenta,cyan \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @smsgecko/api",
+    "dev:web": "npm run dev -w @smsgecko/web",
+    "build": "npm run build -w @smsgecko/shared && npm run build -w @smsgecko/api && npm run build -w @smsgecko/web",
+    "build:shared": "npm run build -w @smsgecko/shared",
+    "seed": "npm run seed -w @smsgecko/api",
+    "create-admin": "npm run create-admin -w @smsgecko/api",
+    "test": "npm run test -w @smsgecko/api",
+    "lint": "npm run lint -w @smsgecko/web && npm run lint -w @smsgecko/api",
+    "typecheck": "npm run typecheck -w @smsgecko/shared && npm run typecheck -w @smsgecko/api && npm run typecheck -w @smsgecko/web",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:mem": "npm run db:mem -w @smsgecko/api"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5",
+    "prettier": "^3.4.2",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

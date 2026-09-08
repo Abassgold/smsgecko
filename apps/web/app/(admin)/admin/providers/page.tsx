@@ -1,0 +1,191 @@
+'use client';
+
+import { useState } from 'react';
+import type { ProviderConfigView } from '@smsgecko/shared';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Toggle } from '@/components/ui/toggle';
+import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { LoadingRow } from '@/components/ui/spinner';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ProviderForm } from '@/components/admin/provider-form';
+import { formatTimeAgo } from '@/lib/format';
+import {
+  useAdminProviders,
+  useDeleteProvider,
+  useReorderProviders,
+  useTestProvider,
+  useUpdateProvider,
+} from '@/lib/admin-hooks';
+
+export default function AdminProvidersPage() {
+  const { data: providers, isLoading } = useAdminProviders();
+  const update = useUpdateProvider();
+  const reorder = useReorderProviders();
+  const test = useTestProvider();
+  const del = useDeleteProvider();
+
+  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<ProviderConfigView | null>(null);
+  const [deleting, setDeleting] = useState<ProviderConfigView | null>(null);
+  const [testResult, setTestResult] = useState<Record<string, string>>({});
+
+  const move = (index: number, dir: -1 | 1) => {
+    if (!providers) return;
+    const next = [...providers];
+    const j = index + dir;
+    if (j < 0 || j >= next.length) return;
+    [next[index], next[j]] = [next[j]!, next[index]!];
+    reorder.mutate(next.map((p) => p.id));
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold">Providers</h1>
+          <p className="mt-1 text-sm text-muted">
+            New orders try providers top-to-bottom, falling through to the next on no-stock or error.
+          </p>
+        </div>
+        <Button size="sm" onClick={() => setAdding(true)}>
+          Add provider
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <LoadingRow />
+      ) : !providers || providers.length === 0 ? (
+        <EmptyState title="No providers" description="Add one to start renting numbers." />
+      ) : (
+        <Card className="overflow-x-auto">
+          <table className="w-full min-w-[820px] text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-[11px] uppercase tracking-widest text-faint">
+                <th className="px-4 py-3 font-medium">Order</th>
+                <th className="px-4 py-3 font-medium">Provider</th>
+                <th className="px-4 py-3 font-medium">On</th>
+                <th className="px-4 py-3 font-medium">Health</th>
+                <th className="px-4 py-3 font-medium">Rented / Errors</th>
+                <th className="px-4 py-3 font-medium">Last used</th>
+                <th className="px-4 py-3 font-medium" />
+              </tr>
+            </thead>
+            <tbody>
+              {providers.map((p, i) => (
+                <tr key={p.id} className="border-b border-border last:border-0 align-top">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1">
+                      <span className="w-5 font-mono text-faint">{i + 1}</span>
+                      <button
+                        onClick={() => move(i, -1)}
+                        disabled={i === 0 || reorder.isPending}
+                        className="rounded border border-border px-1.5 text-xs text-muted hover:text-text disabled:opacity-30"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        onClick={() => move(i, 1)}
+                        disabled={i === providers.length - 1 || reorder.isPending}
+                        className="rounded border border-border px-1.5 text-xs text-muted hover:text-text disabled:opacity-30"
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium">{p.label}</div>
+                    <div className="text-xs text-faint">
+                      {p.key === 'mock' ? 'mock adapter' : 'generic HTTP'}
+                    </div>
+                    {p.stats.lastError ? (
+                      <div className="mt-1 max-w-xs truncate text-xs text-danger" title={p.stats.lastError}>
+                        {p.stats.lastError}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Toggle
+                      checked={p.enabled}
+                      disabled={update.isPending}
+                      onChange={(v) => update.mutate({ id: p.id, body: { enabled: v } })}
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    {p.healthOk === null ? (
+                      <span className="text-faint">—</span>
+                    ) : p.healthOk ? (
+                      <Badge tone="success">ok</Badge>
+                    ) : (
+                      <Badge tone="danger">down</Badge>
+                    )}
+                    {testResult[p.id] ? (
+                      <div className="mt-1 max-w-[14rem] truncate text-xs text-faint">
+                        {testResult[p.id]}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-3 font-mono">
+                    {p.stats.rentSuccess} / <span className="text-danger">{p.stats.rentError}</span>
+                    <div className="text-xs text-faint">{p.stats.otpReceived} OTPs</div>
+                  </td>
+                  <td className="px-4 py-3 text-muted">
+                    {p.stats.lastUsedAt ? formatTimeAgo(p.stats.lastUsedAt) : 'never'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={test.isPending}
+                        onClick={() =>
+                          test.mutate(p.id, {
+                            onSuccess: (r) =>
+                              setTestResult((s) => ({ ...s, [p.id]: r.detail ?? (r.ok ? 'ok' : 'failed') })),
+                          })
+                        }
+                      >
+                        Test
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setEditing(p)}>
+                        Edit
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setDeleting(p)}>
+                        Delete
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+
+      <Modal open={adding} onClose={() => setAdding(false)} title="Add provider" size="lg">
+        <ProviderForm mode={{ kind: 'create' }} onDone={() => setAdding(false)} />
+      </Modal>
+
+      <Modal open={!!editing} onClose={() => setEditing(null)} title={`Edit ${editing?.label ?? ''}`} size="lg">
+        {editing ? (
+          <ProviderForm mode={{ kind: 'edit', provider: editing }} onDone={() => setEditing(null)} />
+        ) : null}
+      </Modal>
+
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        title={`Delete ${deleting?.label ?? ''}?`}
+        body="This removes the provider config. Orders already fulfilled by it keep working."
+        confirmLabel="Delete"
+        destructive
+        pending={del.isPending}
+        onConfirm={() =>
+          deleting && del.mutate(deleting.id, { onSuccess: () => setDeleting(null) })
+        }
+      />
+    </div>
+  );
+}

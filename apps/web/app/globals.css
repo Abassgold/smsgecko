@@ -1,0 +1,122 @@
+@import 'tailwindcss';
+
+/*
+ * SMSGecko theme — "Signal Green": dark-committed, electric-green accent.
+ * Tokens live on :root and are exposed to Tailwind via @theme so
+ * `bg-surface`, `text-muted`, `text-accent`, `text-danger` etc. work as utilities.
+ */
+:root {
+  color-scheme: dark;
+
+  --bg: #07090b;
+  --bg-elevated: #0b0f0d;
+  --surface: #0f1512;
+  --surface-2: #141b17;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+
+  --text: #e9eeea;
+  --text-muted: #8a968e;
+  --text-faint: #5e6a62;
+
+  --accent: #35d07f;
+  --accent-hover: #54de96;
+  --accent-soft: rgba(53, 208, 127, 0.14);
+  --accent-ring: rgba(53, 208, 127, 0.45);
+  /* Readable text/icon colour to sit on top of the bright accent. */
+  --accent-contrast: #04130b;
+
+  --success: #35d07f;
+  --warning: #e0a94a;
+  --danger: #e5646b;
+  --danger-soft: rgba(229, 100, 107, 0.13);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display), var(--font-geist), ui-sans-serif, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+a {
+  color: inherit;
+}
+
+/* Page background: soft green top glow + faint dotted starfield. */
+.page-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(50rem 32rem at 50% -6rem, rgba(53, 208, 127, 0.22), transparent 65%),
+    radial-gradient(38rem 28rem at 88% 4%, rgba(53, 208, 127, 0.07), transparent 60%),
+    var(--bg);
+}
+.page-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.2) 1px, transparent 1.4px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(circle at 50% 24%, black, transparent 70%);
+  opacity: 0.5;
+}
+
+.text-gradient {
+  background: linear-gradient(180deg, #d6f7e4 0%, var(--accent) 68%, #1c8f5a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.section-kicker::before {
+  content: '⟩';
+  color: var(--accent);
+  margin-right: 0.55rem;
+  font-weight: 700;
+}

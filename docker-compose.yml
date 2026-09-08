@@ -1,0 +1,25 @@
+# Single-node MongoDB replica set — required so Mongoose multi-document
+# transactions (used in the order/ledger flow) work locally.
+#
+# The healthcheck below auto-runs rs.initiate() the first time the node is
+# reachable, so `docker compose up -d` is all you need. Connect with:
+#   mongodb://localhost:27017/smsgecko?replicaSet=rs0&directConnection=true
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: smsgecko-mongo
+    command: ['--replSet', 'rs0', '--bind_ip_all']
+    ports:
+      - '27017:27017'
+    volumes:
+      - ./mongo-data:/data/db
+    healthcheck:
+      test: >
+        echo "try { rs.status().ok } catch (e) {
+          rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'localhost:27017' }] })
+        }" | mongosh --port 27017 --quiet
+      interval: 5s
+      timeout: 30s
+      start_period: 2s
+      retries: 30
