@@ -19,6 +19,5 @@ export interface OffersQuery {
   countryId: string;
 }
 
-/** Cheapest in-stock offer for a service×country. */
 export const quoteQuery = offersQuery;
 export type QuoteQuery = OffersQuery;

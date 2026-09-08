@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { validate } from '../../middleware/validate.js';
+import { validate } from '../../middleware/validation.js';
 import { settingsPatch } from '../../lib/validation/admin/settings.schema.js';
 import * as settings from '../../controllers/admin/settings.controller.js';
 

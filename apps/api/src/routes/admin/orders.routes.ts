@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { validate } from '../../middleware/validate.js';
+import { validate } from '../../middleware/validation.js';
 import { idParams } from '../../lib/validation/common.schema.js';
 import { adminOrdersQuery } from '../../lib/validation/admin/orders.schema.js';
 import * as orders from '../../controllers/admin/orders.controller.js';

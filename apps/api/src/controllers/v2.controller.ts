@@ -1,6 +1,6 @@
 import type { V2CreateOrderBody } from '@smsgecko/shared';
 import { asyncHandler } from '../lib/asyncHandler.js';
-import { valid } from '../middleware/validate.js';
+import { valid } from '../middleware/validation.js';
 import { badRequest } from '../lib/errors.js';
 import { idempotencyHeader, type ProductsQuery } from '../lib/validation/v2.schema.js';
 import {

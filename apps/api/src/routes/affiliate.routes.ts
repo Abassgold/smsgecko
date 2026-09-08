@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireUser } from '../middleware/auth.js';
-import { validate } from '../middleware/validate.js';
+import { validate } from '../middleware/validation.js';
 import { acceptTermsBody } from '../lib/validation/affiliate.schema.js';
 import * as affiliate from '../controllers/affiliate.controller.js';
 

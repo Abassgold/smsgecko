@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireApiKey } from '../middleware/bearerAuth.js';
-import { validate } from '../middleware/validate.js';
+import { validate } from '../middleware/validation.js';
 import { productsQuery, v2CreateOrderBody, v2IdParams } from '../lib/validation/v2.schema.js';
 import * as v2 from '../controllers/v2.controller.js';
 

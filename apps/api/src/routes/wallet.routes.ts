@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireUser } from '../middleware/auth.js';
-import { validate } from '../middleware/validate.js';
+import { validate } from '../middleware/validation.js';
 import { transactionsQuery } from '../lib/validation/wallet.schema.js';
 import * as wallet from '../controllers/wallet.controller.js';
 

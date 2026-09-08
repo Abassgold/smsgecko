@@ -1,5 +1,5 @@
 import { asyncHandler } from '../../lib/asyncHandler.js';
-import { valid } from '../../middleware/validate.js';
+import { valid } from '../../middleware/validation.js';
 import type { IdParams } from '../../lib/validation/common.schema.js';
 import type { AdminOffersQuery, BulkOfferBody } from '../../lib/validation/admin/catalog.schema.js';
 import * as svc from '../../services/admin/catalog.service.js';

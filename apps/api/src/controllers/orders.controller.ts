@@ -1,6 +1,6 @@
 import type { CreateOrderBody } from '@smsgecko/shared';
 import { asyncHandler } from '../lib/asyncHandler.js';
-import { valid } from '../middleware/validate.js';
+import { valid } from '../middleware/validation.js';
 import type { IdParams } from '../lib/validation/common.schema.js';
 import type { OrdersQuery } from '../lib/validation/orders.schema.js';
 import { toOrderView } from '../services/orders.mapper.js';
@@ -23,7 +23,7 @@ export const create = asyncHandler(async (req, res) => {
 export const list = asyncHandler(async (req, res) => {
   const { status, page, limit } = valid<OrdersQuery>(req, 'query');
   const { items, total, totalPages } = await listOrders(req.authUser!, { status, page, limit });
-  res.json({ items: items.map((o) => toOrderView(o)), page, limit, total, totalPages });
+  res.json({ items: items.map((o: any) => toOrderView(o)), page, limit, total, totalPages });
 });
 
 export const stats = asyncHandler(async (req, res) => {

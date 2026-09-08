@@ -1,5 +1,5 @@
 import { asyncHandler } from '../lib/asyncHandler.js';
-import { valid } from '../middleware/validate.js';
+import { valid } from '../middleware/validation.js';
 import type { TransactionsQuery } from '../lib/validation/wallet.schema.js';
 import { exportTransactionsCsv, listTransactions } from '../services/wallet.service.js';
 

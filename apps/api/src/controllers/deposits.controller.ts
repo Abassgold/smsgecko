@@ -1,6 +1,6 @@
 import type { CreateDepositBody } from '@smsgecko/shared';
 import { asyncHandler } from '../lib/asyncHandler.js';
-import { valid } from '../middleware/validate.js';
+import { valid } from '../middleware/validation.js';
 import { env } from '../config/env.js';
 import { forbidden } from '../lib/errors.js';
 import type { IdParams } from '../lib/validation/common.schema.js';

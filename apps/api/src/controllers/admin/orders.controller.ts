@@ -1,5 +1,5 @@
 import { asyncHandler } from '../../lib/asyncHandler.js';
-import { valid } from '../../middleware/validate.js';
+import { valid } from '../../middleware/validation.js';
 import type { IdParams } from '../../lib/validation/common.schema.js';
 import type { AdminOrdersQuery } from '../../lib/validation/admin/orders.schema.js';
 import {

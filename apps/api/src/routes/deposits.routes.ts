@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireVerified } from '../middleware/auth.js';
-import { validate } from '../middleware/validate.js';
+import { validate } from '../middleware/validation.js';
 import { idParams } from '../lib/validation/common.schema.js';
 import { providerParams, webhookBody } from '../lib/validation/deposits.schema.js';
 import { createDepositBody } from '../lib/validation/deposits.schema.js';
