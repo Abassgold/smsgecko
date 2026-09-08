@@ -1,3 +1,4 @@
+import { Resend } from 'resend';
 import { env } from '../config/env.js';
 import { logger } from './logger.js';
 
@@ -8,9 +9,14 @@ interface SendArgs {
   text: string;
 }
 
+let client: Resend | null = null;
+function resend(): Resend {
+  if (!client) client = new Resend(env.RESEND_API_KEY);
+  return client;
+}
+
 /**
- * Send one transactional email through Resend's REST API. No SDK — a single
- * POST, matching how the SMS adapters talk to their providers.
+ * Send one transactional email through the Resend SDK.
  *
  * When RESEND_API_KEY is unset (local dev, tests) the message is logged instead
  * of sent, so the rest of the flow still works offline.
@@ -22,19 +28,11 @@ export async function sendEmail({ to, subject, html, text }: SendArgs): Promise<
     return;
   }
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${env.RESEND_API_KEY}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({ from: env.EMAIL_FROM, to, subject, html, text }),
-  });
+  const { error } = await resend().emails.send({ from: env.EMAIL_FROM, to, subject, html, text });
 
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    logger.error({ status: res.status, detail }, '[email] Resend send failed');
-    throw new Error(`Resend responded ${res.status}`);
+  if (error) {
+    logger.error({ error }, '[email] Resend send failed');
+    throw new Error(`Resend send failed: ${error.message}`);
   }
 }
 
