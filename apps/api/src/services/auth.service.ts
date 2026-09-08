@@ -101,7 +101,7 @@ export async function issueEmailVerification(user: UserDoc): Promise<void> {
     userId: user._id,
     purpose: 'verify_email',
     tokenHash: sha256(rawToken),
-    expiresAt: new Date(Date.now() + env.EMAIL_VERIFICATION_TTL_HOURS * 3600 * 1000),
+    expiresAt: new Date(Date.now() + env.EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000),
   });
 
   const link = `${env.APP_URL.replace(/\/$/, '')}/verify-email?token=${rawToken}`;

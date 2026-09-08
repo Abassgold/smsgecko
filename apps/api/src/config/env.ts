@@ -52,8 +52,8 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().default('SMSGecko <onboarding@resend.dev>'),
   /** Public base URL of the web app, used to build links in emails. */
   APP_URL: z.string().default('http://localhost:3000'),
-  /** Hours a verification link stays valid. */
-  EMAIL_VERIFICATION_TTL_HOURS: z.coerce.number().int().positive().default(24),
+  /** Minutes a verification link stays valid. */
+  EMAIL_VERIFICATION_TTL_MINUTES: z.coerce.number().int().positive().default(5),
 });
 
 export type Env = z.infer<typeof envSchema>;
