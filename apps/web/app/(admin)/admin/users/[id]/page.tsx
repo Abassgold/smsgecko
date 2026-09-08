@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Field, TextInput } from '@/components/ui/field';
+import { Modal } from '@/components/ui/modal';
 import { LoadingRow } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { formatShortDateTime, formatUsd, parseUsd } from '@/lib/format';
@@ -39,7 +40,7 @@ export default function AdminUserDetailPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="font-display text-2xl font-bold">{u.username}</h1>
+            <h1 className="font-display text-2xl font-bold capitalize">{u.username}</h1>
             {u.role === 'admin' ? <Badge tone="accent">admin</Badge> : null}
             {u.status === 'suspended' ? (
               <Badge tone="danger">suspended</Badge>
@@ -118,21 +119,48 @@ export default function AdminUserDetailPage() {
   );
 }
 
+type Confirm = {
+  body: { role?: 'user' | 'admin'; status?: 'active' | 'suspended' };
+  title: string;
+  message: string;
+  cta: string;
+};
+
 function RoleStatusActions({ user }: { user: AdminUserDetail }) {
   const updateUser = useUpdateUser();
+  const [confirm, setConfirm] = useState<Confirm | null>(null);
+
+  const run = (body: Confirm['body']) => updateUser.mutate({ id: user.id, body });
+
+  const onRoleClick = () => {
+    if (user.role === 'admin') {
+      setConfirm({
+        body: { role: 'user' },
+        title: 'Demote to user',
+        message: `Remove admin access from ${user.username}? They will lose access to the admin panel.`,
+        cta: 'Demote',
+      });
+    } else {
+      run({ role: 'admin' });
+    }
+  };
+
+  const onStatusClick = () => {
+    if (user.status !== 'suspended') {
+      setConfirm({
+        body: { status: 'suspended' },
+        title: 'Suspend account',
+        message: `Suspend ${user.username}? They will be blocked from signing in until the account is reactivated.`,
+        cta: 'Suspend',
+      });
+    } else {
+      run({ status: 'active' });
+    }
+  };
+
   return (
     <Card className="flex flex-wrap items-center gap-3 p-4">
-      <Button
-        size="sm"
-        variant="secondary"
-        disabled={updateUser.isPending}
-        onClick={() =>
-          updateUser.mutate({
-            id: user.id,
-            body: { role: user.role === 'admin' ? 'user' : 'admin' },
-          })
-        }
-      >
+      <Button size="sm" variant="secondary" disabled={updateUser.isPending} onClick={onRoleClick}>
         {user.role === 'admin' ? 'Demote to user' : 'Promote to admin'}
       </Button>
       <Button
@@ -140,12 +168,7 @@ function RoleStatusActions({ user }: { user: AdminUserDetail }) {
         variant="secondary"
         disabled={updateUser.isPending}
         className={user.status === 'suspended' ? undefined : 'text-danger'}
-        onClick={() =>
-          updateUser.mutate({
-            id: user.id,
-            body: { status: user.status === 'suspended' ? 'active' : 'suspended' },
-          })
-        }
+        onClick={onStatusClick}
       >
         {user.status === 'suspended' ? 'Reactivate account' : 'Suspend account'}
       </Button>
@@ -154,6 +177,31 @@ function RoleStatusActions({ user }: { user: AdminUserDetail }) {
           {updateUser.error instanceof ApiError ? updateUser.error.message : 'Update failed'}
         </span>
       ) : null}
+
+      <Modal open={confirm !== null} onClose={() => setConfirm(null)} title={confirm?.title} size="sm">
+        {confirm ? (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-muted">{confirm.message}</p>
+            <div className="flex justify-end gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setConfirm(null)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="text-danger"
+                disabled={updateUser.isPending}
+                onClick={() => {
+                  run(confirm.body);
+                  setConfirm(null);
+                }}
+              >
+                {confirm.cta}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </Card>
   );
 }
