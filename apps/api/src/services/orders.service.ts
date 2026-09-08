@@ -8,7 +8,7 @@ import { SmsMessage } from '../models/SmsMessage.js';
 import type { UserDoc } from '../models/User.js';
 import { rentWithFallback, releaseNumber } from '../providers/sms/registry.js';
 import { getSettings } from '../lib/settings.js';
-import { credit, debit } from '../lib/ledger.js';
+import { debit } from '../lib/ledger.js';
 import { refundWaitingOrder } from '../lib/orderLifecycle.js';
 import { holdRemainingSeconds, minHoldSecondsFor } from '../lib/providerPolicy.js';
 import { conflict, forbidden, notFound, paymentRequired, unprocessable } from '../lib/errors.js';
@@ -116,13 +116,15 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
         );
         if (!decremented) throw conflict('That number was just taken — please try again');
 
+        // Create the order first so the payment transaction can carry its id.
+        const [doc] = await Order.create([data], { session });
+        if (!doc) throw new Error('order creation returned no document');
         await debit(user._id, price, {
           type: 'order_payment',
           description: 'Order payment',
           session,
+          orderId: doc._id,
         });
-
-        const [doc] = await Order.create([data], { session });
         created = doc;
       });
       if (!created) throw new Error('order creation returned no document');
@@ -153,22 +155,12 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
     await releaseNumber(rent.providerConfigId, rent.result.providerRef);
     throw conflict('That number was just taken — please try again');
   }
+
+  let doc: OrderDoc;
   try {
-    await debit(user._id, price, { type: 'order_payment', description: 'Order payment' });
+    doc = await Order.create(data);
   } catch (err) {
     await Offer.updateOne({ _id: offerId }, { $inc: { stock: 1 } });
-    await releaseNumber(rent.providerConfigId, rent.result.providerRef);
-    throw err;
-  }
-  try {
-    const doc = await Order.create(data);
-    return { order: doc, reused: false };
-  } catch (err) {
-    await Offer.updateOne({ _id: offerId }, { $inc: { stock: 1 } });
-    await credit(user._id, price, {
-      type: 'refund',
-      description: 'Order creation failed — refund',
-    });
     await releaseNumber(rent.providerConfigId, rent.result.providerRef);
     if (isDuplicateKey(err) && body.idempotencyKey) {
       const existing = await Order.findOne({
@@ -179,6 +171,22 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
     }
     throw err;
   }
+
+  try {
+    await debit(user._id, price, {
+      type: 'order_payment',
+      description: 'Order payment',
+      orderId: doc._id,
+    });
+  } catch (err) {
+    // Payment failed after the order was written — undo it.
+    await doc.deleteOne();
+    await Offer.updateOne({ _id: offerId }, { $inc: { stock: 1 } });
+    await releaseNumber(rent.providerConfigId, rent.result.providerRef);
+    throw err;
+  }
+
+  return { order: doc, reused: false };
 }
 
 export interface ListOrdersParams {

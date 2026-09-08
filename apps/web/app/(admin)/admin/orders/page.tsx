@@ -8,7 +8,7 @@ import { TextInput } from '@/components/ui/field';
 import { LoadingRow } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { OrderStatusBadge } from '@/components/dashboard/order-status-badge';
-import { formatShortDateTime, formatUsd } from '@/lib/format';
+import { formatBalanceUsd, formatShortDateTime, formatUsd } from '@/lib/format';
 import { useAdminOrders, useCancelAdminOrder, useRepollAdminOrder } from '@/lib/admin-hooks';
 
 const TABS = [
@@ -47,7 +47,7 @@ export default function AdminOrdersPage() {
         ) : !orders.data || orders.data.items.length === 0 ? (
           <EmptyState title="No orders match" />
         ) : (
-          <table className="w-full min-w-[960px] text-sm">
+          <table className="w-full min-w-[1120px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-[11px] uppercase tracking-widest text-faint">
                 <th className="px-4 py-3 font-medium">Order</th>
@@ -56,6 +56,7 @@ export default function AdminOrdersPage() {
                 <th className="px-4 py-3 font-medium">Provider</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Price / Cost</th>
+                <th className="px-4 py-3 font-medium">Balance</th>
                 <th className="px-4 py-3 font-medium">Created</th>
                 <th className="px-4 py-3 font-medium" />
               </tr>
@@ -78,6 +79,17 @@ export default function AdminOrdersPage() {
                     <div className="text-xs text-faint">
                       {o.providerCostMicro != null ? formatUsd(o.providerCostMicro) : '—'}
                     </div>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs">
+                    {o.balanceBeforeMicro != null && o.balanceAfterMicro != null ? (
+                      <span className="text-muted">
+                        {formatBalanceUsd(o.balanceBeforeMicro)}{' '}
+                        <span className="text-faint">→</span>{' '}
+                        {formatBalanceUsd(o.balanceAfterMicro)}
+                      </span>
+                    ) : (
+                      <span className="text-faint">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-muted">{formatShortDateTime(o.createdAt)}</td>
                   <td className="px-4 py-3">

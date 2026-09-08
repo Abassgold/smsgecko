@@ -125,6 +125,9 @@ export interface AdminOrderRow {
   countryFlagEmoji: string;
   phoneNumber: string;
   priceMicro: number;
+  /** Buyer's wallet balance immediately before / after the order_payment debit. Null for orders with no linked payment. */
+  balanceBeforeMicro: number | null;
+  balanceAfterMicro: number | null;
   providerCostMicro: number | null;
   provider: string;
   providerLabel: string | null;
@@ -177,6 +180,8 @@ export interface AdminTransactionRow {
   user: { id: string; email: string };
   type: TransactionType;
   amountMicro: number;
+  /** Wallet balance immediately before / after this entry. */
+  balanceBeforeMicro: number;
   balanceAfterMicro: number;
   description: string;
   createdAt: string;

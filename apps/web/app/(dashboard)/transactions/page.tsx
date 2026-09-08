@@ -73,13 +73,14 @@ export default function TransactionsPage() {
           <EmptyState title="No transactions" description="Deposits and order activity show up here." />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
+            <table className="w-full min-w-[820px] text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-[11px] uppercase tracking-widest text-faint">
                   <th className="px-5 py-3 font-medium">Date</th>
                   <th className="px-5 py-3 font-medium">Type</th>
                   <th className="px-5 py-3 font-medium">Description</th>
                   <th className="px-5 py-3 text-right font-medium">Amount</th>
+                  <th className="px-5 py-3 text-right font-medium">Balance</th>
                 </tr>
               </thead>
               <tbody>
@@ -98,6 +99,11 @@ export default function TransactionsPage() {
                         }`}
                       >
                         {formatSignedUsd(t.amountMicro)}
+                      </td>
+                      <td className="px-5 py-3 text-right font-mono text-xs text-muted">
+                        {formatBalanceUsd(t.balanceBeforeMicro)}{' '}
+                        <span className="text-faint">→</span>{' '}
+                        {formatBalanceUsd(t.balanceAfterMicro)}
                       </td>
                     </tr>
                   );

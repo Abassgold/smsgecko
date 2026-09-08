@@ -37,6 +37,7 @@ function TransactionsTable() {
     user: { email: string };
     type: string;
     amountMicro: number;
+    balanceBeforeMicro: number;
     balanceAfterMicro: number;
     description: string;
     createdAt: string;
@@ -49,7 +50,7 @@ function TransactionsTable() {
       ) : rows.length === 0 ? (
         <EmptyState title="No transactions" />
       ) : (
-        <table className="w-full min-w-[820px] text-sm">
+        <table className="w-full min-w-[980px] text-sm">
           <thead>
             <tr className="border-b border-border text-left text-[11px] uppercase tracking-widest text-faint">
               <th className="px-4 py-3 font-medium">Date</th>
@@ -57,7 +58,7 @@ function TransactionsTable() {
               <th className="px-4 py-3 font-medium">Type</th>
               <th className="px-4 py-3 font-medium">Description</th>
               <th className="px-4 py-3 text-right font-medium">Amount</th>
-              <th className="px-4 py-3 text-right font-medium">Balance after</th>
+              <th className="px-4 py-3 text-right font-medium">Balance (before → after)</th>
             </tr>
           </thead>
           <tbody>
@@ -70,7 +71,10 @@ function TransactionsTable() {
                 <td className={`px-4 py-3 text-right font-mono ${t.amountMicro >= 0 ? 'text-success' : 'text-danger'}`}>
                   {formatSignedUsd(t.amountMicro)}
                 </td>
-                <td className="px-4 py-3 text-right font-mono text-muted">{formatBalanceUsd(t.balanceAfterMicro)}</td>
+                <td className="px-4 py-3 text-right font-mono text-xs text-muted">
+                  {formatBalanceUsd(t.balanceBeforeMicro)} <span className="text-faint">→</span>{' '}
+                  {formatBalanceUsd(t.balanceAfterMicro)}
+                </td>
               </tr>
             ))}
           </tbody>

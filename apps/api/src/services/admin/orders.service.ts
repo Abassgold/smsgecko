@@ -1,6 +1,7 @@
 import type { AdminOrderRow } from '@smsgecko/shared';
 import { Order, type OrderDoc } from '../../models/Order.js';
 import { SmsMessage } from '../../models/SmsMessage.js';
+import { Transaction, type TransactionDoc } from '../../models/Transaction.js';
 import { User } from '../../models/User.js';
 import { refundWaitingOrder } from '../../lib/orderLifecycle.js';
 import { pollOrderOnce } from '../../workers/index.js';
@@ -8,7 +9,11 @@ import { conflict, notFound } from '../../lib/errors.js';
 import { toOrderView } from '../orders.mapper.js';
 import type { AdminOrdersQuery } from '../../lib/validation/admin/orders.schema.js';
 
-function toRow(o: OrderDoc, email: string): AdminOrderRow {
+function toRow(o: OrderDoc, email: string, payment?: TransactionDoc): AdminOrderRow {
+  const balanceAfterMicro = payment ? payment.balanceAfterMicro : null;
+  const balanceBeforeMicro = payment
+    ? (payment.balanceBeforeMicro ?? payment.balanceAfterMicro - payment.amountMicro)
+    : null;
   return {
     id: o.id as string,
     status: o.status,
@@ -18,6 +23,8 @@ function toRow(o: OrderDoc, email: string): AdminOrderRow {
     countryFlagEmoji: o.countryFlagEmoji,
     phoneNumber: o.phoneNumber,
     priceMicro: o.priceMicro,
+    balanceBeforeMicro,
+    balanceAfterMicro,
     providerCostMicro: o.providerCostMicro ?? null,
     provider: o.provider,
     providerLabel: o.providerLabel ?? null,
@@ -50,14 +57,17 @@ export async function listOrders(query: AdminOrdersQuery) {
       .limit(limit),
     Order.countDocuments(filter),
   ]);
-  const emails = new Map(
-    (await User.find({ _id: { $in: items.map((o) => o.userId) } }, { email: 1 })).map((u) => [
-      String(u._id),
-      u.email,
-    ]),
-  );
+  const [emailRows, payments] = await Promise.all([
+    User.find({ _id: { $in: items.map((o) => o.userId) } }, { email: 1 }),
+    Transaction.find({ orderId: { $in: items.map((o) => o._id) }, type: 'order_payment' }),
+  ]);
+  const emails = new Map(emailRows.map((u) => [String(u._id), u.email]));
+  const paymentByOrder = new Map(payments.map((t) => [String(t.orderId), t]));
+
   return {
-    items: items.map((o) => toRow(o, emails.get(String(o.userId)) ?? '—')),
+    items: items.map((o) =>
+      toRow(o, emails.get(String(o.userId)) ?? '—', paymentByOrder.get(String(o._id))),
+    ),
     total,
     totalPages: Math.max(1, Math.ceil(total / limit)),
   };

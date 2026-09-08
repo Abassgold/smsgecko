@@ -8,6 +8,7 @@ export function toTransactionView(t: TransactionDoc): TransactionView {
     id: t.id as string,
     type: t.type,
     amountMicro: t.amountMicro,
+    balanceBeforeMicro: t.balanceBeforeMicro,
     balanceAfterMicro: t.balanceAfterMicro,
     description: t.description,
     orderId: t.orderId ? String(t.orderId) : null,
@@ -52,7 +53,14 @@ function csvCell(value: string): string {
 
 export async function exportTransactionsCsv(user: UserDoc): Promise<string> {
   const rows = await Transaction.find({ userId: user._id }).sort({ createdAt: -1 }).limit(10_000);
-  const header = ['date', 'type', 'amount_usd', 'balance_after_usd', 'description'];
+  const header = [
+    'date',
+    'type',
+    'amount_usd',
+    'balance_before_usd',
+    'balance_after_usd',
+    'description',
+  ];
   const lines = [header.join(',')];
   for (const t of rows) {
     lines.push(
@@ -60,6 +68,7 @@ export async function exportTransactionsCsv(user: UserDoc): Promise<string> {
         (t.get('createdAt') as Date).toISOString(),
         t.type,
         formatUsd(t.amountMicro, { symbol: false }),
+        formatUsd(t.balanceBeforeMicro, { symbol: false }),
         formatUsd(t.balanceAfterMicro, { symbol: false }),
         csvCell(t.description),
       ].join(','),

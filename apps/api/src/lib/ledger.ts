@@ -68,6 +68,7 @@ async function writeEntry(
         userId,
         type: ctx.type,
         amountMicro: signedAmount,
+        balanceBeforeMicro: balanceAfter - signedAmount,
         balanceAfterMicro: balanceAfter,
         description: ctx.description,
         orderId: ctx.orderId ?? null,

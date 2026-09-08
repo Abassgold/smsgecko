@@ -8,6 +8,8 @@ export interface TransactionView {
   id: string;
   type: TransactionType;
   amountMicro: number;
+  /** Wallet balance immediately before / after this entry (`before + amount === after`). */
+  balanceBeforeMicro: number;
   balanceAfterMicro: number;
   description: string;
   orderId: string | null;

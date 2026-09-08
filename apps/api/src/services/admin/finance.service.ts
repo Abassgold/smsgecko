@@ -32,6 +32,7 @@ export async function listTransactions(query: AdminTransactionsQuery) {
     user: { id: String(t.userId), email: emails.get(String(t.userId)) ?? '—' },
     type: t.type,
     amountMicro: t.amountMicro,
+    balanceBeforeMicro: t.balanceBeforeMicro ?? t.balanceAfterMicro - t.amountMicro,
     balanceAfterMicro: t.balanceAfterMicro,
     description: t.description,
     createdAt: (t.get('createdAt') as Date).toISOString(),
