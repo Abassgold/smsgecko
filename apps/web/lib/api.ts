@@ -23,7 +23,15 @@ export interface ApiOptions {
   signal?: AbortSignal;
 }
 
-export async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<T> {
+interface RawResult {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  text: string;
+  json: unknown;
+}
+
+async function rawFetch(path: string, opts: ApiOptions): Promise<RawResult> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: opts.method ?? 'GET',
     credentials: 'include',
@@ -35,19 +43,57 @@ export async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<
     signal: opts.signal,
     cache: 'no-store',
   });
-
   const text = await res.text();
-  const json = text ? safeJson(text) : undefined;
+  return {
+    ok: res.ok,
+    status: res.status,
+    statusText: res.statusText,
+    text,
+    json: text ? safeJson(text) : undefined,
+  };
+}
+
+/** Endpoints where a 401 is a real answer, not an expired access token. */
+const NO_REFRESH = new Set([
+  '/v1/auth/login',
+  '/v1/auth/register',
+  '/v1/auth/refresh',
+  '/v1/auth/logout',
+]);
+
+/** One shared refresh in flight, so a burst of 401s triggers a single call. */
+let refreshing: Promise<boolean> | null = null;
+
+function refreshSession(): Promise<boolean> {
+  refreshing ??= rawFetch('/v1/auth/refresh', { method: 'POST' })
+    .then((r) => r.ok)
+    .catch(() => false)
+    .finally(() => {
+      refreshing = null;
+    });
+  return refreshing;
+}
+
+export async function apiFetch<T>(path: string, opts: ApiOptions = {}): Promise<T> {
+  let res = await rawFetch(path, opts);
+
+  // Access token likely expired — refresh once and retry. Skip for server-side
+  // calls (a forwarded cookie can't be re-set) and for the auth endpoints where
+  // 401 is the actual result.
+  const canRefresh = !opts.headers?.cookie && !NO_REFRESH.has(path);
+  if (res.status === 401 && canRefresh && (await refreshSession())) {
+    res = await rawFetch(path, opts);
+  }
 
   if (!res.ok) {
     const errBody =
-      json && typeof json === 'object' && 'error' in json
-        ? (json as ErrorResponse).error
-        : { message: text || res.statusText };
+      res.json && typeof res.json === 'object' && 'error' in res.json
+        ? (res.json as ErrorResponse).error
+        : { message: res.text || res.statusText };
     throw new ApiError(res.status, errBody);
   }
 
-  return json as T;
+  return res.json as T;
 }
 
 function safeJson(text: string): unknown {
