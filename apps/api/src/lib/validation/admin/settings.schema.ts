@@ -10,6 +10,8 @@ export const settingsPatch = yup.object({
   mockSmsMaxDelayMs: yup.number().integer().min(0).max(600_000).optional(),
   affiliateRatePct: yup.number().min(0).max(100).optional(),
   minDepositMicro: yup.number().integer().min(0).optional(),
+  numberMarkupPercent: yup.number().min(0).max(1000).optional(),
+  numberMarkupFlatMicro: yup.number().integer().min(0).optional(),
   signupsEnabled: yup.boolean().optional(),
   maintenanceMode: yup.boolean().optional(),
 });

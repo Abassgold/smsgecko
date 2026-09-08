@@ -73,6 +73,12 @@ export default function AdminSettingsPage() {
             <Field label="Min deposit (micro-USD)">
               <TextInput type="number" min="0" value={form.minDepositMicro} onChange={num('minDepositMicro')} />
             </Field>
+            <Field label="Number markup (%)" hint="Added over the provider's raw price">
+              <TextInput type="number" step="0.5" min="0" max="1000" value={form.numberMarkupPercent} onChange={num('numberMarkupPercent')} />
+            </Field>
+            <Field label="Number markup flat (micro-USD)">
+              <TextInput type="number" min="0" value={form.numberMarkupFlatMicro} onChange={num('numberMarkupFlatMicro')} />
+            </Field>
           </div>
         </Card>
 

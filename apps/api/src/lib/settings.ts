@@ -10,6 +10,9 @@ export interface ResolvedSettings {
   mockSmsMaxDelayMs: number;
   affiliateRatePct: number;
   minDepositMicro: number;
+  /** Customer markup over the provider's raw number price. */
+  numberMarkupPercent: number;
+  numberMarkupFlatMicro: number;
   signupsEnabled: boolean;
   maintenanceMode: boolean;
 }
@@ -22,6 +25,8 @@ export const SETTINGS_DEFAULTS: ResolvedSettings = {
   mockSmsMaxDelayMs: env.MOCK_SMS_MAX_DELAY_MS,
   affiliateRatePct: Math.round(AFFILIATE_RATE * 100),
   minDepositMicro: MIN_DEPOSIT_MICRO,
+  numberMarkupPercent: 0,
+  numberMarkupFlatMicro: 0,
   signupsEnabled: true,
   maintenanceMode: false,
 };

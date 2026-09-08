@@ -1,12 +1,10 @@
 import type { CreateOrderBody } from '@smsgecko/shared';
 import { mongoose, supportsTransactions } from '../db/mongoose.js';
 import { Order, type OrderDoc } from '../models/Order.js';
-import { Offer, type OfferDoc } from '../models/Offer.js';
-import { Service } from '../models/Service.js';
-import { Country } from '../models/Country.js';
 import { SmsMessage } from '../models/SmsMessage.js';
 import type { UserDoc } from '../models/User.js';
-import { rentWithFallback, releaseNumber } from '../providers/sms/registry.js';
+import { getCatalogProvider, rentWithFallback, releaseNumber } from '../providers/sms/registry.js';
+import { resolveForOrder } from './catalog.service.js';
 import { getSettings } from '../lib/settings.js';
 import { debit } from '../lib/ledger.js';
 import { refundWaitingOrder } from '../lib/orderLifecycle.js';
@@ -29,69 +27,51 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
     if (existing) return { order: existing, reused: true };
   }
 
-  const [service, country] = await Promise.all([
-    Service.findById(body.serviceId),
-    Country.findById(body.countryId),
-  ]);
-  if (!service) throw notFound('Service not found');
-  if (!country) throw notFound('Country not found');
-
-  let offer: OfferDoc | null;
-  if (body.offerId) {
-    offer = await Offer.findOne({
-      _id: body.offerId,
-      serviceId: service._id,
-      countryId: country._id,
-      active: true,
-    });
-    if (!offer) throw notFound('Offer not found for that service and country');
-  } else {
-    offer = await Offer.findOne({
-      serviceId: service._id,
-      countryId: country._id,
-      active: true,
-      stock: { $gt: 0 },
-    }).sort({ priceMicro: 1 });
-    if (!offer) throw conflict('No numbers available for that service and country right now');
-  }
-
-  if (body.maxPriceMicro != null && offer.priceMicro > body.maxPriceMicro) {
-    throw unprocessable('Current price is above your max price');
-  }
-  if (offer.priceMicro > user.balanceMicro) throw paymentRequired();
-
   const settings = await getSettings();
   if (settings.maintenanceMode && user.role !== 'admin') {
     throw forbidden('Ordering is paused for maintenance');
   }
 
-  // Rent a number from the first enabled provider in the fallback chain.
+  // Price the service×country against the active (top-enabled) provider.
+  if (!(await getCatalogProvider())) throw conflict('No SMS provider is enabled');
+  const cat = await resolveForOrder(body.serviceId, body.countryId, settings);
+  if (!cat) {
+    throw conflict('No numbers available for that service and country right now');
+  }
+
+  const price = cat.priceMicro;
+  if (body.maxPriceMicro != null && price > body.maxPriceMicro) {
+    throw unprocessable('Current price is above your max price');
+  }
+  if (price > user.balanceMicro) throw paymentRequired();
+
+  // Rent from the first provider in the fallback chain that has stock. The cap
+  // is the active provider's *raw* price, so we're never billed above what we quoted.
   const rent = await rentWithFallback({
-    serviceSlug: service.slug,
-    countryCode: country.code,
-    dialCode: country.dialCode,
-    maxPriceMicro: offer.priceMicro,
+    serviceSlug: body.serviceId,
+    countryCode: body.countryId,
+    dialCode: '',
+    maxPriceMicro: cat.rawPriceMicro,
   });
 
   const data = {
     userId: user._id,
-    serviceId: service._id,
-    countryId: country._id,
-    offerId: offer._id,
-    serviceSlug: service.slug,
-    serviceName: service.name,
-    serviceIconKey: service.iconKey,
-    countryName: country.name,
-    countryCode: country.code,
-    countryFlagEmoji: country.flagEmoji,
+    serviceId: body.serviceId,
+    countryId: body.countryId,
+    serviceSlug: cat.serviceSlug,
+    serviceName: cat.serviceName,
+    serviceIconKey: cat.serviceIconKey,
+    countryName: cat.countryName,
+    countryCode: cat.countryCode,
+    countryFlagEmoji: cat.countryFlagEmoji,
     phoneNumber: rent.result.phoneNumber,
-    priceMicro: offer.priceMicro,
+    priceMicro: price,
     status: 'waiting' as const,
     provider: rent.providerKey,
     providerConfigId: rent.providerConfigId,
     providerLabel: rent.providerLabel,
     providerRef: rent.result.providerRef,
-    providerCostMicro: rent.result.costMicro ?? null,
+    providerCostMicro: rent.result.costMicro ?? cat.rawPriceMicro,
     ...(body.idempotencyKey ? { idempotencyKey: body.idempotencyKey } : {}),
     deliverAt: rent.result.mockDeliverAt ?? null,
     // Never auto-expire before the provider's minimum hold — some upstreams
@@ -101,21 +81,11 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
     ),
   };
 
-  const offerId = offer._id;
-  const price = offer.priceMicro;
-
   if (supportsTransactions()) {
     const session = await mongoose.startSession();
     try {
       let created: OrderDoc | undefined;
       await session.withTransaction(async () => {
-        const decremented = await Offer.findOneAndUpdate(
-          { _id: offerId, stock: { $gt: 0 } },
-          { $inc: { stock: -1 } },
-          { session, returnDocument: 'after' },
-        );
-        if (!decremented) throw conflict('That number was just taken — please try again');
-
         // Create the order first so the payment transaction can carry its id.
         const [doc] = await Order.create([data], { session });
         if (!doc) throw new Error('order creation returned no document');
@@ -146,21 +116,10 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
   }
 
   // Fallback (no replica set): sequential with compensation.
-  const decremented = await Offer.findOneAndUpdate(
-    { _id: offerId, stock: { $gt: 0 } },
-    { $inc: { stock: -1 } },
-    { returnDocument: 'after' },
-  );
-  if (!decremented) {
-    await releaseNumber(rent.providerConfigId, rent.result.providerRef);
-    throw conflict('That number was just taken — please try again');
-  }
-
   let doc: OrderDoc;
   try {
     doc = await Order.create(data);
   } catch (err) {
-    await Offer.updateOne({ _id: offerId }, { $inc: { stock: 1 } });
     await releaseNumber(rent.providerConfigId, rent.result.providerRef);
     if (isDuplicateKey(err) && body.idempotencyKey) {
       const existing = await Order.findOne({
@@ -181,7 +140,6 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
   } catch (err) {
     // Payment failed after the order was written — undo it.
     await doc.deleteOne();
-    await Offer.updateOne({ _id: offerId }, { $inc: { stock: 1 } });
     await releaseNumber(rent.providerConfigId, rent.result.providerRef);
     throw err;
   }

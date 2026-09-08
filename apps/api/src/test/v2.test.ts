@@ -4,7 +4,6 @@ import { makeInject } from './inject.js';
 import { buildApp } from '../app.js';
 import { makeCatalog, makeUser, simulateOtp } from './factories.js';
 import { ApiKey } from '../models/ApiKey.js';
-import { Order } from '../models/Order.js';
 import { User } from '../models/User.js';
 
 let app: Application;
@@ -36,23 +35,26 @@ describe('v2 API (Bearer)', () => {
   });
 
   it('lists catalog products with string prices', async () => {
-    const { offer } = await makeCatalog({ priceMicro: 500_000, stock: 7 });
+    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 500_000, stock: 7 });
     const { userId } = await makeUser(app);
     const key = await keyFor(userId);
 
     const res = await inject({
       method: 'GET',
-      url: '/api/v2/catalog/products',
+      url: `/api/v2/catalog/products?service=${serviceCode}`,
       headers: { authorization: `Bearer ${key}` },
     });
     expect(res.statusCode).toBe(200);
-    const found = res.json().data.find((p: { id: string }) => p.id === (offer.id as string));
+    const found = res
+      .json()
+      .data.find((p: { id: string }) => p.id === `${serviceCode}::${countryCode}`);
     expect(found.price).toBe('0.5');
     expect(found.stock).toBe(7);
   });
 
   it('runs create → poll → finish', async () => {
-    const { offer } = await makeCatalog({ priceMicro: 200_000, stock: 5 });
+    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 200_000, stock: 5 });
+    const productId = `${serviceCode}::${countryCode}`;
     const { userId } = await makeUser(app, { balanceMicro: 2_000_000 });
     const key = await keyFor(userId);
 
@@ -60,7 +62,7 @@ describe('v2 API (Bearer)', () => {
       method: 'POST',
       url: '/api/v2/orders',
       headers: { authorization: `Bearer ${key}`, 'idempotency-key': 'v2-key-abc123' },
-      payload: { catalog_product_id: offer.id, max_price: '0.50' },
+      payload: { catalog_product_id: productId, max_price: '0.50' },
     });
     expect(created.statusCode).toBe(201);
     const orderId = created.json().id as string;
@@ -72,7 +74,7 @@ describe('v2 API (Bearer)', () => {
       method: 'POST',
       url: '/api/v2/orders',
       headers: { authorization: `Bearer ${key}`, 'idempotency-key': 'v2-key-abc123' },
-      payload: { catalog_product_id: offer.id },
+      payload: { catalog_product_id: productId },
     });
     expect(again.json().id).toBe(orderId);
 
@@ -97,7 +99,7 @@ describe('v2 API (Bearer)', () => {
   });
 
   it('rejects max_price below the offer price', async () => {
-    const { offer } = await makeCatalog({ priceMicro: 800_000, stock: 5 });
+    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 800_000, stock: 5 });
     const { userId } = await makeUser(app, { balanceMicro: 2_000_000 });
     const key = await keyFor(userId);
 
@@ -105,13 +107,13 @@ describe('v2 API (Bearer)', () => {
       method: 'POST',
       url: '/api/v2/orders',
       headers: { authorization: `Bearer ${key}` },
-      payload: { catalog_product_id: offer.id, max_price: '0.10' },
+      payload: { catalog_product_id: `${serviceCode}::${countryCode}`, max_price: '0.10' },
     });
     expect(res.statusCode).toBe(422);
   });
 
   it('cancels and refunds via v2', async () => {
-    const { offer } = await makeCatalog({ priceMicro: 300_000, stock: 5 });
+    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 300_000, stock: 5 });
     const { userId } = await makeUser(app, { balanceMicro: 1_000_000 });
     const key = await keyFor(userId);
 
@@ -119,7 +121,7 @@ describe('v2 API (Bearer)', () => {
       method: 'POST',
       url: '/api/v2/orders',
       headers: { authorization: `Bearer ${key}` },
-      payload: { product_id: offer.id },
+      payload: { product_id: `${serviceCode}::${countryCode}` },
     });
     const orderId = created.json().id as string;
 

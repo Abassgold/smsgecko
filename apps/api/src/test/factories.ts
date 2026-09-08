@@ -1,8 +1,5 @@
 import type { Application } from 'express';
 import { makeInject } from './inject.js';
-import { Service } from '../models/Service.js';
-import { Country } from '../models/Country.js';
-import { Offer } from '../models/Offer.js';
 import { Order, type OrderDoc } from '../models/Order.js';
 import { ProviderConfig } from '../models/ProviderConfig.js';
 import { User } from '../models/User.js';
@@ -12,32 +9,35 @@ import { bustProviderCache } from '../providers/sms/registry.js';
 
 let seq = 0;
 
-export async function makeCatalog(opts: { priceMicro?: number; stock?: number } = {}) {
+/**
+ * Point the seeded `mock` provider's live catalog at one known service×country
+ * with a fixed price/stock. Returns `{ service:{id}, country:{id}, serviceCode,
+ * countryCode }` — `id`s are the codes you POST to `/api/v1/orders`.
+ */
+export async function makeCatalog(
+  opts: { priceMicro?: number; stock?: number; serviceCode?: string; countryCode?: string } = {},
+) {
   seq += 1;
-  const service = await Service.create({
-    slug: `svc-${seq}`,
-    name: `Service ${seq}`,
-    iconKey: 'whatsapp',
-    aliases: [],
-    popular: true,
-    sortOrder: seq,
-  });
-  const country = await Country.create({
-    code: `c${seq}`,
-    name: `Country ${seq}`,
-    dialCode: '62',
-    flagEmoji: '🏳️',
-    sortOrder: seq,
-  });
-  const offer = await Offer.create({
-    serviceId: service._id,
-    countryId: country._id,
-    operator: null,
-    priceMicro: opts.priceMicro ?? 100_000,
-    stock: opts.stock ?? 10,
-    active: true,
-  });
-  return { service, country, offer };
+  const serviceCode = opts.serviceCode ?? `svc${seq}`;
+  const countryCode = opts.countryCode ?? `c${seq}`;
+  await ProviderConfig.updateOne(
+    { key: 'mock' },
+    {
+      $set: {
+        enabled: true,
+        priority: 0,
+        configEnc: encryptJson({
+          catalogPriceMicro: opts.priceMicro ?? 100_000,
+          catalogStock: opts.stock ?? 10,
+          catalogServices: [{ code: serviceCode, name: serviceCode }],
+          catalogCountries: [{ code: countryCode, name: countryCode, iso2: 'us', dialCode: '1' }],
+        }),
+      },
+    },
+    { upsert: true },
+  );
+  bustProviderCache();
+  return { service: { id: serviceCode }, country: { id: countryCode }, serviceCode, countryCode };
 }
 
 /** Register a user through the API and return an auth cookie header + the user id. */

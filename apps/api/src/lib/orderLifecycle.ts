@@ -1,5 +1,4 @@
 import { Order, type OrderDoc } from '../models/Order.js';
-import { Offer } from '../models/Offer.js';
 import { SmsMessage } from '../models/SmsMessage.js';
 import { notify } from '../models/Notification.js';
 import { getProviderForOrder, recordOtpReceived } from '../providers/sms/registry.js';
@@ -53,7 +52,7 @@ export async function applyOtpToOrder(
 
 /**
  * Refund a `waiting` order and move it to a terminal status (`expired` from the
- * worker, `canceled` from the user/admin). Restores offer stock and releases
+ * worker, `canceled` from the user/admin). Releases
  * the number with its provider. Guarded + idempotent.
  */
 export async function refundWaitingOrder(
@@ -76,7 +75,6 @@ export async function refundWaitingOrder(
     description: 'Order canceled — refund',
     orderId: order._id,
   });
-  await Offer.updateOne({ _id: order.offerId }, { $inc: { stock: 1 } });
   try {
     const provider = await getProviderForOrder(order);
     await provider.release(order.providerRef);

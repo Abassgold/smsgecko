@@ -1,5 +1,4 @@
 import * as yup from 'yup';
-import { objectId } from './common.schema.js';
 
 export const catalogSearchQuery = yup.object({
   q: yup.string().trim().max(64).optional(),
@@ -10,9 +9,12 @@ export interface CatalogSearchQuery {
   limit: number;
 }
 
+/** serviceId / countryId are the active provider's own service/country codes. */
+const providerCode = yup.string().trim().min(1).max(64);
+
 export const offersQuery = yup.object({
-  serviceId: objectId.required(),
-  countryId: objectId.required(),
+  serviceId: providerCode.required(),
+  countryId: providerCode.required(),
 });
 export interface OffersQuery {
   serviceId: string;

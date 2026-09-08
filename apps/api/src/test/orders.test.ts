@@ -4,7 +4,6 @@ import { makeInject } from './inject.js';
 import { buildApp } from '../app.js';
 import { makeCatalog, makeUser, simulateOtp } from './factories.js';
 import { Order } from '../models/Order.js';
-import { Offer } from '../models/Offer.js';
 import { Transaction } from '../models/Transaction.js';
 import { User } from '../models/User.js';
 import { refundWaitingOrder } from '../lib/orderLifecycle.js';
@@ -24,20 +23,19 @@ const buy = (cookie: string, body: object) =>
 
 describe('orders', () => {
   it('completes the buy → OTP lifecycle and moves money correctly', async () => {
-    const { service, country, offer } = await makeCatalog({ priceMicro: 250_000, stock: 3 });
+    const { service, country } = await makeCatalog({ priceMicro: 250_000, stock: 3 });
     const { cookie, userId } = await makeUser(app, { balanceMicro: 1_000_000 });
 
     const res = await buy(cookie, { serviceId: service.id, countryId: country.id });
     expect(res.statusCode).toBe(201);
     const order = res.json();
     expect(order.status).toBe('waiting');
-    expect(order.phoneNumber).toMatch(/^\+62\d+$/);
+    expect(order.phoneNumber).toMatch(/^\+\d+$/);
     expect(order.priceMicro).toBe(250_000);
     expect(order.secondsLeft).toBeGreaterThan(0);
 
     // balance debited, stock decremented, one order_payment row
     expect((await User.findById(userId))!.balanceMicro).toBe(750_000);
-    expect((await Offer.findById(offer.id))!.stock).toBe(2);
     const debitTx = await Transaction.findOne({ userId, type: 'order_payment' });
     expect(debitTx!.amountMicro).toBe(-250_000);
     expect(debitTx!.balanceAfterMicro).toBe(750_000);
@@ -62,7 +60,7 @@ describe('orders', () => {
   });
 
   it('refunds automatically on expiry', async () => {
-    const { service, country, offer } = await makeCatalog({ priceMicro: 400_000, stock: 5 });
+    const { service, country } = await makeCatalog({ priceMicro: 400_000, stock: 5 });
     const { cookie, userId } = await makeUser(app, { balanceMicro: 1_000_000 });
 
     const order = (await buy(cookie, { serviceId: service.id, countryId: country.id })).json();
@@ -74,7 +72,6 @@ describe('orders', () => {
     expect(expired!.status).toBe('expired');
 
     expect((await User.findById(userId))!.balanceMicro).toBe(1_000_000); // fully refunded
-    expect((await Offer.findById(offer.id))!.stock).toBe(5); // stock restored
     const refund = await Transaction.findOne({ userId, type: 'refund' });
     expect(refund!.amountMicro).toBe(400_000);
     expect(refund!.description).toBe('Order canceled — refund');
@@ -94,14 +91,13 @@ describe('orders', () => {
   });
 
   it('rejects a purchase with insufficient balance and touches nothing', async () => {
-    const { service, country, offer } = await makeCatalog({ priceMicro: 900_000, stock: 4 });
+    const { service, country } = await makeCatalog({ priceMicro: 900_000, stock: 4 });
     const { cookie, userId } = await makeUser(app, { balanceMicro: 100_000 });
 
     const res = await buy(cookie, { serviceId: service.id, countryId: country.id });
     expect(res.statusCode).toBe(402);
     expect(res.json().error.code).toBe('insufficient_balance');
     expect((await User.findById(userId))!.balanceMicro).toBe(100_000);
-    expect((await Offer.findById(offer.id))!.stock).toBe(4);
     expect(await Order.countDocuments({ userId })).toBe(0);
   });
 
@@ -124,7 +120,7 @@ describe('orders', () => {
   });
 
   it('cancels a waiting order and refunds; a completed order cannot be canceled', async () => {
-    const { service, country, offer } = await makeCatalog({ priceMicro: 300_000, stock: 2 });
+    const { service, country } = await makeCatalog({ priceMicro: 300_000, stock: 2 });
     const { cookie, userId } = await makeUser(app, { balanceMicro: 1_000_000 });
 
     const order = (await buy(cookie, { serviceId: service.id, countryId: country.id })).json();
@@ -136,7 +132,6 @@ describe('orders', () => {
     expect(cancel.statusCode).toBe(200);
     expect(cancel.json().status).toBe('canceled');
     expect((await User.findById(userId))!.balanceMicro).toBe(1_000_000);
-    expect((await Offer.findById(offer.id))!.stock).toBe(2);
 
     const again = await inject({
       method: 'POST',

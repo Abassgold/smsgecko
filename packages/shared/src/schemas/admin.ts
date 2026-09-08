@@ -138,41 +138,6 @@ export interface AdminOrderRow {
   lastPolledAt: string | null;
 }
 
-/* ---------------- catalog ---------------- */
-
-export interface AdminServiceRow {
-  id: string;
-  slug: string;
-  name: string;
-  iconKey: string;
-  aliases: string[];
-  popular: boolean;
-  sortOrder: number;
-  offerCount: number;
-}
-
-export interface AdminCountryRow {
-  id: string;
-  code: string;
-  name: string;
-  dialCode: string;
-  flagEmoji: string;
-  sortOrder: number;
-  offerCount: number;
-}
-
-export interface AdminOfferRow {
-  id: string;
-  serviceId: string;
-  serviceName: string;
-  countryId: string;
-  countryName: string;
-  operator: string | null;
-  priceMicro: number;
-  stock: number;
-  active: boolean;
-}
-
 /* ---------------- finance ---------------- */
 
 export interface AdminTransactionRow {
@@ -207,6 +172,8 @@ export interface SettingsView {
   mockSmsMaxDelayMs: number;
   affiliateRatePct: number;
   minDepositMicro: number;
+  numberMarkupPercent: number;
+  numberMarkupFlatMicro: number;
   signupsEnabled: boolean;
   maintenanceMode: boolean;
 }

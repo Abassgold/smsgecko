@@ -154,39 +154,6 @@ export function useRepollAdminOrder() {
   });
 }
 
-/* ---------- catalog ---------- */
-export function useAdminServices() {
-  return useQuery({
-    queryKey: ['admin', 'services'],
-    queryFn: () => apiFetch<Record<string, unknown>[]>('/v1/admin/catalog/services'),
-  });
-}
-export function useAdminCountries() {
-  return useQuery({
-    queryKey: ['admin', 'countries'],
-    queryFn: () => apiFetch<Record<string, unknown>[]>('/v1/admin/catalog/countries'),
-  });
-}
-export function useAdminOffers(params: Record<string, string | number | undefined>) {
-  return useQuery({
-    queryKey: ['admin', 'offers', params],
-    queryFn: () =>
-      apiFetch<Paginated<Record<string, unknown>>>(`/v1/admin/catalog/offers?${qs({ ...params, limit: 50 })}`),
-  });
-}
-export function useCatalogMutation<T = unknown>(method: 'POST' | 'PATCH' | 'DELETE') {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ path, body }: { path: string; body?: unknown }) =>
-      apiFetch<T>(`/v1/admin/catalog${path}`, { method, body }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin', 'services'] });
-      qc.invalidateQueries({ queryKey: ['admin', 'countries'] });
-      qc.invalidateQueries({ queryKey: ['admin', 'offers'] });
-    },
-  });
-}
-
 /* ---------- finance ---------- */
 export function useAdminTransactions(params: Record<string, string | number | undefined>) {
   return useQuery({

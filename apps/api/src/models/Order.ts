@@ -4,14 +4,14 @@ import { ORDER_STATUSES } from '@smsgecko/shared';
 const orderSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    serviceId: { type: Schema.Types.ObjectId, ref: 'Service', required: true },
-    countryId: { type: Schema.Types.ObjectId, ref: 'Country', required: true },
-    offerId: { type: Schema.Types.ObjectId, ref: 'Offer', required: true },
+    /** The active provider's own service / country codes at order time. */
+    serviceId: { type: String, required: true },
+    countryId: { type: String, required: true },
 
-    /** Denormalised for cheap listing / history that survives catalog edits. */
+    /** Denormalised for cheap listing / history. */
     serviceSlug: { type: String, required: true },
     serviceName: { type: String, required: true },
-    serviceIconKey: { type: String, required: true },
+    serviceIconKey: { type: String, default: '' },
     countryName: { type: String, required: true },
     countryCode: { type: String, required: true },
     countryFlagEmoji: { type: String, required: true },

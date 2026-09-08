@@ -69,13 +69,26 @@ describe('admin panel', () => {
   });
 
   it('renting falls through a broken provider to the mock', async () => {
-    await makeProvider({ key: 'custom_http', label: 'Broken', enabled: true, priority: -1, config: {} });
-    const { service, country } = await makeCatalog({ priceMicro: 100_000, stock: 5 });
+    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 100_000, stock: 5 });
+    // A second mock provider, top of the chain, that can price but not rent.
+    await makeProvider({
+      key: 'mock',
+      label: 'Broken',
+      enabled: true,
+      priority: -1,
+      config: {
+        failRent: true,
+        catalogPriceMicro: 100_000,
+        catalogStock: 5,
+        catalogServices: [{ code: serviceCode, name: serviceCode }],
+        catalogCountries: [{ code: countryCode, name: countryCode, iso2: 'us', dialCode: '1' }],
+      },
+    });
     const { cookie } = await makeUser(app, { balanceMicro: 1_000_000 });
 
     const res = await post('/api/v1/orders', cookie, {
-      serviceId: service.id,
-      countryId: country.id,
+      serviceId: serviceCode,
+      countryId: countryCode,
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().status).toBe('waiting');
@@ -89,12 +102,12 @@ describe('admin panel', () => {
   it('fails with no working provider and refunds nothing', async () => {
     await ProviderConfig.updateMany({}, { $set: { enabled: false } });
     await makeProvider({ key: 'custom_http', label: 'OnlyBroken', enabled: true, priority: 0, config: {} });
-    const { service, country } = await makeCatalog({ priceMicro: 100_000, stock: 5 });
     const { cookie, userId } = await makeUser(app, { balanceMicro: 1_000_000 });
 
+    // custom_http reports no catalog, so the pair can't be priced.
     const res = await post('/api/v1/orders', cookie, {
-      serviceId: service.id,
-      countryId: country.id,
+      serviceId: 'whatsapp',
+      countryId: 'us',
     });
     expect(res.statusCode).toBe(409);
     expect((await User.findById(userId))!.balanceMicro).toBe(1_000_000);
@@ -157,37 +170,20 @@ describe('admin panel', () => {
     expect(live.mockSmsSuccessRate).toBe(0);
   });
 
-  it('creates and bulk-updates catalog offers', async () => {
+  it('applies the number markup to catalog prices', async () => {
     const { cookie } = await makeAdmin(app);
-    const svc = await post('/api/v1/admin/catalog/services', cookie, {
-      slug: `admin-svc-${Date.now()}`,
-      name: 'Admin Svc',
-      iconKey: 'whatsapp',
+    await patch('/api/v1/admin/settings', cookie, {
+      numberMarkupPercent: 20,
+      numberMarkupFlatMicro: 5_000,
     });
-    expect(svc.statusCode).toBe(201);
-    const ctry = await post('/api/v1/admin/catalog/countries', cookie, {
-      code: 'zz',
-      name: 'Testland',
-      dialCode: '999',
-      flagEmoji: '🏳️',
-    });
-    expect(ctry.statusCode).toBe(201);
+    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 100_000, stock: 5 });
+    const { cookie: userCookie } = await makeUser(app, { balanceMicro: 1_000_000 });
 
-    const offer = await post('/api/v1/admin/catalog/offers', cookie, {
-      serviceId: svc.json().id,
-      countryId: ctry.json().id,
-      priceMicro: 100_000,
-      stock: 10,
-    });
-    expect(offer.statusCode).toBe(201);
-
-    const bulk = await post('/api/v1/admin/catalog/offers/bulk', cookie, {
-      serviceId: svc.json().id,
-      adjustPricePct: 50,
-    });
-    expect(bulk.json().modified).toBe(1);
-
-    const list = await get(`/api/v1/admin/catalog/offers?serviceId=${svc.json().id}`, cookie);
-    expect(list.json().items[0].priceMicro).toBe(150_000);
+    const quote = await get(
+      `/api/v1/catalog/quote?serviceId=${serviceCode}&countryId=${countryCode}`,
+      userCookie,
+    );
+    // 100_000 * 1.20 + 5_000
+    expect(quote.json().bestOffer.priceMicro).toBe(125_000);
   });
 });

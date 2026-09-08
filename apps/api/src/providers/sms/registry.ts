@@ -1,8 +1,9 @@
 import { conflict } from '../../lib/errors.js';
+import { bustCatalogCache } from '../../lib/catalog.js';
 import { decryptJson } from '../../lib/secretbox.js';
 import { ProviderConfig, type ProviderConfigDoc } from '../../models/ProviderConfig.js';
 import type { OrderDoc } from '../../models/Order.js';
-import { MockSmsProvider } from './adapters/mock.js';
+import { MockSmsProvider, type MockConfig } from './adapters/mock.js';
 import { CustomHttpProvider, type CustomHttpConfig } from './adapters/customHttp.js';
 import { HeroSmsProvider, type HeroSmsConfig } from './adapters/heroSms.js';
 import { DaisySmsProvider, type DaisySmsConfig } from './adapters/daisySms.js';
@@ -21,7 +22,7 @@ import {
 type Factory = (cfg: ProviderConfigDoc, decrypted: Record<string, unknown>) => SmsProvider;
 
 const ADAPTERS: Record<string, Factory> = {
-  mock: (cfg) => new MockSmsProvider(cfg.label),
+  mock: (cfg, decrypted) => new MockSmsProvider(decrypted as MockConfig, cfg.label),
   custom_http: (cfg, decrypted) => new CustomHttpProvider(decrypted as CustomHttpConfig, cfg.label),
   hero_sms: (cfg, decrypted) => new HeroSmsProvider(decrypted as HeroSmsConfig, cfg.label),
   daisy_sms: (cfg, decrypted) => new DaisySmsProvider(decrypted as DaisySmsConfig, cfg.label),
@@ -36,6 +37,7 @@ const CACHE_TTL_MS = 15_000;
 
 export function bustProviderCache(): void {
   cache.clear();
+  bustCatalogCache();
 }
 
 function instantiate(cfg: ProviderConfigDoc): SmsProvider {
@@ -75,7 +77,7 @@ export async function getProviderForOrder(order: OrderDoc): Promise<SmsProvider>
     const cfg = await ProviderConfig.findById(order.providerConfigId);
     if (cfg) return instantiate(cfg);
   }
-  return new MockSmsProvider('Mock SIM bank');
+  return new MockSmsProvider({}, 'Mock SIM bank');
 }
 
 /** Best-effort release of a rented number by its provider config id. */
@@ -86,7 +88,7 @@ export async function releaseNumber(
   try {
     const provider = providerConfigId
       ? instantiate((await ProviderConfig.findById(providerConfigId))!)
-      : new MockSmsProvider('Mock SIM bank');
+      : new MockSmsProvider({}, 'Mock SIM bank');
     await provider.release(providerRef);
   } catch {
     /* best-effort */

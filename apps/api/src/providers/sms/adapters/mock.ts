@@ -15,6 +15,20 @@ import type {
   SmsProvider,
 } from '../types.js';
 
+/**
+ * Optional `ProviderConfig.config` for the mock adapter — lets tests and dev
+ * pin the catalog it reports. Everything is optional; unset falls back to
+ * `seed/data.ts` + a stable pseudo-price.
+ */
+export interface MockConfig {
+  catalogPriceMicro?: number;
+  catalogStock?: number;
+  catalogServices?: { code: string; name: string }[];
+  catalogCountries?: { code: string; name: string; iso2?: string; dialCode?: string }[];
+  /** Force `rent()` to throw — used to exercise the fallback chain in tests. */
+  failRent?: boolean;
+}
+
 /** Stable pseudo-price per (service, country) so repeated calls don't jump around. */
 function mockPriceMicro(serviceCode: string, countryCode: string): number {
   let h = 0;
@@ -31,9 +45,13 @@ function mockPriceMicro(serviceCode: string, countryCode: string): number {
  */
 export class MockSmsProvider implements SmsProvider {
   readonly key = 'mock';
-  constructor(readonly label: string = 'Mock SIM bank') {}
+  constructor(
+    private readonly cfg: MockConfig = {},
+    readonly label: string = 'Mock SIM bank',
+  ) {}
 
   async rent(input: RentInput): Promise<RentResult> {
+    if (this.cfg.failRent) throw new Error('mock: forced rent failure');
     const s = await getSettings();
     const digits = input.dialCode.length <= 2 ? 10 : 8;
     let national = String(randomInt(2, 10));
@@ -48,7 +66,7 @@ export class MockSmsProvider implements SmsProvider {
 
     return {
       providerRef: `mock_${Date.now().toString(36)}_${randomInt(0, 1e9).toString(36)}`,
-      phoneNumber: `+${input.dialCode}${national}`,
+      phoneNumber: `+${input.dialCode || '1'}${national}`,
       costMicro: null,
       mockDeliverAt,
     };
@@ -76,10 +94,12 @@ export class MockSmsProvider implements SmsProvider {
   }
 
   async listServices(): Promise<CatalogService[]> {
+    if (this.cfg.catalogServices?.length) return this.cfg.catalogServices;
     return SERVICES.map((s) => ({ code: s.slug, name: s.name }));
   }
 
   async listCountries(): Promise<CatalogCountry[]> {
+    if (this.cfg.catalogCountries?.length) return this.cfg.catalogCountries;
     return COUNTRIES.map((c) => ({
       code: c.code,
       name: c.name,
@@ -89,17 +109,20 @@ export class MockSmsProvider implements SmsProvider {
   }
 
   async listPrices(q: CatalogQuery): Promise<CatalogPrice[]> {
-    const countries = q.countryCode
-      ? COUNTRIES.filter((c) => c.code === q.countryCode)
-      : COUNTRIES;
-    return countries.map((c) => {
-      const priceMicro = mockPriceMicro(q.serviceCode, c.code);
-      return {
-        serviceCode: q.serviceCode,
-        countryCode: c.code,
-        priceMicro,
-        stock: 25 + (priceMicro % 400),
-      };
-    });
+    const source = this.cfg.catalogCountries?.length
+      ? this.cfg.catalogCountries.map((c) => ({ code: c.code }))
+      : COUNTRIES.map((c) => ({ code: c.code }));
+    const countries = q.countryCode ? source.filter((c) => c.code === q.countryCode) : source;
+
+    return countries.map((c) => ({
+      serviceCode: q.serviceCode,
+      countryCode: c.code,
+      priceMicro: this.cfg.catalogPriceMicro ?? mockPriceMicro(q.serviceCode, c.code),
+      stock:
+        this.cfg.catalogStock ??
+        (this.cfg.catalogPriceMicro != null
+          ? 999
+          : 25 + (mockPriceMicro(q.serviceCode, c.code) % 400)),
+    }));
   }
 }

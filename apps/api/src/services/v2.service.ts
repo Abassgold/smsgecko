@@ -1,49 +1,58 @@
 import { parseUsd } from '@smsgecko/shared';
 import type { V2CreateOrderBody, V2Product } from '@smsgecko/shared';
-import { Offer } from '../models/Offer.js';
-import { Service } from '../models/Service.js';
-import { Country } from '../models/Country.js';
 import type { UserDoc } from '../models/User.js';
-import { badRequest, notFound } from '../lib/errors.js';
+import { badRequest } from '../lib/errors.js';
+import { getSettings } from '../lib/settings.js';
 import { createOrder, type CreateOrderResult } from './orders.service.js';
+import { priceTiers, searchCountries, searchServices } from './catalog.service.js';
 import { usdString } from './v2.mapper.js';
 import type { ProductsQuery } from '../lib/validation/v2.schema.js';
 
+/**
+ * `?service=` unset → the active provider's service list (discovery, no prices).
+ * `?service=` set → priced products per country (× tier). `?country=` narrows it.
+ * `id` is `"<serviceCode>::<countryCode>[::<tierIndex>]"`.
+ */
 export async function listCatalogProducts(q: ProductsQuery): Promise<V2Product[]> {
-  const filter: Record<string, unknown> = { active: true };
-  if (q.service) {
-    const svc = await Service.findOne({ slug: q.service.toLowerCase() });
-    if (!svc) return [];
-    filter.serviceId = svc._id;
-  }
-  if (q.country) {
-    const ctry = await Country.findOne({ code: q.country.toLowerCase() });
-    if (!ctry) return [];
-    filter.countryId = ctry._id;
+  if (!q.service) {
+    const services = await searchServices(undefined, q.limit);
+    return services.map((s) => ({
+      id: s.id,
+      service: s.name,
+      service_slug: s.slug,
+      country: '',
+      country_code: '',
+      operator: null,
+      price: '0',
+      stock: 0,
+    }));
   }
 
-  const offers = await Offer.find(filter).sort({ priceMicro: 1 }).limit(q.limit);
-  const [services, countries] = await Promise.all([
-    Service.find({ _id: { $in: offers.map((o) => o.serviceId) } }),
-    Country.find({ _id: { $in: offers.map((o) => o.countryId) } }),
-  ]);
-  const svcMap = new Map(services.map((s) => [String(s._id), s]));
-  const ctryMap = new Map(countries.map((c) => [String(c._id), c]));
+  const serviceCode = q.service;
+  const countries = await searchCountries(undefined, 1000);
+  const wanted = q.country
+    ? countries.filter((c) => c.code.toLowerCase() === q.country!.toLowerCase())
+    : countries;
 
-  return offers.map((o) => {
-    const s = svcMap.get(String(o.serviceId));
-    const c = ctryMap.get(String(o.countryId));
-    return {
-      id: o.id as string,
-      service: s?.name ?? 'Unknown',
-      service_slug: s?.slug ?? '',
-      country: c?.name ?? 'Unknown',
-      country_code: c?.code ?? '',
-      operator: o.operator ?? null,
-      price: usdString(o.priceMicro),
-      stock: o.stock,
-    };
-  });
+  const settings = await getSettings();
+  const out: V2Product[] = [];
+  for (const c of wanted) {
+    const tiers = await priceTiers(serviceCode, c.code, settings);
+    tiers.forEach((t, i) => {
+      out.push({
+        id: i === 0 ? `${serviceCode}::${c.code}` : `${serviceCode}::${c.code}::${i}`,
+        service: serviceCode,
+        service_slug: serviceCode,
+        country: c.name,
+        country_code: c.code,
+        operator: t.operator,
+        price: usdString(t.priceMicro),
+        stock: t.stock ?? 0,
+      });
+    });
+    if (out.length >= q.limit) break;
+  }
+  return out.slice(0, q.limit);
 }
 
 export async function createV2Order(
@@ -54,8 +63,10 @@ export async function createV2Order(
   const productId = body.catalog_product_id ?? body.product_id;
   if (!productId) throw badRequest('catalog_product_id (or product_id) is required');
 
-  const offer = await Offer.findById(productId).catch(() => null);
-  if (!offer || !offer.active) throw notFound('Unknown catalog_product_id');
+  const [serviceCode, countryCode] = productId.split('::');
+  if (!serviceCode || !countryCode) {
+    throw badRequest('catalog_product_id must be "<service>::<country>" from /v2/catalog/products');
+  }
 
   const maxPriceMicro = body.max_price ? parseUsd(body.max_price) : undefined;
   if (maxPriceMicro !== undefined && !Number.isFinite(maxPriceMicro)) {
@@ -63,9 +74,8 @@ export async function createV2Order(
   }
 
   return createOrder(apiUser, {
-    serviceId: String(offer.serviceId),
-    countryId: String(offer.countryId),
-    offerId: String(offer._id),
+    serviceId: serviceCode,
+    countryId: countryCode,
     maxPriceMicro,
     idempotencyKey,
   });
