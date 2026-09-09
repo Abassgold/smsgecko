@@ -8,22 +8,40 @@ import { Field, TextInput } from '@/components/ui/field';
 import { Toggle } from '@/components/ui/toggle';
 import { LoadingRow } from '@/components/ui/spinner';
 import { ApiError } from '@/lib/api';
+import { formatUsd, microToUsd, usdToMicro } from '@/lib/format';
 import { useAdminSettings, useUpdateSettings } from '@/lib/admin-hooks';
+
+/** Preview: what a $0.20 provider price becomes for the customer. */
+function previewMicro(pct: number, gainMicro: number): number {
+  return Math.round(200_000 * (1 + (pct || 0) / 100)) + (gainMicro || 0);
+}
 
 export default function AdminSettingsPage() {
   const { data, isLoading } = useAdminSettings();
   const update = useUpdateSettings();
   const [form, setForm] = useState<SettingsView | null>(null);
+  // The gain is stored in micro-USD but entered in dollars — keep the raw string
+  // so the admin can type "0.30" without it snapping.
+  const [gainUsd, setGainUsd] = useState('');
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    if (data && !form) setForm(data);
+    if (data && !form) {
+      setForm(data);
+      setGainUsd(String(microToUsd(data.numberMarkupFlatMicro)));
+    }
   }, [data, form]);
 
   if (isLoading || !form) return <LoadingRow />;
 
   const num = (k: keyof SettingsView) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [k]: Number(e.target.value) });
+
+  const onGain = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    setGainUsd(v);
+    setForm({ ...form, numberMarkupFlatMicro: Math.max(0, Math.round(usdToMicro(Number(v) || 0))) });
+  };
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
@@ -50,6 +68,47 @@ export default function AdminSettingsPage() {
         </Card>
 
         <Card className="flex flex-col gap-4 p-6">
+          <div>
+            <h3 className="font-display text-sm font-semibold">Number pricing</h3>
+            <p className="mt-1 text-xs text-muted">
+              Your margin on top of the provider&apos;s live price. No currency conversion —
+              the customer is billed in USD.
+              <br />
+              <span className="font-mono">customer&nbsp;=&nbsp;provider&nbsp;×&nbsp;(1&nbsp;+&nbsp;markup%)&nbsp;+&nbsp;gain</span>
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Gain (USD)" hint="Flat amount added to every number">
+              <TextInput
+                type="number"
+                step="0.01"
+                min="0"
+                inputMode="decimal"
+                value={gainUsd}
+                onChange={onGain}
+              />
+            </Field>
+            <Field label="Markup (%)" hint="Percent of the provider price">
+              <TextInput
+                type="number"
+                step="0.5"
+                min="0"
+                max="1000"
+                value={form.numberMarkupPercent}
+                onChange={num('numberMarkupPercent')}
+              />
+            </Field>
+          </div>
+          <p className="text-xs text-faint">
+            Example: a $0.20 provider price →{' '}
+            <span className="font-mono text-foreground">
+              {formatUsd(previewMicro(form.numberMarkupPercent, form.numberMarkupFlatMicro))}
+            </span>{' '}
+            to the customer.
+          </p>
+        </Card>
+
+        <Card className="flex flex-col gap-4 p-6">
           <h3 className="font-display text-sm font-semibold">Economics</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Affiliate rate (%)">
@@ -57,12 +116,6 @@ export default function AdminSettingsPage() {
             </Field>
             <Field label="Min deposit (micro-USD)">
               <TextInput type="number" min="0" value={form.minDepositMicro} onChange={num('minDepositMicro')} />
-            </Field>
-            <Field label="Number markup (%)" hint="Added over the provider's raw price">
-              <TextInput type="number" step="0.5" min="0" max="1000" value={form.numberMarkupPercent} onChange={num('numberMarkupPercent')} />
-            </Field>
-            <Field label="Number markup flat (micro-USD)">
-              <TextInput type="number" min="0" value={form.numberMarkupFlatMicro} onChange={num('numberMarkupFlatMicro')} />
             </Field>
           </div>
         </Card>
