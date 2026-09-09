@@ -60,6 +60,7 @@ orderSchema.index({ status: 1, deliverAt: 1 });
 orderSchema.index({ status: 1, lastPolledAt: 1 });
 orderSchema.index({ status: 1, expiresAt: 1 });
 orderSchema.index({ providerConfigId: 1 });
+orderSchema.index({ providerRef: 1 }); // inbound SMS webhook lookup
 
 export type OrderAttrs = InferSchemaType<typeof orderSchema>;
 export type OrderDoc = HydratedDocument<OrderAttrs>;

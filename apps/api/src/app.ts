@@ -16,6 +16,7 @@ import catalogRoutes from './routes/catalog.routes.js';
 import orderRoutes from './routes/orders.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
 import depositRoutes from './routes/deposits.routes.js';
+import webhookRoutes from './routes/webhooks.routes.js';
 import affiliateRoutes from './routes/affiliate.routes.js';
 import notificationRoutes from './routes/notifications.routes.js';
 import adminRoutes from './routes/admin/index.js';
@@ -57,6 +58,9 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<Application>
   });
 
   app.use('/api/v1/auth', authRoutes);
+  // Before depositRoutes — that router has an unpathed requireVerified that would
+  // otherwise 401 any /api/v1/* path falling through it.
+  app.use('/api/v1/webhooks', webhookRoutes);
   app.use('/api/v1/catalog', catalogRoutes);
   app.use('/api/v1/orders', orderRoutes);
   app.use('/api/v1', walletRoutes);

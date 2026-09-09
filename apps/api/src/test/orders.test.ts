@@ -223,4 +223,38 @@ describe('orders', () => {
     expect(again!.status).toBe('completed');
     expect(await Order.countDocuments({ userId })).toBe(1); // same order, reused
   });
+
+  it('completes an order via the inbound SMS webhook', async () => {
+    const { service, country } = await makeCatalog({ priceMicro: 100_000, stock: 5 });
+    const { cookie } = await makeUser(app, { balanceMicro: 1_000_000 });
+    const order = (await buy(cookie, { serviceId: service.id, countryId: country.id })).json();
+    const ref = (await Order.findById(order.id))!.providerRef;
+
+    const hook = await inject({
+      method: 'POST',
+      url: `/api/v1/webhooks/sms/${ref}`,
+      payload: { code: '456123', text: 'Your code is 456123' },
+    });
+    expect(hook.statusCode).toBe(200);
+    expect(hook.json().applied).toBe(true);
+
+    const view = await inject({
+      method: 'GET',
+      url: `/api/v1/orders/${order.id}`,
+      headers: { cookie },
+    });
+    expect(view.json().status).toBe('completed');
+    expect(view.json().otpCode).toBe('456123');
+    expect(view.json().messages).toHaveLength(1);
+  });
+
+  it('acks an SMS webhook for an unknown activation without erroring', async () => {
+    const res = await inject({
+      method: 'POST',
+      url: '/api/v1/webhooks/sms/no-such-activation',
+      payload: { code: '111111' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().matched).toBe(false);
+  });
 });

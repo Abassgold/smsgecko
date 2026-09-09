@@ -13,7 +13,7 @@ import { resolveForOrder } from './catalog.service.js';
 import { getSettings } from '../lib/settings.js';
 import { parseOfferId } from '../lib/catalog.js';
 import { debit } from '../lib/ledger.js';
-import { refundWaitingOrder } from '../lib/orderLifecycle.js';
+import { applyOtpToOrder, refundWaitingOrder } from '../lib/orderLifecycle.js';
 import { holdRemainingSeconds, minHoldSecondsFor } from '../lib/providerPolicy.js';
 import {
   badRequest,
@@ -254,6 +254,40 @@ export async function cancelOrder(user: UserDoc, orderId: string): Promise<Order
 /** Every still-`waiting` order for the user, newest first. */
 export async function listActiveOrders(user: UserDoc): Promise<OrderDoc[]> {
   return Order.find({ userId: user._id, status: 'waiting' }).sort({ createdAt: -1 });
+}
+
+export type InboundOtpResult =
+  | { matched: false }
+  | { matched: true; applied: false; status: string }
+  | { matched: true; applied: true; orderId: string; otpCode: string | null };
+
+/**
+ * Apply a code that arrived via the inbound SMS webhook, keyed by the provider's
+ * activation id (our `Order.providerRef`). Idempotent: a code for an order that
+ * already resolved is acknowledged without change. The polling worker remains
+ * the fallback for any webhook we never receive.
+ */
+export async function deliverOtpByProviderRef(
+  providerRef: string,
+  code: string | null,
+  text?: string | null,
+): Promise<InboundOtpResult> {
+  // providerRef isn't globally unique across providers — take the newest match.
+  const order = await Order.findOne({ providerRef }).sort({ createdAt: -1 });
+  if (!order) return { matched: false };
+  if (order.status !== 'waiting') {
+    return { matched: true, applied: false, status: order.status };
+  }
+
+  const messages = text
+    ? [{ sender: order.providerLabel ?? 'SMS', text, receivedAt: new Date() }]
+    : [];
+  const updated = await applyOtpToOrder(order, code, messages);
+  if (!updated) {
+    const fresh = await Order.findById(order._id);
+    return { matched: true, applied: false, status: fresh?.status ?? 'resolved' };
+  }
+  return { matched: true, applied: true, orderId: updated.id as string, otpCode: updated.otpCode ?? null };
 }
 
 /**

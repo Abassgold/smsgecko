@@ -103,6 +103,19 @@ Mint keys at `POST /api/v1/api-keys` (session auth).
 
 `max_price` is a decimal USD string (`"0.50"`); a `400` is returned if it isn't parseable.
 
+## Inbound SMS webhook — `/api/v1/webhooks` (public, no auth)
+
+| Method / Path | What |
+|---|---|
+| `POST /webhooks/sms/:activationId` | A code delivery pushed in for provider activation `:activationId` (== our `Order.providerRef`). Finds the newest `waiting` order with that ref and completes it (`applyOtpToOrder` → stores the SMS, notifies). Body shape is tolerant: `code` / `otp_code` / `otp` for the code, `text` / `otp_message` / `full_sms` / `sms` / `message` for the raw SMS (also read from a nested `data` object, for smscode's `{ event, data:{…} }`). |
+
+Responses (always `200` unless the body has neither a code nor text → `422`):
+`{ ok:true, matched:false }` · `{ ok:true, matched:true, applied:false, status }` (already resolved) ·
+`{ ok:true, matched:true, applied:true, orderId, otpCode }`.
+
+It's an optional accelerator — the polling worker still delivers any code we never receive
+a webhook for. smsgecko is the end of the line: an unmatched webhook is acked, not forwarded.
+
 ---
 
 ## Error shape
