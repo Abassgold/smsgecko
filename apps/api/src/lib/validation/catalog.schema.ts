@@ -2,11 +2,12 @@ import * as yup from 'yup';
 
 export const catalogSearchQuery = yup.object({
   q: yup.string().trim().max(64).optional(),
-  limit: yup.number().integer().min(1).max(500).default(500),
+  // Omit to get the active provider's FULL list (services can be 1000s of rows).
+  limit: yup.number().integer().min(1).max(10_000).optional(),
 });
 export interface CatalogSearchQuery {
   q?: string;
-  limit: number;
+  limit?: number;
 }
 
 /** serviceId / countryId are the active provider's own service/country codes. */

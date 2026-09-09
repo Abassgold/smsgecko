@@ -161,13 +161,13 @@ describe('admin panel', () => {
     const { cookie } = await makeAdmin(app);
     const res = await patch('/api/v1/admin/settings', cookie, {
       orderTtlSeconds: 45,
-      mockSmsSuccessRate: 0,
+      providerPollIntervalMs: 3000,
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().orderTtlSeconds).toBe(45);
     const live = await getSettings();
     expect(live.orderTtlSeconds).toBe(45);
-    expect(live.mockSmsSuccessRate).toBe(0);
+    expect(live.providerPollIntervalMs).toBe(3000);
   });
 
   it('applies the number markup to catalog prices', async () => {

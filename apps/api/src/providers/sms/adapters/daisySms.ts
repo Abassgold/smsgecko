@@ -60,6 +60,13 @@ export class DaisySmsProvider implements SmsProvider {
     );
   }
 
+  async finish(providerRef: string): Promise<void> {
+    // status 6 = complete activation (FloZap: markDaisyRentalDone)
+    await activateGet(this.cfg, { action: 'setStatus', id: providerRef, status: 6 }).catch(
+      () => undefined,
+    );
+  }
+
   async healthCheck(): Promise<HealthResult> {
     try {
       // getPrices returns a JSON map of services when the key is valid.

@@ -12,8 +12,6 @@ import { logger } from '../lib/logger.js';
 
 export { bustCatalogCache };
 
-/* ---------------- provider access ---------------- */
-
 async function active(): Promise<{ id: string; provider: SmsProvider } | null> {
   const cat = await getCatalogProvider();
   return cat ? { id: String(cat.cfg._id), provider: cat.provider } : null;
@@ -53,7 +51,6 @@ async function prices(serviceCode: string, countryCode?: string): Promise<Catalo
   }
 }
 
-/* ---------------- storefront ---------------- */
 
 function toServiceView(s: CatalogService): ServiceView {
   return { id: s.code, slug: s.code, name: s.name, iconKey: '', popular: false };
@@ -69,7 +66,12 @@ function toCountryView(c: CatalogCountry): CountryView {
   };
 }
 
-export async function searchServices(q: string | undefined, limit: number): Promise<ServiceView[]> {
+/**
+ * The active provider's full service list (each provider normalises its own
+ * response shape in its adapter). `q` is an optional server-side filter; `limit`
+ * an optional cap — omit both to hand the frontend everything.
+ */
+export async function searchServices(q?: string, limit?: number): Promise<ServiceView[]> {
   const needle = q?.trim().toLowerCase();
   let rows = await services();
   if (needle) {
@@ -77,10 +79,12 @@ export async function searchServices(q: string | undefined, limit: number): Prom
       (s) => s.name.toLowerCase().includes(needle) || s.code.toLowerCase().includes(needle),
     );
   }
-  return rows.slice(0, limit).map(toServiceView);
+  if (limit) rows = rows.slice(0, limit);
+  return rows.map(toServiceView);
 }
 
-export async function searchCountries(q: string | undefined, limit: number): Promise<CountryView[]> {
+/** The active provider's full country list. Same `q` / `limit` semantics as {@link searchServices}. */
+export async function searchCountries(q?: string, limit?: number): Promise<CountryView[]> {
   const needle = q?.trim().toLowerCase();
   let rows = await countries();
   if (needle) {
@@ -88,7 +92,8 @@ export async function searchCountries(q: string | undefined, limit: number): Pro
       (c) => c.name.toLowerCase().includes(needle) || c.code.toLowerCase().includes(needle),
     );
   }
-  return rows.slice(0, limit).map(toCountryView);
+  if (limit) rows = rows.slice(0, limit);
+  return rows.map(toCountryView);
 }
 
 /** Markup-applied price tiers for a service×country, cheapest first. */
@@ -144,7 +149,6 @@ export async function getQuote(serviceCode: string, countryCode: string): Promis
   };
 }
 
-/* ---------------- for the order path ---------------- */
 
 export interface ResolvedOrderCatalog {
   serviceSlug: string;
@@ -157,10 +161,6 @@ export interface ResolvedOrderCatalog {
   priceMicro: number;
 }
 
-/**
- * Resolve a service×country against the active provider for order creation.
- * `null` → the pair has no purchasable tier right now.
- */
 export async function resolveForOrder(
   serviceCode: string,
   countryCode: string,

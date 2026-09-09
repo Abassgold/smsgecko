@@ -3,7 +3,6 @@ import type { OrderStatus, TransactionType, DepositStatus } from '../constants';
 /* ---------------- providers ---------------- */
 
 export const PROVIDER_KEYS = [
-  'mock',
   'custom_http',
   'hero_sms',
   'daisy_sms',
@@ -167,9 +166,6 @@ export interface AdminDepositRow {
 export interface SettingsView {
   orderTtlSeconds: number;
   providerPollIntervalMs: number;
-  mockSmsSuccessRate: number;
-  mockSmsMinDelayMs: number;
-  mockSmsMaxDelayMs: number;
   affiliateRatePct: number;
   minDepositMicro: number;
   numberMarkupPercent: number;

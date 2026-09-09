@@ -1,7 +1,6 @@
 import { randomInt } from 'node:crypto';
-import { getSettings } from '../../../lib/settings.js';
-import { renderOtpSms } from '../../../lib/smsTemplates.js';
-import { SERVICES, COUNTRIES } from '../../../seed/data.js';
+import { renderOtpSms } from '../lib/smsTemplates.js';
+import { SERVICES, COUNTRIES } from '../seed/data.js';
 import type {
   CatalogCountry,
   CatalogPrice,
@@ -13,19 +12,23 @@ import type {
   RentInput,
   RentResult,
   SmsProvider,
-} from '../types.js';
+} from '../providers/sms/types.js';
 
 /**
- * Optional `ProviderConfig.config` for the mock adapter — lets tests and dev
- * pin the catalog it reports. Everything is optional; unset falls back to
- * `seed/data.ts` + a stable pseudo-price.
+ * Test-only SIM-bank fixture. Registered under the `mock` adapter key by
+ * `test/setup.ts` (via `registerAdapter`) and never wired into a running server
+ * — production has no mock provider.
+ *
+ * `rent()` never schedules a delivery on its own; a test drives the OTP through
+ * `simulateOtp()` (which stamps `Order.deliverAt` and calls the poll path).
+ * `poll()` just compares that timestamp to now.
  */
 export interface MockConfig {
   catalogPriceMicro?: number;
   catalogStock?: number;
   catalogServices?: { code: string; name: string }[];
   catalogCountries?: { code: string; name: string; iso2?: string; dialCode?: string }[];
-  /** Force `rent()` to throw — used to exercise the fallback chain in tests. */
+  /** Force `rent()` to throw — exercises the fallback chain. */
   failRent?: boolean;
 }
 
@@ -37,12 +40,6 @@ function mockPriceMicro(serviceCode: string, countryCode: string): number {
   return Math.round(usd * 1_000_000);
 }
 
-/**
- * Simulated SIM bank. `rent()` decides up front (from the DB settings) whether
- * this order will ever receive an SMS and, if so, when — encoded as
- * `mockDeliverAt` which the order service stores on `Order.deliverAt`.
- * `poll()` then just compares that timestamp to now.
- */
 export class MockSmsProvider implements SmsProvider {
   readonly key = 'mock';
   constructor(
@@ -52,23 +49,15 @@ export class MockSmsProvider implements SmsProvider {
 
   async rent(input: RentInput): Promise<RentResult> {
     if (this.cfg.failRent) throw new Error('mock: forced rent failure');
-    const s = await getSettings();
     const digits = input.dialCode.length <= 2 ? 10 : 8;
     let national = String(randomInt(2, 10));
     for (let i = 1; i < digits; i++) national += String(randomInt(0, 10));
-
-    let mockDeliverAt: Date | null = null;
-    if (Math.random() < s.mockSmsSuccessRate) {
-      const min = Math.min(s.mockSmsMinDelayMs, s.mockSmsMaxDelayMs);
-      const max = Math.max(s.mockSmsMinDelayMs, s.mockSmsMaxDelayMs);
-      mockDeliverAt = new Date(Date.now() + min + Math.floor(Math.random() * (max - min + 1)));
-    }
 
     return {
       providerRef: `mock_${Date.now().toString(36)}_${randomInt(0, 1e9).toString(36)}`,
       phoneNumber: `+${input.dialCode || '1'}${national}`,
       costMicro: null,
-      mockDeliverAt,
+      deliverAt: null,
     };
   }
 

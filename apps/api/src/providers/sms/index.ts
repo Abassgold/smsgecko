@@ -7,9 +7,10 @@ export {
   recordOtpReceived,
   runHealthCheck,
   bustProviderCache,
+  registerAdapter,
+  type AdapterFactory,
   type RentWithFallbackResult,
 } from './registry.js';
-export { MockSmsProvider } from './adapters/mock.js';
 export { CustomHttpProvider, type CustomHttpConfig } from './adapters/customHttp.js';
 export { HeroSmsProvider, type HeroSmsConfig } from './adapters/heroSms.js';
 export { DaisySmsProvider, type DaisySmsConfig } from './adapters/daisySms.js';

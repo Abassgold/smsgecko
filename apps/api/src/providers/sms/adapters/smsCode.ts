@@ -139,6 +139,14 @@ export class SmsCodeProvider implements SmsProvider {
     }).catch(() => undefined);
   }
 
+  async finish(providerRef: string): Promise<void> {
+    // FloZap: mark_sms_code_as_done -> POST /orders/finish { id }
+    await this.api('orders/finish', {
+      method: 'POST',
+      body: JSON.stringify({ id: Number(providerRef) }),
+    }).catch(() => undefined);
+  }
+
   async healthCheck(): Promise<HealthResult> {
     try {
       await this.api('orders/active');

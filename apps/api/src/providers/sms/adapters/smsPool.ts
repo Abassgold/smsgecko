@@ -122,6 +122,12 @@ export class SmsPoolProvider implements SmsProvider {
     await this.form('/sms/cancel', { orderid: providerRef }).catch(() => undefined);
   }
 
+  async finish(providerRef: string): Promise<void> {
+    // smspool auto-finalises once a code is delivered; there's no finish endpoint.
+    // FloZap's markSMSPoolRentalAsDone just re-checks status — mirror that.
+    await this.form('/sms/check', { orderid: providerRef }).catch(() => undefined);
+  }
+
   async healthCheck(): Promise<HealthResult> {
     try {
       const res = await this.form('/request/balance', {});

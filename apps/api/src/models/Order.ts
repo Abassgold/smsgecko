@@ -22,8 +22,8 @@ const orderSchema = new Schema(
     status: { type: String, enum: ORDER_STATUSES, default: 'waiting', index: true },
     otpCode: { type: String, default: null },
 
-    /** Adapter key ("mock" | "custom_http") of the provider that fulfilled the rent. */
-    provider: { type: String, default: 'mock' },
+    /** Adapter key (e.g. "hero_sms" | "custom_http") of the provider that fulfilled the rent. */
+    provider: { type: String, default: 'unknown' },
     /** The ProviderConfig row that fulfilled it (null for legacy / dev rows). */
     providerConfigId: { type: Schema.Types.ObjectId, ref: 'ProviderConfig', default: null },
     providerLabel: { type: String, default: null },
@@ -36,7 +36,10 @@ const orderSchema = new Schema(
     /** Per-user idempotency key for create; left unset (not null) when unused. */
     idempotencyKey: { type: String },
 
-    /** When the mock provider should deliver an SMS (null = never — will expire). */
+    /**
+     * Earliest time a code is expected (null = unknown). Real adapters leave it
+     * null and are polled on a fixed cadence; the test fixture stamps it.
+     */
     deliverAt: { type: Date, default: null },
     expiresAt: { type: Date, required: true, index: true },
     completedAt: { type: Date, default: null },

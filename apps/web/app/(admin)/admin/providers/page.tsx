@@ -68,7 +68,7 @@ export default function AdminProvidersPage() {
                   <td className="px-4 py-3">
                     <div className="font-medium">{p.label}</div>
                     <div className="text-xs text-faint">
-                      {p.key === 'mock' ? 'mock adapter' : 'generic HTTP'}
+                      {p.key === 'custom_http' ? 'generic HTTP' : `${p.key} adapter`}
                     </div>
                     {p.stats.lastError ? (
                       <div className="mt-1 max-w-xs truncate text-xs text-danger" title={p.stats.lastError}>

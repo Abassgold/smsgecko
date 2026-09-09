@@ -50,21 +50,6 @@ export default function AdminSettingsPage() {
         </Card>
 
         <Card className="flex flex-col gap-4 p-6">
-          <h3 className="font-display text-sm font-semibold">Mock provider</h3>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Success rate (0–1)">
-              <TextInput type="number" step="0.05" min="0" max="1" value={form.mockSmsSuccessRate} onChange={num('mockSmsSuccessRate')} />
-            </Field>
-            <Field label="Min delay (ms)">
-              <TextInput type="number" min="0" value={form.mockSmsMinDelayMs} onChange={num('mockSmsMinDelayMs')} />
-            </Field>
-            <Field label="Max delay (ms)">
-              <TextInput type="number" min="0" value={form.mockSmsMaxDelayMs} onChange={num('mockSmsMaxDelayMs')} />
-            </Field>
-          </div>
-        </Card>
-
-        <Card className="flex flex-col gap-4 p-6">
           <h3 className="font-display text-sm font-semibold">Economics</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Affiliate rate (%)">

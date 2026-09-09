@@ -76,6 +76,9 @@ export async function refundWaitingOrder(
     orderId: order._id,
   });
   try {
+    // Cancel with the provider that actually rented this number — resolved from
+    // order.providerConfigId, so it still works after the admin switches the
+    // active provider or disables this one.
     const provider = await getProviderForOrder(order);
     await provider.release(order.providerRef);
   } catch {

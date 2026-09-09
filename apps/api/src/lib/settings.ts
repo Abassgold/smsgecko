@@ -5,9 +5,6 @@ import { Setting } from '../models/Setting.js';
 export interface ResolvedSettings {
   orderTtlSeconds: number;
   providerPollIntervalMs: number;
-  mockSmsSuccessRate: number;
-  mockSmsMinDelayMs: number;
-  mockSmsMaxDelayMs: number;
   affiliateRatePct: number;
   minDepositMicro: number;
   /** Customer markup over the provider's raw number price. */
@@ -20,9 +17,6 @@ export interface ResolvedSettings {
 export const SETTINGS_DEFAULTS: ResolvedSettings = {
   orderTtlSeconds: env.ORDER_TTL_SECONDS,
   providerPollIntervalMs: 8000,
-  mockSmsSuccessRate: env.MOCK_SMS_SUCCESS_RATE,
-  mockSmsMinDelayMs: env.MOCK_SMS_MIN_DELAY_MS,
-  mockSmsMaxDelayMs: env.MOCK_SMS_MAX_DELAY_MS,
   affiliateRatePct: Math.round(AFFILIATE_RATE * 100),
   minDepositMicro: MIN_DEPOSIT_MICRO,
   numberMarkupPercent: 0,

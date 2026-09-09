@@ -71,6 +71,13 @@ export class SmsBowerProvider implements SmsProvider {
     );
   }
 
+  async finish(providerRef: string): Promise<void> {
+    // status 6 = complete activation (FloZap: markServer3RentalAsDone)
+    await activateGet(this.cfg, { action: 'setStatus', id: providerRef, status: 6 }).catch(
+      () => undefined,
+    );
+  }
+
   async healthCheck(): Promise<HealthResult> {
     try {
       const text = await activateGet(this.cfg, { action: 'getBalance' });

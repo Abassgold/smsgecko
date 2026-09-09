@@ -50,10 +50,7 @@ async function runPolling(log: Logger): Promise<void> {
 
   const due = await Order.find({
     status: 'waiting',
-    $or: [
-      { provider: 'mock', deliverAt: { $ne: null, $lte: new Date() } },
-      { provider: { $ne: 'mock' }, $or: [{ lastPolledAt: null }, { lastPolledAt: { $lte: staleBefore } }] },
-    ],
+    $or: [{ lastPolledAt: null }, { lastPolledAt: { $lte: staleBefore } }],
   }).limit(BATCH);
 
   for (const order of due) {

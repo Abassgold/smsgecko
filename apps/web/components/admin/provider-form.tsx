@@ -127,7 +127,6 @@ export function ProviderForm({ mode, onDone }: { mode: Mode; onDone: () => void 
                 {RESELLER_LABELS[k]}
               </option>
             ))}
-            <option value="mock">Mock SIM bank</option>
           </select>
         </Field>
         <Field label="Priority" hint="Lower = tried first">

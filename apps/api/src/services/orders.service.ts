@@ -3,7 +3,12 @@ import { mongoose, supportsTransactions } from '../db/mongoose.js';
 import { Order, type OrderDoc } from '../models/Order.js';
 import { SmsMessage } from '../models/SmsMessage.js';
 import type { UserDoc } from '../models/User.js';
-import { getCatalogProvider, rentWithFallback, releaseNumber } from '../providers/sms/registry.js';
+import {
+  getCatalogProvider,
+  getProviderForOrder,
+  rentWithFallback,
+  releaseNumber,
+} from '../providers/sms/registry.js';
 import { resolveForOrder } from './catalog.service.js';
 import { getSettings } from '../lib/settings.js';
 import { debit } from '../lib/ledger.js';
@@ -73,7 +78,7 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
     providerRef: rent.result.providerRef,
     providerCostMicro: rent.result.costMicro ?? cat.rawPriceMicro,
     ...(body.idempotencyKey ? { idempotencyKey: body.idempotencyKey } : {}),
-    deliverAt: rent.result.mockDeliverAt ?? null,
+    deliverAt: rent.result.deliverAt ?? null,
     // Never auto-expire before the provider's minimum hold — some upstreams
     // still bill us for the number until then (mirrors FloZap's per-provider grace).
     expiresAt: new Date(
@@ -182,6 +187,14 @@ export async function finishOrder(user: UserDoc, orderId: string): Promise<Order
   if (order.status === 'completed' && !order.finishedAt) {
     order.finishedAt = new Date();
     await order.save();
+    // Tell the *provider that fulfilled this order* we're done with the number
+    // (resolved from order.providerConfigId, not the currently-active provider).
+    try {
+      const provider = await getProviderForOrder(order);
+      await provider.finish?.(order.providerRef);
+    } catch {
+      /* best-effort — the order is already marked finished locally */
+    }
   }
   return order;
 }

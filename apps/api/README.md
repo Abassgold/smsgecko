@@ -110,5 +110,7 @@ Validation failures are `400 bad_request` with `details` = the yup messages.
   `POST /admin/orders/:id/repoll`.
 - **Expiry** (every 8 s) — any `waiting` order past `expiresAt` → `refundWaitingOrder(…, 'expired')`.
 
-The **mock** provider decides at rent time (vs `settings.mockSmsSuccessRate`) whether a
-code will arrive and schedules `deliverAt`; if not, the order simply expires and refunds.
+Every `waiting` order is polled on a fixed cadence (`settings.providerPollIntervalMs`);
+an order that never receives a code simply expires and refunds. (Tests use a `mock`
+adapter fixture — `src/test/fake-sms-provider.ts` — that is never wired into a running
+server.)

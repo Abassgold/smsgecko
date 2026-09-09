@@ -32,6 +32,8 @@ export interface CustomHttpConfig {
   rentPath?: string;
   statusPath?: string;
   cancelPath?: string;
+  /** Optional "mark done" call (e.g. handler_api setStatus status=6). */
+  finishPath?: string;
   healthPath?: string;
   map?: {
     refPath?: string;
@@ -175,6 +177,11 @@ export class CustomHttpProvider implements SmsProvider {
   async release(providerRef: string): Promise<void> {
     if (!this.cfg.baseUrl || !this.cfg.apiKey || !this.cfg.cancelPath) return;
     await this.call(this.cfg.cancelPath, { ref: providerRef }).catch(() => undefined);
+  }
+
+  async finish(providerRef: string): Promise<void> {
+    if (!this.cfg.baseUrl || !this.cfg.apiKey || !this.cfg.finishPath) return;
+    await this.call(this.cfg.finishPath, { ref: providerRef }).catch(() => undefined);
   }
 
   async healthCheck(): Promise<HealthResult> {

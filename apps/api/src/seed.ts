@@ -33,13 +33,9 @@ async function main() {
   await Promise.all(OWNED_MODELS.map((m) => m.syncIndexes()));
   await ensureSettings();
 
-  // The catalog is live from the active provider — mock is enabled by default so
-  // the storefront works offline (it reports the seed/data.ts list).
-  await ProviderConfig.updateOne(
-    { label: 'Mock SIM bank' },
-    { $setOnInsert: { key: 'mock', label: 'Mock SIM bank', enabled: true, priority: 0 } },
-    { upsert: true },
-  );
+  // The storefront catalog is live from the highest-priority enabled provider.
+  // Nothing is enabled out of the box — configure a real reseller in the admin
+  // panel (Providers) to bring the catalog online.
   await ProviderConfig.updateOne(
     { label: 'Reseller A (unconfigured)' },
     {
@@ -69,7 +65,7 @@ async function main() {
   );
 
   const admins = await User.countDocuments({ role: 'admin' });
-  console.log(`  providers: mock (enabled), Reseller A (disabled)`);
+  console.log(`  providers: Reseller A (disabled) — enable a real one in the admin panel`);
   console.log(
     admins > 0
       ? `  admins: ${admins} existing`

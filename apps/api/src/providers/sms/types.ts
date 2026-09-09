@@ -15,8 +15,11 @@ export interface RentResult {
   phoneNumber: string;
   /** What the provider charged us, if known (used for margin reporting). */
   costMicro?: number | null;
-  /** Mock-only: when the fake OTP should become available. Ignored by real adapters. */
-  mockDeliverAt?: Date | null;
+  /**
+   * Earliest time a code is expected to be available, if the provider can say.
+   * Real adapters leave this unset; only the test fixture uses it.
+   */
+  deliverAt?: Date | null;
 }
 
 export interface PollMessage {
@@ -84,7 +87,14 @@ export interface SmsProvider {
 
   rent(input: RentInput): Promise<RentResult>;
   poll(ctx: PollContext): Promise<PollResult>;
+  /** Cancel an active rental (SMS-Activate status 8, smscode /orders/cancel, smspool /sms/cancel). */
   release(providerRef: string): Promise<void>;
+  /**
+   * Tell the provider we're done with the number (SMS-Activate status 6,
+   * smscode /orders/finish). Optional — providers that auto-finalise omit it.
+   * Best-effort; never throws to the caller.
+   */
+  finish?(providerRef: string): Promise<void>;
   healthCheck(): Promise<HealthResult>;
 
   /** Live catalog — the storefront is driven by the highest-priority enabled provider. */

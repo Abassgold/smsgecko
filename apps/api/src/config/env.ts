@@ -40,9 +40,6 @@ const envSchema = z.object({
 
   PAYMENTS_MOCK: bool.default(true),
   ORDER_TTL_SECONDS: z.coerce.number().int().positive().default(1200),
-  MOCK_SMS_SUCCESS_RATE: z.coerce.number().min(0).max(1).default(0.8),
-  MOCK_SMS_MIN_DELAY_MS: z.coerce.number().int().nonnegative().default(5000),
-  MOCK_SMS_MAX_DELAY_MS: z.coerce.number().int().nonnegative().default(45000),
 
   WORKERS_ENABLED: bool.default(true),
 
