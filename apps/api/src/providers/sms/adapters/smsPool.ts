@@ -128,6 +128,18 @@ export class SmsPoolProvider implements SmsProvider {
     await this.form('/sms/check', { orderid: providerRef }).catch(() => undefined);
   }
 
+  async resend(providerRef: string): Promise<void> {
+    await this.form('/sms/resend', { orderid: providerRef }).catch(() => undefined);
+  }
+
+  async reactivate(providerRef: string): Promise<{ providerRef: string } | null> {
+    const res = await this.form('/sms/reactivate', { orderid: providerRef }).catch(() => null);
+    if (res && typeof res === 'object' && Number(res.success) === 1) {
+      return { providerRef: String(res.order_id ?? res.orderid ?? providerRef) };
+    }
+    return null;
+  }
+
   async healthCheck(): Promise<HealthResult> {
     try {
       const res = await this.form('/request/balance', {});

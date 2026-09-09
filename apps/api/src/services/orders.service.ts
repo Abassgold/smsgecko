@@ -250,3 +250,80 @@ export async function cancelOrder(user: UserDoc, orderId: string): Promise<Order
   }
   return canceled;
 }
+
+/** Every still-`waiting` order for the user, newest first. */
+export async function listActiveOrders(user: UserDoc): Promise<OrderDoc[]> {
+  return Order.find({ userId: user._id, status: 'waiting' }).sort({ createdAt: -1 });
+}
+
+/**
+ * Ask the upstream for another SMS on a still-`waiting` order. Free — no new
+ * rental, no charge. The polling worker picks up whatever arrives next.
+ */
+export async function resendOrder(user: UserDoc, orderId: string): Promise<OrderDoc> {
+  const order = await Order.findOne({ _id: orderId, userId: user._id });
+  if (!order) throw notFound('Order not found');
+  if (order.status !== 'waiting') throw conflict(`Order is already ${order.status}`);
+
+  const provider = await getProviderForOrder(order);
+  if (!provider.resend) throw conflict('This number does not support requesting another code');
+  try {
+    await provider.resend(order.providerRef);
+  } catch {
+    /* best-effort */
+  }
+  // Force the next worker tick to poll this order immediately.
+  await Order.updateOne({ _id: order._id, status: 'waiting' }, { $set: { lastPolledAt: null } });
+  return (await Order.findById(order._id)) ?? order;
+}
+
+/**
+ * Buy another code on an already-`completed` order, on the same number. Charges
+ * the current tier price, reopens the same order as `waiting`, keeps its message
+ * history. Only providers that implement `reactivate` support this.
+ */
+export async function reactivateOrder(user: UserDoc, orderId: string): Promise<OrderDoc> {
+  const order = await Order.findOne({ _id: orderId, userId: user._id });
+  if (!order) throw notFound('Order not found');
+  if (order.status !== 'completed') {
+    throw conflict('Only a completed order can be reactivated');
+  }
+
+  const provider = await getProviderForOrder(order);
+  if (!provider.reactivate) throw conflict('This number cannot be reactivated');
+
+  const settings = await getSettings();
+  const cat = await resolveForOrder(order.serviceId, order.countryId, settings);
+  if (!cat) throw conflict('That service and country is unavailable right now');
+  if (cat.priceMicro > user.balanceMicro) throw paymentRequired();
+
+  const result = await provider.reactivate(order.providerRef).catch(() => null);
+  if (!result) throw conflict('The provider could not reactivate this number');
+
+  await debit(user._id, cat.priceMicro, {
+    type: 'order_payment',
+    description: 'Number reactivation',
+    orderId: order._id,
+  });
+
+  const expiresAt = new Date(
+    Date.now() + Math.max(settings.orderTtlSeconds, minHoldSecondsFor(order.provider)) * 1000,
+  );
+  await Order.updateOne(
+    { _id: order._id },
+    {
+      $set: {
+        status: 'waiting',
+        otpCode: null,
+        completedAt: null,
+        finishedAt: null,
+        deliverAt: null,
+        lastPolledAt: null,
+        providerRef: result.providerRef,
+        providerCostMicro: (order.providerCostMicro ?? 0) + cat.rawPriceMicro,
+        expiresAt,
+      },
+    },
+  );
+  return (await Order.findById(order._id))!;
+}

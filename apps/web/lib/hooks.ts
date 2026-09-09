@@ -172,17 +172,30 @@ export function useCreateOrder() {
   });
 }
 
-export function useCancelOrder() {
+function useOrderAction(path: (id: string) => string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      apiFetch<OrderView>(`/v1/orders/${id}/cancel`, { method: 'POST' }),
+    mutationFn: (id: string) => apiFetch<OrderView>(path(id), { method: 'POST' }),
     onSuccess: (data) => {
       qc.setQueryData(['order', data.id], data);
       qc.invalidateQueries({ queryKey: ['orders'] });
       qc.invalidateQueries({ queryKey: ['wallet'] });
     },
   });
+}
+
+export function useCancelOrder() {
+  return useOrderAction((id) => `/v1/orders/${id}/cancel`);
+}
+
+/** Ask the provider for another SMS on a still-waiting order (free). */
+export function useResendOrder() {
+  return useOrderAction((id) => `/v1/orders/${id}/resend`);
+}
+
+/** Buy another code on a completed order, same number (charged). */
+export function useReactivateOrder() {
+  return useOrderAction((id) => `/v1/orders/${id}/reactivate`);
 }
 
 /* ---------- deposits ---------- */

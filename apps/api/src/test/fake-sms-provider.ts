@@ -78,6 +78,14 @@ export class MockSmsProvider implements SmsProvider {
     // no-op for the mock bank
   }
 
+  async resend(): Promise<void> {
+    // no-op — the test drives redelivery via simulateOtp()
+  }
+
+  async reactivate(providerRef: string): Promise<{ providerRef: string } | null> {
+    return { providerRef };
+  }
+
   async healthCheck(): Promise<HealthResult> {
     return { ok: true, detail: 'mock provider is always available' };
   }

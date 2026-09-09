@@ -11,13 +11,15 @@ import { CopyButton } from '@/components/ui/copy-button';
 import { OrderStatusBadge } from '@/components/dashboard/order-status-badge';
 import { formatCountdown, formatShortDateTime, formatUsd } from '@/lib/format';
 import { ApiError } from '@/lib/api';
-import { useCancelOrder, useOrder } from '@/lib/hooks';
+import { useCancelOrder, useOrder, useReactivateOrder, useResendOrder } from '@/lib/hooks';
 
 export default function OrderDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
   const order = useOrder(id, true);
   const cancel = useCancelOrder();
+  const resend = useResendOrder();
+  const reactivate = useReactivateOrder();
   const qc = useQueryClient();
   const settledRef = useRef(false);
 
@@ -91,19 +93,33 @@ export default function OrderDetailPage() {
             <div className="text-sm text-muted">Waiting for the verification SMS…</div>
             <div className="font-mono text-2xl">{formatCountdown(o.secondsLeft)}</div>
             <div className="text-xs text-faint">Auto-refund when the timer runs out.</div>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="mt-2"
-              disabled={cancel.isPending || cancelLock > 0}
-              onClick={() => cancel.mutate(o.id)}
-            >
-              {cancel.isPending
-                ? 'Canceling…'
-                : cancelLock > 0
-                  ? `Cancel available in ${formatCountdown(cancelLock)}`
-                  : 'Cancel & refund'}
-            </Button>
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={resend.isPending}
+                onClick={() => resend.mutate(o.id)}
+              >
+                {resend.isPending ? 'Requesting…' : 'Request another code'}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={cancel.isPending || cancelLock > 0}
+                onClick={() => cancel.mutate(o.id)}
+              >
+                {cancel.isPending
+                  ? 'Canceling…'
+                  : cancelLock > 0
+                    ? `Cancel available in ${formatCountdown(cancelLock)}`
+                    : 'Cancel & refund'}
+              </Button>
+            </div>
+            {resend.isError ? (
+              <p className="text-xs text-danger">
+                {resend.error instanceof ApiError ? resend.error.message : 'Request failed'}
+              </p>
+            ) : null}
             {cancelLock > 0 ? (
               <p className="text-xs text-faint">
                 New numbers are locked for a few minutes after purchase. You&apos;ll be able to
@@ -124,6 +140,23 @@ export default function OrderDetailPage() {
             <div className="mt-2 flex items-center justify-center gap-3">
               <span className="font-mono text-3xl tracking-[0.3em] text-text">{o.otpCode}</span>
               <CopyButton value={o.otpCode} />
+            </div>
+            <div className="mt-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={reactivate.isPending}
+                onClick={() => reactivate.mutate(o.id)}
+              >
+                {reactivate.isPending ? 'Reactivating…' : 'Get another code on this number'}
+              </Button>
+              {reactivate.isError ? (
+                <p className="mt-1 text-xs text-danger">
+                  {reactivate.error instanceof ApiError
+                    ? reactivate.error.message
+                    : 'Reactivation failed'}
+                </p>
+              ) : null}
             </div>
           </div>
         ) : null}

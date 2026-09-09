@@ -67,6 +67,13 @@ export class DaisySmsProvider implements SmsProvider {
     );
   }
 
+  async resend(providerRef: string): Promise<void> {
+    // status 3 = request another SMS
+    await activateGet(this.cfg, { action: 'setStatus', id: providerRef, status: 3 }).catch(
+      () => undefined,
+    );
+  }
+
   async healthCheck(): Promise<HealthResult> {
     try {
       // getPrices returns a JSON map of services when the key is valid.

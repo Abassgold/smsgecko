@@ -1,4 +1,10 @@
-import type { CountryView, OfferView, QuoteResponse, ServiceView } from '@smsgecko/shared';
+import type {
+  CountryView,
+  OfferView,
+  OperatorView,
+  QuoteResponse,
+  ServiceView,
+} from '@smsgecko/shared';
 import { getCatalogProvider } from '../providers/sms/registry.js';
 import type {
   CatalogCountry,
@@ -142,20 +148,73 @@ function toOfferView(serviceCode: string, countryCode: string, t: PriceTier, i: 
   };
 }
 
-export async function listOffers(serviceCode: string, countryCode: string): Promise<OfferView[]> {
-  const tiers = await priceTiers(serviceCode, countryCode);
-  return tiers.map((t, i) => toOfferView(serviceCode, countryCode, t, i));
+function sumStock(tiers: PriceTier[]): number | null {
+  const known = tiers.filter((t) => t.stock != null);
+  return known.length ? known.reduce((n, t) => n + (t.stock ?? 0), 0) : null;
 }
 
-export async function getQuote(serviceCode: string, countryCode: string): Promise<QuoteResponse> {
+/** Group tiers by operator, "Any" first. */
+function toOperatorViews(tiers: PriceTier[]): OperatorView[] {
+  if (tiers.length === 0) return [];
+  const any: OperatorView = {
+    id: '',
+    name: 'Any',
+    count: tiers.length,
+    fromPriceMicro: tiers[0]!.priceMicro,
+    stock: sumStock(tiers),
+  };
+  const byOp = new Map<string, PriceTier[]>();
+  for (const t of tiers) {
+    if (!t.operator) continue;
+    const list = byOp.get(t.operator) ?? [];
+    list.push(t);
+    byOp.set(t.operator, list);
+  }
+  const rest = [...byOp.entries()]
+    .map(([id, list]) => ({
+      id,
+      name: id,
+      count: list.length,
+      fromPriceMicro: Math.min(...list.map((x) => x.priceMicro)),
+      stock: sumStock(list),
+    }))
+    .sort((a, b) => a.fromPriceMicro - b.fromPriceMicro);
+  return rest.length ? [any, ...rest] : [any];
+}
+
+export async function listOperators(
+  serviceCode: string,
+  countryCode: string,
+): Promise<OperatorView[]> {
+  return toOperatorViews(await priceTiers(serviceCode, countryCode));
+}
+
+export async function listOffers(
+  serviceCode: string,
+  countryCode: string,
+  operator?: string,
+): Promise<OfferView[]> {
   const tiers = await priceTiers(serviceCode, countryCode);
-  const offers = tiers.map((t, i) => toOfferView(serviceCode, countryCode, t, i));
+  return tiers
+    .map((t, i) => toOfferView(serviceCode, countryCode, t, i))
+    .filter((o) => !operator || o.operator === operator);
+}
+
+export async function getQuote(
+  serviceCode: string,
+  countryCode: string,
+  operator?: string,
+): Promise<QuoteResponse> {
+  const tiers = await priceTiers(serviceCode, countryCode);
+  const allOffers = tiers.map((t, i) => toOfferView(serviceCode, countryCode, t, i));
+  const offers = operator ? allOffers.filter((o) => o.operator === operator) : allOffers;
   const bestOffer = offers.find((o) => o.stock == null || o.stock > 0) ?? offers[0] ?? null;
   return {
     serviceId: serviceCode,
     countryId: countryCode,
     available: offers.some((o) => o.stock == null || o.stock > 0),
     offers,
+    operators: toOperatorViews(tiers),
     bestOffer,
   };
 }

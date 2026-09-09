@@ -175,4 +175,52 @@ describe('orders', () => {
     expect(s.successRate).toBeCloseTo(0.5); // 1 completed of 2 resolved
     expect(s.series).toHaveLength(30);
   });
+
+  it('GET /orders/active lists the waiting orders', async () => {
+    const { service, country } = await makeCatalog({ priceMicro: 100_000, stock: 5 });
+    const { cookie } = await makeUser(app, { balanceMicro: 1_000_000 });
+    await buy(cookie, { serviceId: service.id, countryId: country.id });
+
+    const res = await inject({ method: 'GET', url: '/api/v1/orders/active', headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toHaveLength(1);
+    expect(res.json()[0].status).toBe('waiting');
+  });
+
+  it('resends a waiting order without charging', async () => {
+    const { service, country } = await makeCatalog({ priceMicro: 200_000, stock: 5 });
+    const { cookie, userId } = await makeUser(app, { balanceMicro: 1_000_000 });
+    const order = (await buy(cookie, { serviceId: service.id, countryId: country.id })).json();
+
+    const res = await inject({
+      method: 'POST',
+      url: `/api/v1/orders/${order.id}/resend`,
+      headers: { cookie },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe('waiting');
+    expect((await User.findById(userId))!.balanceMicro).toBe(800_000); // only the purchase
+  });
+
+  it('reactivates a completed order for another code and charges again', async () => {
+    const { service, country } = await makeCatalog({ priceMicro: 250_000, stock: 5 });
+    const { cookie, userId } = await makeUser(app, { balanceMicro: 1_000_000 });
+    const order = (await buy(cookie, { serviceId: service.id, countryId: country.id })).json();
+    await simulateOtp(order.id);
+    expect((await User.findById(userId))!.balanceMicro).toBe(750_000);
+
+    const res = await inject({
+      method: 'POST',
+      url: `/api/v1/orders/${order.id}/reactivate`,
+      headers: { cookie },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe('waiting');
+    expect(res.json().otpCode).toBeNull();
+    expect((await User.findById(userId))!.balanceMicro).toBe(500_000); // charged 250k again
+
+    const again = await simulateOtp(order.id);
+    expect(again!.status).toBe('completed');
+    expect(await Order.countDocuments({ userId })).toBe(1); // same order, reused
+  });
 });

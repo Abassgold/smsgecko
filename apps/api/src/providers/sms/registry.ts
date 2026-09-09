@@ -56,6 +56,9 @@ const NULL_PROVIDER: SmsProvider = {
   async finish() {
     /* nothing to finish */
   },
+  async resend() {
+    /* nothing to resend */
+  },
   async healthCheck() {
     return { ok: false, detail: 'no adapter registered' };
   },

@@ -28,14 +28,31 @@ export interface OfferView {
 }
 
 /**
+ * A carrier / route the upstream distinguishes for a service×country. `id: ""`
+ * is the "Any" pseudo-operator (all tiers). Others carry real operator ids/names.
+ */
+export interface OperatorView {
+  id: string;
+  name: string;
+  /** Tiers available under this operator. */
+  count: number;
+  /** Cheapest customer price under this operator (micro-USD). */
+  fromPriceMicro: number;
+  /** Sum of reported stock, or null when no tier reports it. */
+  stock: number | null;
+}
+
+/**
  * Every price tier for a service×country, cheapest first — the New Order widget
  * lets the user pick one. `bestOffer` is the cheapest in-stock tier (a shortcut
- * for callers that don't show the list).
+ * for callers that don't show the list). `operators` groups the tiers by carrier
+ * (with an "Any" entry first) for an optional operator filter.
  */
 export interface QuoteResponse {
   serviceId: string;
   countryId: string;
   available: boolean;
   offers: OfferView[];
+  operators: OperatorView[];
   bestOffer: OfferView | null;
 }

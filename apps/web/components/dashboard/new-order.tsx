@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ChipPicker } from '@/components/ui/chip-picker';
 import { SectionHeading } from '@/components/ui/section';
 import { formatUsd } from '@/lib/format';
+import { serviceIcon } from '@/lib/service-icons';
 import { ApiError } from '@/lib/api';
 import { useCountries, useCreateOrder, useQuote, useServices } from '@/lib/hooks';
 
@@ -16,6 +17,7 @@ export function NewOrder() {
   const [countryQuery, setCountryQuery] = useState('');
   const [serviceId, setServiceId] = useState<string | null>(null);
   const [countryId, setCountryId] = useState<string | null>(null);
+  const [operator, setOperator] = useState('');
   const [offerId, setOfferId] = useState<string | null>(null);
 
   const services = useServices(serviceQuery);
@@ -23,16 +25,25 @@ export function NewOrder() {
   const quote = useQuote(serviceId ?? undefined, countryId ?? undefined);
   const createOrder = useCreateOrder();
 
-  const offers = useMemo(() => quote.data?.offers ?? [], [quote.data]);
+  const allOffers = useMemo(() => quote.data?.offers ?? [], [quote.data]);
+  const operators = useMemo(() => quote.data?.operators ?? [], [quote.data]);
+  const offers = useMemo(
+    () => (operator ? allOffers.filter((o) => o.operator === operator) : allOffers),
+    [allOffers, operator],
+  );
 
-  // Default to the cheapest in-stock tier whenever the offer list changes; drop
-  // a stale selection that's no longer in the list.
+  // Reset the operator filter when the service/country changes.
+  useEffect(() => {
+    setOperator('');
+  }, [serviceId, countryId]);
+
+  // Keep a valid tier selected: prefer the current one, else the cheapest.
   useEffect(() => {
     setOfferId((cur) => {
       if (cur && offers.some((o) => o.id === cur)) return cur;
-      return quote.data?.bestOffer?.id ?? offers[0]?.id ?? null;
+      return offers.find((o) => o.stock == null || o.stock > 0)?.id ?? offers[0]?.id ?? null;
     });
-  }, [offers, quote.data?.bestOffer?.id]);
+  }, [offers]);
 
   const selected = offers.find((o) => o.id === offerId) ?? null;
   const canBuy = Boolean(selected) && !createOrder.isPending;
@@ -57,7 +68,11 @@ export function NewOrder() {
         <div>
           <div className="mb-2 text-xs uppercase tracking-widest text-faint">Service</div>
           <ChipPicker
-            items={(services.data ?? []).map((s) => ({ id: s.id, label: s.name }))}
+            items={(services.data ?? []).map((s) => ({
+              id: s.id,
+              label: s.name,
+              prefix: serviceIcon(s.name),
+            }))}
             value={serviceId}
             onChange={setServiceId}
             query={serviceQuery}
@@ -84,6 +99,32 @@ export function NewOrder() {
         </div>
       </div>
 
+      {serviceId && countryId && operators.length > 1 ? (
+        <div className="mt-6 border-t border-border pt-5">
+          <div className="mb-2 text-xs uppercase tracking-widest text-faint">Operator</div>
+          <div className="flex flex-wrap gap-2">
+            {operators.map((op) => {
+              const active = op.id === operator;
+              return (
+                <button
+                  key={op.id || 'any'}
+                  type="button"
+                  onClick={() => setOperator(op.id)}
+                  className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                    active ? 'border-accent bg-accent-soft text-text' : 'border-border text-muted hover:border-faint'
+                  }`}
+                >
+                  {op.name}
+                  <span className="ml-1.5 text-xs text-faint">
+                    {formatUsd(op.fromPriceMicro)}+
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       {serviceId && countryId ? (
         <div className="mt-6 border-t border-border pt-5">
           <div className="mb-2 text-xs uppercase tracking-widest text-faint">Price</div>
@@ -92,7 +133,7 @@ export function NewOrder() {
           ) : offers.length === 0 ? (
             <span className="text-sm text-danger">No numbers available for that combination.</span>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="grid gap-2 sm:grid-cols-2">
               {offers.map((o) => {
                 const soldOut = o.stock !== null && o.stock <= 0;
                 const active = o.id === offerId;
@@ -103,20 +144,18 @@ export function NewOrder() {
                     disabled={soldOut}
                     onClick={() => setOfferId(o.id)}
                     className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left text-sm transition ${
-                      active
-                        ? 'border-accent bg-accent-soft'
-                        : 'border-border hover:border-faint'
+                      active ? 'border-accent bg-accent-soft' : 'border-border hover:border-faint'
                     } ${soldOut ? 'cursor-not-allowed opacity-40' : ''}`}
                   >
-                    <span className="flex items-center gap-3">
+                    <span className="flex items-center gap-2.5">
                       <span
-                        className={`h-3 w-3 rounded-full border ${
+                        className={`h-3 w-3 shrink-0 rounded-full border ${
                           active ? 'border-accent bg-accent' : 'border-faint'
                         }`}
                       />
                       <span className="font-mono text-text">{formatUsd(o.priceMicro)}</span>
-                      {o.operator ? (
-                        <span className="text-xs text-faint">route {o.operator}</span>
+                      {!operator && o.operator ? (
+                        <span className="text-xs text-faint">· {o.operator}</span>
                       ) : null}
                     </span>
                     <span className="text-xs text-faint">
@@ -124,7 +163,7 @@ export function NewOrder() {
                         ? 'in stock'
                         : soldOut
                           ? 'sold out'
-                          : `${o.stock.toLocaleString()} in stock`}
+                          : `${o.stock.toLocaleString()} avail`}
                     </span>
                   </button>
                 );

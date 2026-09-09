@@ -147,6 +147,24 @@ export class SmsCodeProvider implements SmsProvider {
     }).catch(() => undefined);
   }
 
+  async resend(providerRef: string): Promise<void> {
+    await this.api('orders/resend', {
+      method: 'POST',
+      body: JSON.stringify({ id: Number(providerRef) }),
+    }).catch(() => undefined);
+  }
+
+  async reactivate(providerRef: string): Promise<{ providerRef: string } | null> {
+    const res = await this.api('orders/reactivate', {
+      method: 'POST',
+      body: JSON.stringify({ id: Number(providerRef) }),
+    }).catch(() => null);
+    if (!res || res.success === false) return null;
+    // Reactivation keeps the same order id / number on smscode.
+    const id = res?.data?.orders?.[0]?.id ?? res?.data?.id ?? providerRef;
+    return { providerRef: String(id) };
+  }
+
   async healthCheck(): Promise<HealthResult> {
     try {
       await this.api('orders/active');

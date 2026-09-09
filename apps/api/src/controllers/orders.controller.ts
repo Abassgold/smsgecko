@@ -8,7 +8,10 @@ import {
   cancelOrder,
   createOrder,
   getOrderWithMessages,
+  listActiveOrders,
   listOrders,
+  reactivateOrder,
+  resendOrder,
 } from '../services/orders.service.js';
 import { getOrderStats } from '../services/orders.stats.js';
 
@@ -36,8 +39,27 @@ export const getOne = asyncHandler(async (req, res) => {
   res.json(toOrderView(order, messages));
 });
 
+export const active = asyncHandler(async (req, res) => {
+  const items = await listActiveOrders(req.authUser!);
+  res.json(items.map((o) => toOrderView(o)));
+});
+
 export const cancel = asyncHandler(async (req, res) => {
   const { id } = valid<IdParams>(req, 'params');
   const order = await cancelOrder(req.authUser!, id);
   res.json(toOrderView(order));
+});
+
+export const resend = asyncHandler(async (req, res) => {
+  const { id } = valid<IdParams>(req, 'params');
+  const order = await resendOrder(req.authUser!, id);
+  const { messages } = await getOrderWithMessages(req.authUser!, id);
+  res.json(toOrderView(order, messages));
+});
+
+export const reactivate = asyncHandler(async (req, res) => {
+  const { id } = valid<IdParams>(req, 'params');
+  const order = await reactivateOrder(req.authUser!, id);
+  const { messages } = await getOrderWithMessages(req.authUser!, id);
+  res.json(toOrderView(order, messages));
 });

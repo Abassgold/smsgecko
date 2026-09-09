@@ -7,6 +7,9 @@ import {
   cancelOrder,
   finishOrder,
   getOrderWithMessages,
+  listActiveOrders,
+  reactivateOrder,
+  resendOrder,
 } from '../services/orders.service.js';
 import { createV2Order, listCatalogProducts } from '../services/v2.service.js';
 import { toV2Order } from '../services/v2.mapper.js';
@@ -54,4 +57,23 @@ export const cancelOrderHandler = asyncHandler(async (req, res) => {
   const { id } = valid<{ id: string }>(req, 'params');
   const order = await cancelOrder(req.apiUser!, id);
   res.json(toV2Order(order));
+});
+
+export const getActiveOrders = asyncHandler(async (req, res) => {
+  const items = await listActiveOrders(req.apiUser!);
+  res.json({ data: items.map((o) => toV2Order(o)) });
+});
+
+export const resendOrderHandler = asyncHandler(async (req, res) => {
+  const { id } = valid<{ id: string }>(req, 'params');
+  const order = await resendOrder(req.apiUser!, id);
+  const { messages } = await getOrderWithMessages(req.apiUser!, id);
+  res.json(toV2Order(order, messages));
+});
+
+export const reactivateOrderHandler = asyncHandler(async (req, res) => {
+  const { id } = valid<{ id: string }>(req, 'params');
+  const order = await reactivateOrder(req.apiUser!, id);
+  const { messages } = await getOrderWithMessages(req.apiUser!, id);
+  res.json(toV2Order(order, messages));
 });
