@@ -15,6 +15,31 @@ export function sellPriceMicro(rawMicro: number, s: MarkupSettings): number {
   return Math.round(withPct) + (s.numberMarkupFlatMicro || 0);
 }
 
+/* ---------------- offer ids ---------------- */
+
+/**
+ * An offer id names one price tier of a service×country:
+ *   "<serviceCode>::<countryCode>"        → the cheapest tier (index 0)
+ *   "<serviceCode>::<countryCode>::<i>"   → tier i (0-based, cheapest-first)
+ */
+export function buildOfferId(serviceCode: string, countryCode: string, tierIndex = 0): string {
+  return tierIndex > 0
+    ? `${serviceCode}::${countryCode}::${tierIndex}`
+    : `${serviceCode}::${countryCode}`;
+}
+
+export function parseOfferId(
+  id: string,
+): { serviceCode: string; countryCode: string; tierIndex: number } | null {
+  const parts = String(id).split('::');
+  if (parts.length < 2 || parts.length > 3) return null;
+  const [serviceCode, countryCode, rawIdx] = parts;
+  if (!serviceCode || !countryCode) return null;
+  const tierIndex = rawIdx === undefined ? 0 : Number(rawIdx);
+  if (!Number.isInteger(tierIndex) || tierIndex < 0) return null;
+  return { serviceCode, countryCode, tierIndex };
+}
+
 /* ---------------- short-lived in-memory cache for provider catalog lists ---------------- */
 
 interface CacheEntry {

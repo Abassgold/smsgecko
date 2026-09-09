@@ -11,10 +11,18 @@ import {
 } from '../providers/sms/registry.js';
 import { resolveForOrder } from './catalog.service.js';
 import { getSettings } from '../lib/settings.js';
+import { parseOfferId } from '../lib/catalog.js';
 import { debit } from '../lib/ledger.js';
 import { refundWaitingOrder } from '../lib/orderLifecycle.js';
 import { holdRemainingSeconds, minHoldSecondsFor } from '../lib/providerPolicy.js';
-import { conflict, forbidden, notFound, paymentRequired, unprocessable } from '../lib/errors.js';
+import {
+  badRequest,
+  conflict,
+  forbidden,
+  notFound,
+  paymentRequired,
+  unprocessable,
+} from '../lib/errors.js';
 
 function isDuplicateKey(err: unknown): boolean {
   const e = err as { code?: number; cause?: { code?: number } };
@@ -37,9 +45,25 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
     throw forbidden('Ordering is paused for maintenance');
   }
 
+  // Which service/country/tier to buy. An offerId ("<svc>::<ctry>[::<i>]") names
+  // an exact price tier and wins; otherwise serviceId + countryId → cheapest tier.
+  let serviceCode = body.serviceId;
+  let countryCode = body.countryId;
+  let tierIndex: number | undefined;
+  if (body.offerId) {
+    const parsed = parseOfferId(body.offerId);
+    if (!parsed) throw badRequest('offerId must be "<serviceId>::<countryId>[::<tierIndex>]"');
+    serviceCode = parsed.serviceCode;
+    countryCode = parsed.countryCode;
+    tierIndex = parsed.tierIndex;
+  }
+  if (!serviceCode || !countryCode) {
+    throw badRequest('Provide offerId, or both serviceId and countryId');
+  }
+
   // Price the service×country against the active (top-enabled) provider.
   if (!(await getCatalogProvider())) throw conflict('No SMS provider is enabled');
-  const cat = await resolveForOrder(body.serviceId, body.countryId, settings);
+  const cat = await resolveForOrder(serviceCode, countryCode, settings, tierIndex);
   if (!cat) {
     throw conflict('No numbers available for that service and country right now');
   }
@@ -53,16 +77,16 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
   // Rent from the first provider in the fallback chain that has stock. The cap
   // is the active provider's *raw* price, so we're never billed above what we quoted.
   const rent = await rentWithFallback({
-    serviceSlug: body.serviceId,
-    countryCode: body.countryId,
+    serviceSlug: serviceCode,
+    countryCode,
     dialCode: '',
     maxPriceMicro: cat.rawPriceMicro,
   });
 
   const data = {
     userId: user._id,
-    serviceId: body.serviceId,
-    countryId: body.countryId,
+    serviceId: serviceCode,
+    countryId: countryCode,
     serviceSlug: cat.serviceSlug,
     serviceName: cat.serviceName,
     serviceIconKey: cat.serviceIconKey,

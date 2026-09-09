@@ -30,7 +30,6 @@ interface Paginated<T> {
   totalPages: number;
 }
 
-/* ---------- auth / session ---------- */
 
 export function useMe() {
   return useQuery({
@@ -122,11 +121,14 @@ export function useCountries(q: string) {
   });
 }
 
+/** Every price tier for a service×country (`.offers`), plus `.bestOffer`. */
 export function useQuote(serviceId?: string, countryId?: string) {
   return useQuery({
     queryKey: ['quote', serviceId, countryId],
     queryFn: () =>
-      apiFetch<QuoteResponse>(`/v1/catalog/quote?serviceId=${serviceId}&countryId=${countryId}`),
+      apiFetch<QuoteResponse>(
+        `/v1/catalog/quote?serviceId=${encodeURIComponent(serviceId!)}&countryId=${encodeURIComponent(countryId!)}`,
+      ),
     enabled: Boolean(serviceId && countryId),
     refetchInterval: 20_000,
   });

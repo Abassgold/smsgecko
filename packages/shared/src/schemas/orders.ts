@@ -1,10 +1,16 @@
 import type { OrderStatus } from '../constants';
 
 export interface CreateOrderBody {
+  /**
+   * The exact price tier to buy: an `OfferView.id`
+   * ("<serviceId>::<countryId>" or "…::<tierIndex>") from GET /v1/catalog/quote
+   * or /offers. When set it takes precedence over serviceId/countryId.
+   */
+  offerId?: string;
   /** The active provider's service code (from GET /v1/catalog/services `.id`). */
-  serviceId: string;
+  serviceId?: string;
   /** The active provider's country code (from GET /v1/catalog/countries `.id`). */
-  countryId: string;
+  countryId?: string;
   /** Refuse if the current price is above this (micro-USD, after markup). */
   maxPriceMicro?: number;
   /** Retry-safe create: same key for the same user returns the same order. */

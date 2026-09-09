@@ -63,9 +63,11 @@ export async function createV2Order(
   const productId = body.catalog_product_id ?? body.product_id;
   if (!productId) throw badRequest('catalog_product_id (or product_id) is required');
 
-  const [serviceCode, countryCode] = productId.split('::');
-  if (!serviceCode || !countryCode) {
-    throw badRequest('catalog_product_id must be "<service>::<country>" from /v2/catalog/products');
+  const parts = productId.split('::');
+  if (parts.length < 2 || parts.length > 3 || !parts[0] || !parts[1]) {
+    throw badRequest(
+      'catalog_product_id must be "<service>::<country>[::<tier>]" from /v2/catalog/products',
+    );
   }
 
   const maxPriceMicro = body.max_price ? parseUsd(body.max_price) : undefined;
@@ -73,10 +75,6 @@ export async function createV2Order(
     throw badRequest('max_price must be a decimal string, e.g. "0.50"');
   }
 
-  return createOrder(apiUser, {
-    serviceId: serviceCode,
-    countryId: countryCode,
-    maxPriceMicro,
-    idempotencyKey,
-  });
+  // The product id IS the offer id — it carries the chosen tier.
+  return createOrder(apiUser, { offerId: productId, maxPriceMicro, idempotencyKey });
 }

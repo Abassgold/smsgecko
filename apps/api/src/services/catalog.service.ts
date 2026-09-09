@@ -6,7 +6,13 @@ import type {
   CatalogService,
   SmsProvider,
 } from '../providers/sms/types.js';
-import { bustCatalogCache, catalogCached, iso2ToFlag, sellPriceMicro } from '../lib/catalog.js';
+import {
+  bustCatalogCache,
+  buildOfferId,
+  catalogCached,
+  iso2ToFlag,
+  sellPriceMicro,
+} from '../lib/catalog.js';
 import { getSettings, type ResolvedSettings } from '../lib/settings.js';
 import { logger } from '../lib/logger.js';
 
@@ -112,40 +118,45 @@ export async function priceTiers(
       operator: t.operator ?? null,
     }))
     .sort((a, b) => a.rawPriceMicro - b.rawPriceMicro);
-  // Dedup identical raw prices.
-  return tiers.filter((t, i) => i === 0 || t.rawPriceMicro !== tiers[i - 1]!.rawPriceMicro);
+  // Collapse true duplicates (same raw price AND same operator); keep distinct
+  // operators that happen to charge the same.
+  const seen = new Set<string>();
+  return tiers.filter((t) => {
+    const k = `${t.rawPriceMicro}:${t.operator ?? ''}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
-export async function listOffers(serviceCode: string, countryCode: string): Promise<OfferView[]> {
-  const tiers = await priceTiers(serviceCode, countryCode);
-  return tiers.map((t, i) => ({
-    id: i === 0 ? `${serviceCode}::${countryCode}` : `${serviceCode}::${countryCode}::${i}`,
+type PriceTier = Awaited<ReturnType<typeof priceTiers>>[number];
+
+function toOfferView(serviceCode: string, countryCode: string, t: PriceTier, i: number): OfferView {
+  return {
+    id: buildOfferId(serviceCode, countryCode, i),
     serviceId: serviceCode,
     countryId: countryCode,
     operator: t.operator,
     priceMicro: t.priceMicro,
-    stock: t.stock ?? 0,
-  }));
+    stock: t.stock,
+  };
+}
+
+export async function listOffers(serviceCode: string, countryCode: string): Promise<OfferView[]> {
+  const tiers = await priceTiers(serviceCode, countryCode);
+  return tiers.map((t, i) => toOfferView(serviceCode, countryCode, t, i));
 }
 
 export async function getQuote(serviceCode: string, countryCode: string): Promise<QuoteResponse> {
   const tiers = await priceTiers(serviceCode, countryCode);
-  // Cheapest tier that isn't explicitly out of stock (null = provider didn't say).
-  const pick = tiers.find((t) => t.stock == null || t.stock > 0) ?? null;
+  const offers = tiers.map((t, i) => toOfferView(serviceCode, countryCode, t, i));
+  const bestOffer = offers.find((o) => o.stock == null || o.stock > 0) ?? offers[0] ?? null;
   return {
     serviceId: serviceCode,
     countryId: countryCode,
-    available: Boolean(pick),
-    bestOffer: pick
-      ? {
-          id: `${serviceCode}::${countryCode}`,
-          serviceId: serviceCode,
-          countryId: countryCode,
-          operator: pick.operator,
-          priceMicro: pick.priceMicro,
-          stock: pick.stock ?? 0,
-        }
-      : null,
+    available: offers.some((o) => o.stock == null || o.stock > 0),
+    offers,
+    bestOffer,
   };
 }
 
@@ -165,10 +176,16 @@ export async function resolveForOrder(
   serviceCode: string,
   countryCode: string,
   settings: ResolvedSettings,
+  tierIndex?: number,
 ): Promise<ResolvedOrderCatalog | null> {
   const tiers = await priceTiers(serviceCode, countryCode, settings);
-  const pick = tiers.find((t) => t.stock == null || t.stock > 0);
-  if (!pick) return null;
+  // A specific tier was chosen (offerId) — use exactly that one; otherwise the
+  // cheapest tier that isn't explicitly out of stock.
+  const pick =
+    tierIndex != null
+      ? (tiers[tierIndex] ?? null)
+      : (tiers.find((t) => t.stock == null || t.stock > 0) ?? null);
+  if (!pick || (pick.stock != null && pick.stock <= 0)) return null;
 
   const [svcList, ctryList] = await Promise.all([services(), countries()]);
   const svc = svcList.find((s) => s.code === serviceCode);

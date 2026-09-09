@@ -98,13 +98,46 @@ export class SmsBowerProvider implements SmsProvider {
 
   async listPrices(q: CatalogQuery): Promise<CatalogPrice[]> {
     const svc = mapService(this.cfg, q.serviceCode);
-    const rows = parseActivatePrices(
-      await activateJson(this.cfg, {
-        action: 'getPrices',
+    const country = q.countryCode ? mapCountry(this.cfg, q.countryCode) : undefined;
+
+    // Preferred: getPricesV3 — one tier per upstream operator (provider_id).
+    // Shape: { "<ctry>": { "<svc>": { "<providerId>": { count, price, provider_id } } } }
+    try {
+      const json = (await activateJson(this.cfg, {
+        action: 'getPricesV3',
         service: svc,
-        country: q.countryCode ? mapCountry(this.cfg, q.countryCode) : undefined,
-      }),
+        country,
+      })) as Record<
+        string,
+        Record<string, Record<string, { count?: number; price?: number; provider_id?: unknown }>>
+      >;
+
+      const out: CatalogPrice[] = [];
+      for (const [ctry, byService] of Object.entries(json ?? {})) {
+        for (const p of Object.values(byService?.[svc] ?? {})) {
+          const priceMicro = Math.round(Number(p?.price) * 1_000_000);
+          if (priceMicro > 0) {
+            out.push({
+              serviceCode: q.serviceCode,
+              countryCode: ctry,
+              priceMicro,
+              stock: p?.count != null ? Number(p.count) : null,
+              operator: p?.provider_id != null ? String(p.provider_id) : null,
+            });
+          }
+        }
+      }
+      if (out.length) return out;
+    } catch {
+      /* fall through to the legacy single-tier endpoint */
+    }
+
+    // Fallback: handler_api getPrices — a single tier.
+    const rows = parseActivatePrices(
+      await activateJson(this.cfg, { action: 'getPrices', service: svc, country }),
     );
-    return rows.filter((r) => r.serviceCode === svc);
+    return rows
+      .filter((r) => r.serviceCode === svc)
+      .map((r) => ({ ...r, serviceCode: q.serviceCode }));
   }
 }
