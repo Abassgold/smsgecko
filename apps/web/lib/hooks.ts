@@ -179,7 +179,12 @@ function useOrderAction(path: (id: string) => string) {
     onSuccess: (data) => {
       qc.setQueryData(['order', data.id], data);
       qc.invalidateQueries({ queryKey: ['orders'] });
+      // A cancel refunds and a reactivate charges — refresh every view that
+      // shows a balance or a ledger entry.
       qc.invalidateQueries({ queryKey: ['wallet'] });
+      qc.invalidateQueries({ queryKey: ['order-stats'] });
+      qc.invalidateQueries({ queryKey: ['transactions'] });
+      qc.invalidateQueries({ queryKey: ['me'] });
     },
   });
 }

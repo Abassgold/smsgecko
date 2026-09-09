@@ -103,7 +103,7 @@ export default function OrderDetailPage() {
                 {resend.isPending ? 'Requesting…' : 'Request another code'}
               </Button>
               <Button
-                variant="secondary"
+                variant={cancelLock > 0 ? 'danger-soft' : 'danger'}
                 size="sm"
                 disabled={cancel.isPending || cancelLock > 0}
                 onClick={() => cancel.mutate(o.id)}
