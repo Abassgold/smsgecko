@@ -1,6 +1,7 @@
 import type { OrderView, SmsMessageView } from '@smsgecko/shared';
 import type { OrderDoc } from '../models/Order.js';
 import type { SmsMessageDoc } from '../models/SmsMessage.js';
+import { holdRemainingSeconds } from '../lib/providerPolicy.js';
 
 export function toSmsMessageView(m: SmsMessageDoc): SmsMessageView {
   return {
@@ -34,6 +35,7 @@ export function toOrderView(order: OrderDoc, messages: SmsMessageDoc[] = []): Or
     otpCode: order.otpCode ?? null,
     messages: messages.map(toSmsMessageView),
     secondsLeft,
+    cancelLockSeconds: order.status === 'waiting' ? holdRemainingSeconds(order) : 0,
     createdAt: (order.get('createdAt') as Date).toISOString(),
     completedAt: order.completedAt ? order.completedAt.toISOString() : null,
     canceledAt: order.canceledAt ? order.canceledAt.toISOString() : null,

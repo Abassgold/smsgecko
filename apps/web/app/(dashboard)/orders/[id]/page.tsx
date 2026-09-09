@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
@@ -20,6 +20,16 @@ export default function OrderDetailPage() {
   const cancel = useCancelOrder();
   const qc = useQueryClient();
   const settledRef = useRef(false);
+
+  // Post-purchase cancel lock — tick it down locally between the 2.5s polls.
+  const [cancelLock, setCancelLock] = useState(0);
+  const serverLock = order.data?.cancelLockSeconds ?? 0;
+  useEffect(() => {
+    setCancelLock(serverLock);
+    if (serverLock <= 0) return;
+    const t = setInterval(() => setCancelLock((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [serverLock]);
 
   const status = order.data?.status;
   useEffect(() => {
@@ -85,11 +95,21 @@ export default function OrderDetailPage() {
               variant="secondary"
               size="sm"
               className="mt-2"
-              disabled={cancel.isPending}
+              disabled={cancel.isPending || cancelLock > 0}
               onClick={() => cancel.mutate(o.id)}
             >
-              {cancel.isPending ? 'Canceling…' : 'Cancel & refund'}
+              {cancel.isPending
+                ? 'Canceling…'
+                : cancelLock > 0
+                  ? `Cancel available in ${formatCountdown(cancelLock)}`
+                  : 'Cancel & refund'}
             </Button>
+            {cancelLock > 0 ? (
+              <p className="text-xs text-faint">
+                New numbers are locked for a few minutes after purchase. You&apos;ll be able to
+                cancel for a full refund in {formatCountdown(cancelLock)}.
+              </p>
+            ) : null}
             {cancel.isError ? (
               <p className="text-xs text-danger">
                 {cancel.error instanceof ApiError ? cancel.error.message : 'Cancel failed'}

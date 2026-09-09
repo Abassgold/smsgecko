@@ -207,13 +207,14 @@ export async function cancelOrder(user: UserDoc, orderId: string): Promise<Order
   }
   if (order.otpCode) throw conflict('Order already received a code');
 
-  // Some providers still bill us if the number is dropped too early — hold the
-  // user's cancel until the provider's minimum hold has elapsed (FloZap parity).
+  // A number is locked in for a few minutes after purchase; block the cancel
+  // until that lock-in has elapsed. Never name the upstream provider.
   const holdLeft = holdRemainingSeconds(order);
   if (holdLeft > 0) {
-    const mins = Math.ceil(holdLeft / 60);
+    const mins = Math.max(1, Math.ceil(holdLeft / 60));
     throw conflict(
-      `This number can't be canceled yet — ${order.providerLabel ?? order.provider} holds it for a few more minutes. Try again in about ${mins} minute${mins === 1 ? '' : 's'}.`,
+      `This number is locked in for a few minutes after purchase. You can cancel it for a full refund in about ${mins} minute${mins === 1 ? '' : 's'}.`,
+      { retryAfterSeconds: holdLeft },
     );
   }
 

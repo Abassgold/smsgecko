@@ -30,6 +30,12 @@ export interface OrderView {
   messages: SmsMessageView[];
   /** Seconds until auto-expiry; 0 once resolved. */
   secondsLeft: number;
+  /**
+   * Seconds left on the post-purchase cancel lock. While > 0 the number cannot
+   * be canceled (the cancel button should stay disabled with this countdown);
+   * 0 means cancel is allowed.
+   */
+  cancelLockSeconds: number;
   createdAt: string;
   completedAt: string | null;
   canceledAt: string | null;
