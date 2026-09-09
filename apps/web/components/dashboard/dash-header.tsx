@@ -6,17 +6,18 @@ import { useState } from 'react';
 import { Container } from '@/components/ui/container';
 import { Logo } from '@/components/marketing/logo';
 import { NotificationBell } from './notification-bell';
+import { NavIcon, type NavIconName } from './nav-icons';
 import { cn } from '@/lib/cn';
 import { formatBalanceUsd } from '@/lib/format';
 import { useLogout, useMe, useWallet } from '@/lib/hooks';
 
-const NAV = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/orders', label: 'Orders' },
-  { href: '/deposit', label: 'Deposit' },
-  { href: '/transactions', label: 'Transactions' },
-  { href: '/affiliate', label: 'Affiliate' },
-  { href: '/docs', label: 'Docs' },
+const NAV: { href: string; label: string; icon: NavIconName }[] = [
+  { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
+  { href: '/orders', label: 'Orders', icon: 'orders' },
+  { href: '/deposit', label: 'Deposit', icon: 'deposit' },
+  { href: '/transactions', label: 'Transactions', icon: 'transactions' },
+  { href: '/affiliate', label: 'Affiliate', icon: 'affiliate' },
+  { href: '/docs', label: 'Docs', icon: 'docs' },
 ];
 
 export function DashHeader() {
@@ -41,10 +42,11 @@ export function DashHeader() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'rounded-lg px-3 py-2 text-sm transition-colors',
+                  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
                   active ? 'bg-surface-2 text-text' : 'text-muted hover:text-text',
                 )}
               >
+                <NavIcon name={item.icon} className={active ? 'text-accent' : 'text-faint'} />
                 {item.label}
               </Link>
             );
@@ -107,10 +109,11 @@ export function DashHeader() {
               key={item.href}
               href={item.href}
               className={cn(
-                'whitespace-nowrap rounded-lg px-3 py-1.5 text-sm',
+                'flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm',
                 active ? 'bg-surface-2 text-text' : 'text-muted',
               )}
             >
+              <NavIcon name={item.icon} className={active ? 'text-accent' : 'text-faint'} />
               {item.label}
             </Link>
           );
