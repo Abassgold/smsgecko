@@ -107,9 +107,9 @@ Mint keys at `POST /api/v1/api-keys` (session auth).
 
 | Method / Path | What |
 |---|---|
-| `POST /webhooks/sms/:activationId` | A code delivery pushed in for provider activation `:activationId` (== our `Order.providerRef`). Finds the newest `waiting` order with that ref and completes it (`applyOtpToOrder` → stores the SMS, notifies). Body shape is tolerant: `code` / `otp_code` / `otp` for the code, `text` / `otp_message` / `full_sms` / `sms` / `message` for the raw SMS (also read from a nested `data` object, for smscode's `{ event, data:{…} }`). |
+| `POST /webhooks/sms` | Body `{ activationId, code }`, already parsed by the upstream backend. `activationId` is the provider's activation id (== our `Order.providerRef`). Finds the newest `waiting` order with that ref and completes it (`applyOtpToOrder` → stores an SMS row `"Your verification code is <code>"`, notifies). |
 
-Responses (always `200` unless the body has neither a code nor text → `422`):
+Responses (always `200` unless the body lacks `activationId` or `code` → `422`):
 `{ ok:true, matched:false }` · `{ ok:true, matched:true, applied:false, status }` (already resolved) ·
 `{ ok:true, matched:true, applied:true, orderId, otpCode }`.
 

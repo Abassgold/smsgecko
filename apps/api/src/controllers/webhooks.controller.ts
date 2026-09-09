@@ -1,52 +1,31 @@
 import { asyncHandler } from '../lib/asyncHandler.js';
-import { valid } from '../middleware/validation.js';
 import { unprocessable } from '../lib/errors.js';
-import type { SmsWebhookParams } from '../lib/validation/webhooks.schema.js';
 import { deliverOtpByProviderRef } from '../services/orders.service.js';
 
-type AnyRecord = Record<string, unknown>;
-
 /**
- * Pull `{ code, text }` out of whatever body shape an upstream sent. Covers the
- * shapes seen from the SMS-Activate family (`{ code }`), smspool (`{ sms }`) and
- * smscode (`{ event, data: { otp_code, otp_message } }`), plus a few generic
- * aliases.
- */
-function extractOtp(body: unknown): { code: string | null; text: string | null } {
-  const b: AnyRecord = body && typeof body === 'object' ? (body as AnyRecord) : {};
-  const nested = b.data && typeof b.data === 'object' ? (b.data as AnyRecord) : b;
-
-  const pick = (...keys: string[]): string | null => {
-    for (const src of [nested, b]) {
-      for (const k of keys) {
-        const v = src[k];
-        if (v != null && v !== '') return String(v).trim();
-      }
-    }
-    return null;
-  };
-
-  return {
-    code: pick('otp_code', 'code', 'otp', 'pin'),
-    text: pick('otp_message', 'full_sms', 'sms', 'text', 'message', 'body'),
-  };
-}
-
-/**
- * POST /api/v1/webhooks/sms/:activationId  (public, no auth)
+ * POST /api/v1/webhooks/sms  (public, no auth)
  *
- * A code delivery pushed in for the provider activation `:activationId`
- * (== our `Order.providerRef`). We find the matching `waiting` order and
- * complete it. Not our activation → 200 ack (nothing forwarded onward).
+ * A code pushed in from the upstream backend, already parsed there:
+ *   { activationId, code }
+ * `activationId` is the provider's activation id (== our `Order.providerRef`).
+ * We synthesise the SMS text, find the matching `waiting` order and complete it.
+ * Unknown activation → 200 ack (smsgecko is the end of the line).
  */
 export const smsInbound = asyncHandler(async (req, res) => {
-  const { activationId } = valid<SmsWebhookParams>(req, 'params');
-  const { code, text } = extractOtp(req.body);
+  const { activationId, code } = (req.body ?? {}) as {
+    activationId?: string | number;
+    code?: string | number;
+  };
 
-  if (!code && !text) {
-    throw unprocessable('Webhook body has no code or message text');
+  const codeStr = code == null ? '' : String(code).trim();
+  if (!activationId || !codeStr) {
+    throw unprocessable('Webhook body needs activationId and code');
   }
 
-  const result = await deliverOtpByProviderRef(activationId, code, text);
+  const result = await deliverOtpByProviderRef(
+    String(activationId),
+    codeStr,
+    `Your verification code is ${codeStr}`,
+  );
   res.status(200).json({ ok: true, ...result });
 });

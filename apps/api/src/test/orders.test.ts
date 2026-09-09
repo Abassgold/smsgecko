@@ -232,8 +232,8 @@ describe('orders', () => {
 
     const hook = await inject({
       method: 'POST',
-      url: `/api/v1/webhooks/sms/${ref}`,
-      payload: { code: '456123', text: 'Your code is 456123' },
+      url: '/api/v1/webhooks/sms',
+      payload: { activationId: ref, code: '456123' },
     });
     expect(hook.statusCode).toBe(200);
     expect(hook.json().applied).toBe(true);
@@ -246,13 +246,14 @@ describe('orders', () => {
     expect(view.json().status).toBe('completed');
     expect(view.json().otpCode).toBe('456123');
     expect(view.json().messages).toHaveLength(1);
+    expect(view.json().messages[0].text).toContain('456123');
   });
 
   it('acks an SMS webhook for an unknown activation without erroring', async () => {
     const res = await inject({
       method: 'POST',
-      url: '/api/v1/webhooks/sms/no-such-activation',
-      payload: { code: '111111' },
+      url: '/api/v1/webhooks/sms',
+      payload: { activationId: 'no-such-activation', code: '111111' },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().matched).toBe(false);
