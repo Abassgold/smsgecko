@@ -83,10 +83,18 @@ export class SmsCodeProvider implements SmsProvider {
       `catalog/products?country_id=${encodeURIComponent(countryId)}&platform_id=${encodeURIComponent(platformId)}`,
     );
     const products: any[] = Array.isArray(list?.data) ? list.data : [];
+    // `orders/create` keys off `catalog_product_id` (the reusable slot), NOT the
+    // concrete product `id`; passing the latter yields NO_OFFER_AVAILABLE.
     const affordable = products
-      .map((p) => ({ id: p?.id, amount: Number(p?.price?.amount ?? p?.price ?? NaN) }))
+      .map((p) => ({
+        slotId: p?.catalog_product_id,
+        amount: Number(p?.price?.amount ?? p?.price ?? NaN),
+      }))
       .filter(
-        (p) => p.id != null && Number.isFinite(p.amount) && (capUsd === undefined || p.amount <= capUsd),
+        (p) =>
+          p.slotId != null &&
+          Number.isFinite(p.amount) &&
+          (capUsd === undefined || p.amount <= capUsd + 1e-9),
       )
       .sort((a, b) => a.amount - b.amount);
 
@@ -95,10 +103,17 @@ export class SmsCodeProvider implements SmsProvider {
 
     const created = await this.api('orders/create', {
       method: 'POST',
-      body: JSON.stringify({ catalog_product_id: pick.id, max_price: pick.amount, quantity: 1 }),
+      body: JSON.stringify({
+        catalog_product_id: pick.slotId,
+        max_price: String(pick.amount),
+        quantity: 1,
+      }),
     });
     if (!created?.success) {
-      throw new NoStockError(`smscode: ${created?.error?.message ?? created?.error?.code ?? 'order create failed'}`);
+      const err = created?.error ?? {};
+      throw new NoStockError(
+        `smscode: ${err.message ?? err.code ?? 'order create failed'}`.slice(0, 160),
+      );
     }
     const order = created.data?.orders?.[0];
     if (!order?.id || !order?.phone_number) {
