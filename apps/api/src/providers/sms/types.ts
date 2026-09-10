@@ -4,7 +4,6 @@ export interface RentInput {
   serviceSlug: string;
   countryCode: string;
   dialCode: string;
-  /** Refuse the provider if its price exceeds this (micro-USD). Advisory. */
   maxPriceMicro?: number;
 }
 

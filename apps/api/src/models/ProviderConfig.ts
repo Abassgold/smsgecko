@@ -25,12 +25,6 @@ const statsSchema = new Schema(
   { _id: false },
 );
 
-/**
- * One row per configured SMS provider. The order-router walks the enabled rows
- * by ascending `priority`, renting from the first that has stock. `configEnc`
- * is an AES-256-GCM blob (see lib/secretbox.ts) holding the adapter's
- * credentials/settings; it is never returned to the client un-masked.
- */
 const providerConfigSchema = new Schema(
   {
     key: { type: String, enum: PROVIDER_ADAPTER_KEYS, required: true },

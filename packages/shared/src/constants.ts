@@ -1,7 +1,6 @@
 export const ORDER_STATUSES = ['waiting', 'completed', 'canceled', 'expired'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
-/** Orders still in flight (counted as "Active" on the dashboard). */
 export const ACTIVE_ORDER_STATUSES: readonly OrderStatus[] = ['waiting'];
 
 export const TRANSACTION_TYPES = [

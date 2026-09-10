@@ -9,26 +9,13 @@ import {
   type RentInput,
 } from '../types.js';
 
-/**
- * Shared plumbing for the SMS-Activate "handler_api.php" text protocol, used by
- * hero-sms, daisySMS and smsbower (all SMS-Activate clones). Each adapter keeps
- * its own quirks (which price param, whether a country is sent, extra params)
- * but the wire call + response parsing live here.
- *
- * Ported from FloZap's `rentServer1Number` / `rentServer3Number` /
- * `rentDaisyNumber` + `cancelRentals` + `pollSmsJob`.
- */
 export interface ActivateConfig {
-  /** Full endpoint, e.g. "https://hero-sms.com/stubs/handler_api.php". */
   baseUrl?: string;
   apiKey?: string;
-  /** smsgecko service slug -> provider service code (e.g. "whatsapp" -> "wa"). */
   serviceMap?: Record<string, string>;
-  /** smsgecko ISO-2 country -> provider country id (e.g. "us" -> "187"). */
   countryMap?: Record<string, string>;
 }
 
-/** getNumber responses that mean "try the next provider". */
 const NO_STOCK = [
   'NO_NUMBERS',
   'NO_NUMBER',
@@ -40,9 +27,7 @@ const NO_STOCK = [
   'BAD_SERVICE',
   'BAD_COUNTRY',
 ];
-/** getNumber responses that mean "our price cap was below the market price". */
 const PRICE_ERRORS = ['WRONG_MAX_PRICE', 'MAX_PRICE', 'WRONG_MAXPRICE'];
-/** Anything here => credentials/config problem, not a stock problem. */
 const AUTH_ERRORS = ['BAD_KEY', 'ERROR_SQL', 'BANNED', 'BAD_ACTION', 'ERROR_NO_KEY'];
 
 export async function activateGet(

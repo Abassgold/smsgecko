@@ -6,16 +6,16 @@ import {
   reorderProvidersBody,
   updateProviderBody,
 } from '../../lib/validation/admin/providers.schema.js';
-import * as providers from '../../controllers/admin/providers.controller.js';
+import { create, getOne, list, remove, reorder, test, update } from '../../controllers/admin/providers.controller.js';
 
 const router = Router();
 
-router.get('/', providers.list);
-router.post('/', validate(createProviderBody), providers.create);
-router.post('/reorder', validate(reorderProvidersBody), providers.reorder);
-router.get('/:id', validate(idParams, 'params'), providers.getOne);
-router.patch('/:id', validate(idParams, 'params'), validate(updateProviderBody), providers.update);
-router.delete('/:id', validate(idParams, 'params'), providers.remove);
-router.post('/:id/test', validate(idParams, 'params'), providers.test);
+router.get('/', list);
+router.post('/', validate(createProviderBody), create);
+router.post('/reorder', validate(reorderProvidersBody), reorder);
+router.get('/:id', validate(idParams, 'params'), getOne);
+router.patch('/:id', validate(idParams, 'params'), validate(updateProviderBody), update);
+router.delete('/:id', validate(idParams, 'params'), remove);
+router.post('/:id/test', validate(idParams, 'params'),test);
 
 export default router;

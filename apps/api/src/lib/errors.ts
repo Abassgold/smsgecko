@@ -1,8 +1,3 @@
-/**
- * Application errors carry an HTTP status and a stable machine-readable code.
- * The Express error handler in app.ts turns these into the shared
- * `errorResponse` shape: { error: { code, message, details? } }.
- */
 export class AppError extends Error {
   readonly statusCode: number;
   readonly code: string;

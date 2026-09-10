@@ -27,6 +27,7 @@ export const register = asyncHandler(async (req, res) => {
   res.status(201).json({ user: toPublicUser(user) });
 });
 
+
 export const login = asyncHandler(async (req, res) => {
   const { identifier, password } = req.body as LoginBody;
   const user = await authenticate(identifier, password);
