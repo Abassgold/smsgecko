@@ -34,6 +34,20 @@ describe('v2 API (Bearer)', () => {
     expect(bad.statusCode).toBe(401);
   });
 
+  it('403s a valid key on a suspended account', async () => {
+    const { userId } = await makeUser(app);
+    const key = await keyFor(userId);
+    await User.updateOne({ _id: userId }, { $set: { status: 'suspended' } });
+
+    const res = await inject({
+      method: 'GET',
+      url: '/api/v2/orders/active',
+      headers: { authorization: `Bearer ${key}` },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('forbidden');
+  });
+
   it('lists catalog products with string prices', async () => {
     const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 500_000, stock: 7 });
     const { userId } = await makeUser(app);

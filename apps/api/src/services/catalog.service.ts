@@ -124,8 +124,6 @@ export async function priceTiers(
       operator: t.operator ?? null,
     }))
     .sort((a, b) => a.rawPriceMicro - b.rawPriceMicro);
-  // Collapse true duplicates (same raw price AND same operator); keep distinct
-  // operators that happen to charge the same.
   const seen = new Set<string>();
   return tiers.filter((t) => {
     const k = `${t.rawPriceMicro}:${t.operator ?? ''}`;
@@ -236,14 +234,16 @@ export async function resolveForOrder(
   countryCode: string,
   settings: ResolvedSettings,
   tierIndex?: number,
+  operator?: string,
 ): Promise<ResolvedOrderCatalog | null> {
-  const tiers = await priceTiers(serviceCode, countryCode, settings);
-  // A specific tier was chosen (offerId) — use exactly that one; otherwise the
-  // cheapest tier that isn't explicitly out of stock.
+  const allTiers = await priceTiers(serviceCode, countryCode, settings);
+  // `operator` narrows to one carrier and then takes the cheapest in-stock tier
+  // (a tierIndex from an offerId indexes the full list, so it's ignored here).
+  const tiers = operator ? allTiers.filter((t) => t.operator === operator) : allTiers;
   const pick =
-    tierIndex != null
+    !operator && tierIndex != null
       ? (tiers[tierIndex] ?? null)
-      : (tiers.find((t) => t.stock == null || t.stock > 0) ?? null);
+      : (tiers.find((t) => t.stock == null || t.stock > 0) ?? tiers[0] ?? null);
   if (!pick || (pick.stock != null && pick.stock <= 0)) return null;
 
   const [svcList, ctryList] = await Promise.all([services(), countries()]);

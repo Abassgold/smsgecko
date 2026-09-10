@@ -75,6 +75,12 @@ export async function createV2Order(
     throw badRequest('max_price must be a decimal string, e.g. "0.50"');
   }
 
-  // The product id IS the offer id — it carries the chosen tier.
-  return createOrder(apiUser, { offerId: productId, maxPriceMicro, idempotencyKey });
+  // The product id IS the offer id — it carries the chosen tier. `operator_id`,
+  // when given, overrides that and picks the cheapest tier for the carrier.
+  return createOrder(apiUser, {
+    offerId: productId,
+    operator: body.operator_id || undefined,
+    maxPriceMicro,
+    idempotencyKey,
+  });
 }

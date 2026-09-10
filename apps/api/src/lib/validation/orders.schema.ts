@@ -10,6 +10,8 @@ export const createOrderBody = yup
     /** The active provider's service / country codes (from the catalog endpoints). */
     serviceId: yup.string().trim().min(1).max(64).optional(),
     countryId: yup.string().trim().min(1).max(64).optional(),
+    /** Pin a carrier (OperatorView.id) — cheapest in-stock tier for it. */
+    operator: yup.string().trim().max(64).optional(),
     /** Refuse if the current price is above this (micro-USD, after markup). */
     maxPriceMicro: yup.number().integer().positive().optional(),
     /** Retry-safe create: same key for the same user returns the same order. */

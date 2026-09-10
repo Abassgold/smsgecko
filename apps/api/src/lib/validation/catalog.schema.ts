@@ -1,5 +1,7 @@
 import * as yup from 'yup';
 
+/** Query schemas for the /api/v1/catalog/* endpoints. */
+
 export const catalogSearchQuery = yup.object({
   q: yup.string().trim().max(64).optional(),
   // Omit to get the active provider's FULL list (services can be 1000s of rows).

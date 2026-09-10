@@ -63,7 +63,7 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
 
   // Price the service×country against the active (top-enabled) provider.
   if (!(await getCatalogProvider())) throw conflict('No SMS provider is enabled');
-  const cat = await resolveForOrder(serviceCode, countryCode, settings, tierIndex);
+  const cat = await resolveForOrder(serviceCode, countryCode, settings, tierIndex, body.operator);
   if (!cat) {
     throw conflict('No numbers available for that service and country right now');
   }

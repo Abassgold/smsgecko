@@ -11,6 +11,12 @@ export interface CreateOrderBody {
   serviceId?: string;
   /** The active provider's country code (from GET /v1/catalog/countries `.id`). */
   countryId?: string;
+  /**
+   * Pin a carrier (an `OperatorView.id` from GET /catalog/operators). When set,
+   * the cheapest in-stock tier for that operator is bought and any tier index in
+   * `offerId` is ignored.
+   */
+  operator?: string;
   /** Refuse if the current price is above this (micro-USD, after markup). */
   maxPriceMicro?: number;
   /** Retry-safe create: same key for the same user returns the same order. */

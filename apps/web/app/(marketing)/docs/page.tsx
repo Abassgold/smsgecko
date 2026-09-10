@@ -200,7 +200,9 @@ export default function DocsPage() {
           <Section id="overview" title="Overview">
             <p>
               The API is versioned under <code>/api/v2</code>. Responses are JSON. Money is a
-              decimal USD string (<code>&quot;0.50&quot;</code>). Timestamps are ISO 8601 UTC.
+              decimal USD string with variable precision (<code>&quot;0.5&quot;</code>,{' '}
+              <code>&quot;0.425&quot;</code>) — parse it, don&apos;t assume two places. Timestamps
+              are ISO 8601 UTC.
             </p>
             <p>
               Typical integration: list <a href="#list-products" className="text-accent">products</a>{' '}
@@ -221,8 +223,8 @@ export default function DocsPage() {
               tabs={[curl('cURL', `curl ${BASE}/api/v2/orders/active \\\n  -H "Authorization: Bearer smsg_live_xxxxxxxxxxxx"`)]}
             />
             <p className="text-sm text-faint">
-              A missing or invalid key returns <code>401 unauthorized</code>. A well-formed key
-              for a disabled account returns <code>403 forbidden</code>.
+              A missing or invalid key returns <code>401 unauthorized</code>. A valid key for a
+              suspended account returns <code>403 forbidden</code>.
             </p>
           </Section>
 
@@ -251,9 +253,11 @@ export default function DocsPage() {
             <Params
               rows={[
                 ['400 bad_request', 'error', 'Malformed body / query. `details` carries the field messages.'],
+                ['400 invalid_json', 'error', 'Request body is not valid JSON.'],
+                ['400 invalid id', 'error', 'The `:id` in the path is not a 24-hex order id.'],
                 ['401 unauthorized', 'error', 'Missing or invalid Bearer token.'],
                 ['402 insufficient_balance', 'error', 'Wallet balance is below the order price.'],
-                ['403 forbidden', 'error', 'Account suspended.'],
+                ['403 forbidden', 'error', 'API key belongs to a suspended account.'],
                 ['404 not_found', 'error', 'No order with that id under your account.'],
                 ['409 conflict', 'error', 'No stock, order already resolved, provider can’t resend/reactivate, …'],
                 ['422 unprocessable', 'error', 'Price moved above `max_price`, or the tier is gone.'],
@@ -347,9 +351,12 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
           <Section id="list-products" title="List products">
             <Endpoint method="GET" path="/api/v2/catalog/products" />
             <p>
-              One product per price tier of a service×country, cheapest first. Without{' '}
-              <code>service</code> you get a bare service list (discovery only, <code>price</code>{' '}
-              <code>&quot;0&quot;</code>); with it, real priced rows.
+              One product per price tier of a service×country, cheapest first — pass a row&apos;s{' '}
+              <code>id</code> to <a href="#create-order" className="text-accent">POST /orders</a>.
+              Without <code>service</code> you instead get a bare service list for discovery
+              (<code>price</code> <code>&quot;0&quot;</code>, <code>stock 0</code>, <code>id</code>{' '}
+              is just the service code — <b>not orderable</b>). Query with <code>?service=</code> to
+              get real, buyable rows.
             </p>
             <Params
               rows={[
@@ -392,7 +399,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
               rows={[
                 ['catalog_product_id', 'string', 'A product `id` from /catalog/products. (`product_id` is accepted too.)'],
                 ['max_price', 'string?', 'Decimal USD cap — 422 if the live price exceeds it.'],
-                ['operator_id', 'string?', 'Pin a specific upstream operator.'],
+                ['operator_id', 'string?', 'Pin a carrier: buys the cheapest in-stock tier for it, overriding any tier index in `catalog_product_id`.'],
                 ['Idempotency-Key', 'header?', '8–128 chars — replay-safe create.'],
               ]}
             />
@@ -503,7 +510,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
                 ['country', 'string', 'Display name.'],
                 ['country_code', 'string', 'Provider country code.'],
                 ['operator', 'string | null', 'Upstream operator, when distinguished.'],
-                ['price', 'string', 'Decimal USD, markup applied.'],
+                ['price', 'string', 'Decimal USD, markup applied. Variable precision — "0.5", "0.425".'],
                 ['stock', 'number', 'Reported availability (0 = unknown / none).'],
               ]}
             />
