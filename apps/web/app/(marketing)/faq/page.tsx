@@ -4,7 +4,12 @@ import { Section } from '@/components/ui/section';
 import { Accordion, type QA } from '@/components/ui/accordion';
 import { FAQ } from '@/components/marketing/content';
 
-export const metadata: Metadata = { title: 'FAQ' };
+export const metadata: Metadata = {
+  title: 'FAQ',
+  description:
+    'Answers to common questions about SMSGecko: billing, refunds, delivery windows, and how OTP verification numbers work.',
+  alternates: { canonical: '/faq' },
+};
 
 const MORE: QA[] = [
   {

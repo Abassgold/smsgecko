@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { Geist, Geist_Mono, Space_Grotesk } from 'next/font/google';
 import { Providers } from './providers';
@@ -12,13 +12,69 @@ const display = Space_Grotesk({
   variable: '--font-display',
 });
 
+const SITE_URL = 'https://smsgecko.com';
+const SITE_NAME = 'SMSGecko';
+const DESCRIPTION =
+  'Buy virtual numbers for OTP & verification — fast activation, clean stock, global coverage. Use it via API or dashboard for WhatsApp, Telegram, Gmail, and more.';
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: {
     default: 'SMSGecko — Virtual Numbers for OTP & Verification',
     template: '%s — SMSGecko',
   },
-  description:
-    'Buy virtual numbers for OTP & verification — fast activation, clean stock, global coverage. Use it via API or dashboard for WhatsApp, Telegram, Gmail, and more.',
+  description: DESCRIPTION,
+  keywords: [
+    'virtual number for OTP',
+    'SMS verification API',
+    'temporary phone number',
+    'receive SMS online',
+    'virtual number for WhatsApp',
+    'virtual number for Telegram',
+    'bulk SMS verification',
+  ],
+  applicationName: SITE_NAME,
+  alternates: { canonical: '/' },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, 'max-image-preview': 'large' },
+  },
+  openGraph: {
+    type: 'website',
+    url: '/',
+    siteName: SITE_NAME,
+    title: 'SMSGecko — Virtual Numbers for OTP & Verification',
+    description: DESCRIPTION,
+    locale: 'en_US',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'SMSGecko — Virtual Numbers for OTP & Verification',
+    description: DESCRIPTION,
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#07090b',
+};
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      name: SITE_NAME,
+      url: SITE_URL,
+      logo: `${SITE_URL}/icon`,
+      description: DESCRIPTION,
+    },
+    {
+      '@type': 'WebSite',
+      name: SITE_NAME,
+      url: SITE_URL,
+    },
+  ],
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -31,6 +87,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <div className="page-backdrop" aria-hidden />
         <Providers>{children}</Providers>
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
       </body>
     </html>
   );

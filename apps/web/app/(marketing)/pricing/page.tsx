@@ -6,7 +6,12 @@ import { Card } from '@/components/ui/card';
 import { StatRow } from '@/components/ui/stat';
 import { Accordion } from '@/components/ui/accordion';
 
-export const metadata: Metadata = { title: 'Pricing' };
+export const metadata: Metadata = {
+  title: 'Pricing',
+  description:
+    'Pay-as-you-go pricing for virtual verification numbers — no subscriptions. See live per-service, per-country rates for WhatsApp, Telegram, Instagram, and more.',
+  alternates: { canonical: '/pricing' },
+};
 
 const SAMPLE = [
   ['WhatsApp', '🇮🇩 Indonesia', '$0.103'],

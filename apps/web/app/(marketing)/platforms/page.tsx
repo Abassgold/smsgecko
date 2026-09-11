@@ -4,7 +4,12 @@ import { Section } from '@/components/ui/section';
 import { Button } from '@/components/ui/button';
 import { PlatformGrid } from './platform-grid';
 
-export const metadata: Metadata = { title: 'Supported Platforms' };
+export const metadata: Metadata = {
+  title: 'Supported Platforms',
+  description:
+    'Receive verification codes for 1,000+ platforms across 200+ countries — messaging apps, social networks, marketplaces, finance apps, and AI tools.',
+  alternates: { canonical: '/platforms' },
+};
 
 export default function PlatformsPage() {
   return (

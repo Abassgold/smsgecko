@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { Container } from '@/components/ui/container';
 import { Section, SectionHeading } from '@/components/ui/section';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,10 @@ import {
   TESTIMONIALS,
   WHAT_IT_DOES,
 } from '@/components/marketing/content';
+
+export const metadata: Metadata = {
+  alternates: { canonical: '/' },
+};
 
 export default function LandingPage() {
   return (
