@@ -11,7 +11,9 @@ services:
     plan: starter
     region: frankfurt # closest Render region to Nigeria/target users
     branch: main
-    buildCommand: npm ci && npm run build -w @smsgecko/api
+    # --include=dev: NODE_ENV=production (set below, and Render's own default)
+    # makes plain `npm ci` skip devDependencies, but tsup (the build tool) is one.
+    buildCommand: npm ci --include=dev && npm run build -w @smsgecko/api
     startCommand: npm run start -w @smsgecko/api
     healthCheckPath: /health
     envVars:
