@@ -1,0 +1,51 @@
+# Render Blueprint for the API. Deploy: Render dashboard -> New -> Blueprint ->
+# point at this repo. Web (apps/web) is NOT here — that goes to Vercel, which
+# reads this same repo with its Root Directory set to apps/web.
+#
+# Secrets (marked sync: false below) are never committed — Render prompts for
+# them in the dashboard on first deploy and keeps them out of this file.
+services:
+  - type: web
+    name: smsgecko-api
+    runtime: node
+    plan: starter
+    region: frankfurt # closest Render region to Nigeria/target users
+    branch: main
+    buildCommand: npm ci && npm run build -w @smsgecko/api
+    startCommand: npm run start -w @smsgecko/api
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: WEB_ORIGIN
+        sync: false # https://<your-vercel-domain>
+      - key: MONGODB_URI
+        sync: false # Atlas prod connection string
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: ACCESS_TOKEN_TTL
+        value: 15m
+      - key: REFRESH_TOKEN_TTL
+        value: 7d
+      - key: COOKIE_SECURE
+        value: 'true'
+      - key: SETTINGS_ENC_KEY
+        sync: false # base64, 32 bytes — node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+      - key: PAYMENTS_MOCK
+        value: 'true' # flip to false once a real PSP is wired
+      - key: ORDER_TTL_SECONDS
+        value: '1200'
+      - key: WORKERS_ENABLED
+        value: 'true'
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false # e.g. SMSGecko <noreply@yourverifieddomain>
+      - key: APP_URL
+        sync: false # https://<your-vercel-domain>
+      - key: EMAIL_VERIFICATION_TTL_MINUTES
+        value: '5'
