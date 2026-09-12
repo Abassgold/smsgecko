@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 
 export interface CodeTab {
@@ -9,10 +9,29 @@ export interface CodeTab {
   code: string;
 }
 
-export function CodeBlock({ tabs, title }: { tabs: CodeTab[]; title?: string }) {
+/** Small caps label sitting above a code block, e.g. "Example request". */
+export function CodeLabel({ children }: { children: ReactNode }) {
+  return (
+    <div className="text-[11px] font-semibold uppercase tracking-widest text-faint">
+      {children}
+    </div>
+  );
+}
+
+export function CodeBlock({
+  tabs,
+  title,
+  status,
+}: {
+  tabs: CodeTab[];
+  title?: string;
+  /** HTTP status line shown as a colored pill, e.g. "200 OK", "402 Payment Required". */
+  status?: string;
+}) {
   const [active, setActive] = useState(0);
   const [copied, setCopied] = useState(false);
   const current = tabs[active]!;
+  const statusOk = status ? /^[23]/.test(status) : false;
 
   const copy = async () => {
     try {
@@ -32,7 +51,16 @@ export function CodeBlock({ tabs, title }: { tabs: CodeTab[]; title?: string }) 
           <span className="h-2.5 w-2.5 rounded-full bg-[#d9a441]" />
           <span className="h-2.5 w-2.5 rounded-full bg-[#46b17b]" />
         </span>
-        {title ? (
+        {status ? (
+          <span
+            className={cn(
+              'rounded-md px-2 py-0.5 font-mono text-[11px] font-bold',
+              statusOk ? 'text-success' : 'text-danger',
+            )}
+          >
+            {status}
+          </span>
+        ) : title ? (
           <span className="text-[11px] uppercase tracking-widest text-faint">{title}</span>
         ) : null}
         <div className="ml-auto flex items-center gap-1">
