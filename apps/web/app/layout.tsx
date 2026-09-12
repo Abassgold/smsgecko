@@ -35,6 +35,9 @@ export const metadata: Metadata = {
   ],
   applicationName: SITE_NAME,
   alternates: { canonical: '/' },
+  // Google Search Console site-ownership verification (HTML tag method).
+  // Keep this even after verification succeeds — removing it drops ownership.
+  verification: { google: 'krc2GEwG_z_L9f1UQx-qQPidSAK3aLFGK-_1nUJX-sw' },
   robots: {
     index: true,
     follow: true,
