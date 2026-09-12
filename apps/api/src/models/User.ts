@@ -16,6 +16,12 @@ const userSchema = new Schema(
     /** Version string of the affiliate terms the user has accepted, or null. */
     affiliateTermsVersion: { type: String, default: null },
     referredBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+
+    /** Order-event webhook (single endpoint per account). Secret is stored in the
+     *  clear — unlike an API key it authenticates *us to them*, not the reverse,
+     *  and GET /webhook must be able to show it back. */
+    webhookUrl: { type: String, default: null },
+    webhookSecret: { type: String, default: null },
   },
   { timestamps: true },
 );

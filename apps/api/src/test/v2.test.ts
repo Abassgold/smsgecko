@@ -45,7 +45,37 @@ describe('v2 API (Bearer)', () => {
       headers: { authorization: `Bearer ${key}` },
     });
     expect(res.statusCode).toBe(403);
+    expect(res.json().success).toBe(false);
     expect(res.json().error.code).toBe('forbidden');
+  });
+
+  it('404s an unknown v2 route with the same envelope', async () => {
+    const { userId } = await makeUser(app);
+    const key = await keyFor(userId);
+
+    const res = await inject({
+      method: 'GET',
+      url: '/api/v2/nope',
+      headers: { authorization: `Bearer ${key}` },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({
+      success: false,
+      error: { code: 'not_found', message: 'Route GET /api/v2/nope not found' },
+    });
+  });
+
+  it('returns the wallet balance as a decimal USD string', async () => {
+    const { userId } = await makeUser(app, { balanceMicro: 1_250_000 });
+    const key = await keyFor(userId);
+
+    const res = await inject({
+      method: 'GET',
+      url: '/api/v2/balance',
+      headers: { authorization: `Bearer ${key}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ success: true, data: { balance: '1.25' } });
   });
 
   it('lists catalog products with string prices', async () => {
@@ -59,6 +89,7 @@ describe('v2 API (Bearer)', () => {
       headers: { authorization: `Bearer ${key}` },
     });
     expect(res.statusCode).toBe(200);
+    expect(res.json().success).toBe(true);
     const found = res
       .json()
       .data.find((p: { id: string }) => p.id === `${serviceCode}::${countryCode}`);
@@ -79,9 +110,10 @@ describe('v2 API (Bearer)', () => {
       payload: { catalog_product_id: productId, max_price: '0.50' },
     });
     expect(created.statusCode).toBe(201);
-    const orderId = created.json().id as string;
-    expect(created.json().status).toBe('waiting');
-    expect(created.json().price).toBe('0.2');
+    expect(created.json().success).toBe(true);
+    const orderId = created.json().data.id as string;
+    expect(created.json().data.status).toBe('waiting');
+    expect(created.json().data.price).toBe('0.2');
 
     // idempotent
     const again = await inject({
@@ -90,7 +122,7 @@ describe('v2 API (Bearer)', () => {
       headers: { authorization: `Bearer ${key}`, 'idempotency-key': 'v2-key-abc123' },
       payload: { catalog_product_id: productId },
     });
-    expect(again.json().id).toBe(orderId);
+    expect(again.json().data.id).toBe(orderId);
 
     await simulateOtp(orderId);
 
@@ -99,9 +131,9 @@ describe('v2 API (Bearer)', () => {
       url: `/api/v2/orders/${orderId}`,
       headers: { authorization: `Bearer ${key}` },
     });
-    expect(polled.json().status).toBe('completed');
-    expect(polled.json().otp_code).toMatch(/^\d{4,8}$/);
-    expect(polled.json().sms).toHaveLength(1);
+    expect(polled.json().data.status).toBe('completed');
+    expect(polled.json().data.otp_code).toMatch(/^\d{4,8}$/);
+    expect(polled.json().data.sms).toHaveLength(1);
 
     const finished = await inject({
       method: 'POST',
@@ -109,7 +141,7 @@ describe('v2 API (Bearer)', () => {
       headers: { authorization: `Bearer ${key}` },
     });
     expect(finished.statusCode).toBe(200);
-    expect(finished.json().finished_at).toBeTruthy();
+    expect(finished.json().data.finished_at).toBeTruthy();
   });
 
   it('rejects max_price below the offer price', async () => {
@@ -137,7 +169,7 @@ describe('v2 API (Bearer)', () => {
       headers: { authorization: `Bearer ${key}` },
       payload: { product_id: `${serviceCode}::${countryCode}` },
     });
-    const orderId = created.json().id as string;
+    const orderId = created.json().data.id as string;
 
     const canceled = await inject({
       method: 'POST',
@@ -145,7 +177,7 @@ describe('v2 API (Bearer)', () => {
       headers: { authorization: `Bearer ${key}` },
     });
     expect(canceled.statusCode).toBe(200);
-    expect(canceled.json().status).toBe('canceled');
+    expect(canceled.json().data.status).toBe('canceled');
     expect((await User.findById(userId))!.balanceMicro).toBe(1_000_000);
   });
 

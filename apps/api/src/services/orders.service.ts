@@ -14,6 +14,7 @@ import { getSettings } from '../lib/settings.js';
 import { parseOfferId } from '../lib/catalog.js';
 import { debit } from '../lib/ledger.js';
 import { applyOtpToOrder, refundWaitingOrder } from '../lib/orderLifecycle.js';
+import { dispatchWebhook } from '../lib/webhooks.js';
 import { holdRemainingSeconds, minHoldSecondsFor } from '../lib/providerPolicy.js';
 import {
   badRequest,
@@ -127,6 +128,7 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
         created = doc;
       });
       if (!created) throw new Error('order creation returned no document');
+      void dispatchWebhook(user, 'order.created', created);
       return { order: created, reused: false };
     } catch (err) {
       // Order never persisted — hand the rented number back to the provider.
@@ -173,6 +175,7 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
     throw err;
   }
 
+  void dispatchWebhook(user, 'order.created', doc);
   return { order: doc, reused: false };
 }
 

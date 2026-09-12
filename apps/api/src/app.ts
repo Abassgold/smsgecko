@@ -4,10 +4,9 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import { pinoHttp } from 'pino-http';
-import { ZodError } from 'zod';
 import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
-import { AppError } from './lib/errors.js';
+import { classifyError } from './lib/errors.js';
 import { attachUser } from './middleware/auth.js';
 import authRoutes from './routes/auth.routes.js';
 import apiKeyRoutes from './routes/apikeys.routes.js';
@@ -84,50 +83,8 @@ const notFoundHandler: RequestHandler = (req, res) => {
 };
 
 const errorHandler: ErrorRequestHandler = (error: unknown, req, res, _next) => {
-  const e = error as {
-    message?: string;
-    name?: string;
-    code?: string;
-    type?: string;
-    status?: number;
-    statusCode?: number;
-    issues?: unknown;
-  };
-
-  if (error instanceof AppError) {
-    return res.status(error.statusCode).json({
-      error: { code: error.code, message: error.message, details: error.details },
-    });
-  }
-
-  if (error instanceof ZodError || e.name === 'ZodError') {
-    return res.status(400).json({
-      error: { code: 'validation_error', message: 'Request validation failed', details: e.issues },
-    });
-  }
-
-  // Body parser: malformed JSON payload.
-  if (error instanceof SyntaxError && e.type === 'entity.parse.failed') {
-    return res.status(400).json({
-      error: { code: 'invalid_json', message: 'Request body is not valid JSON' },
-    });
-  }
-
-  const status = e.status ?? e.statusCode;
-
-  if (status === 429) {
-    return res.status(429).json({ error: { code: 'rate_limited', message: 'Too many requests' } });
-  }
-
-  // Honor other library 4xx errors (payload too large, bad content-type, …).
-  if (typeof status === 'number' && status >= 400 && status < 500) {
-    return res.status(status).json({
-      error: {
-        code: typeof e.code === 'string' ? e.code.toLowerCase() : 'bad_request',
-        message: e.message ?? 'Bad request',
-      },
-    });
-  }
+  const classified = classifyError(error);
+  if (classified) return res.status(classified.status).json({ error: classified.body });
 
   (req.log ?? logger).error({ err: error }, 'unhandled error');
   return res.status(500).json({

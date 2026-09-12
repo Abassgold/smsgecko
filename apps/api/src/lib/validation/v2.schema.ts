@@ -28,3 +28,13 @@ export const v2CreateOrderBody = yup.object({
   max_price: yup.string().optional(),
   quantity: yup.number().integer().min(1).max(1).optional(),
 });
+
+export const v2PatchWebhookBody = yup.object({
+  // Explicit `null` clears the webhook (and its secret); omit to leave as-is.
+  webhook_url: yup.string().url('webhook_url must be a valid URL').nullable().optional(),
+  webhook_secret: yup.string().min(16, 'webhook_secret must be at least 16 characters').max(128).optional(),
+});
+export interface V2PatchWebhookBody {
+  webhook_url?: string | null;
+  webhook_secret?: string;
+}

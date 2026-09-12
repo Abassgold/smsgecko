@@ -1,8 +1,12 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import argon2 from 'argon2';
 
 export function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex');
+}
+
+export function hmacSha256Hex(secret: string, payload: string): string {
+  return createHmac('sha256', secret).update(payload).digest('hex');
 }
 
 export function randomToken(bytes = 32): string {

@@ -1,10 +1,19 @@
 import { Order, type OrderDoc } from '../models/Order.js';
 import { SmsMessage } from '../models/SmsMessage.js';
 import { notify } from '../models/Notification.js';
+import { User } from '../models/User.js';
 import { getProviderForOrder, recordOtpReceived } from '../providers/sms/registry.js';
 import type { PollMessage } from '../providers/sms/types.js';
 import { parseOtp } from './smsTemplates.js';
 import { credit } from './ledger.js';
+import { dispatchWebhook, type WebhookEvent } from './webhooks.js';
+
+/** Fire-and-forget: never let a webhook delivery affect the caller. */
+function fireWebhook(order: OrderDoc, event: WebhookEvent): void {
+  void User.findById(order.userId).then((user) => {
+    if (user) void dispatchWebhook(user, event, order);
+  });
+}
 
 /**
  * Apply a provider-delivered OTP to a still-`waiting` order: mark it completed,
@@ -46,6 +55,7 @@ export async function applyOtpToOrder(
     otp ? `Your code is ${otp}.` : 'A message arrived for your number.',
     updated._id,
   );
+  fireWebhook(updated, 'order.completed');
 
   return updated;
 }
@@ -94,6 +104,7 @@ export async function refundWaitingOrder(
       order._id,
     );
   }
+  fireWebhook(order, to === 'expired' ? 'order.expired' : 'order.canceled');
 
   return order;
 }
