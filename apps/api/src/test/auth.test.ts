@@ -49,7 +49,7 @@ describe('auth', () => {
     await registerUser('dupe@test.dev');
     const res = await registerUser('dupe@test.dev');
     expect(res.statusCode).toBe(409);
-    expect(res.json().error.code).toBe('conflict');
+    expect(res.json().error.code).toBe('CONFLICT');
   });
 
   it('rejects weak password with 400', async () => {

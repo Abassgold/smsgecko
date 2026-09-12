@@ -96,7 +96,7 @@ describe('orders', () => {
 
     const res = await buy(cookie, { serviceId: service.id, countryId: country.id });
     expect(res.statusCode).toBe(402);
-    expect(res.json().error.code).toBe('insufficient_balance');
+    expect(res.json().error.code).toBe('INSUFFICIENT_BALANCE');
     expect((await User.findById(userId))!.balanceMicro).toBe(100_000);
     expect(await Order.countDocuments({ userId })).toBe(0);
   });

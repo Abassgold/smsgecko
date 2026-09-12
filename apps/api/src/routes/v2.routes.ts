@@ -38,7 +38,7 @@ router.post('/webhook/test', testWebhookHandler);
 const notFound: RequestHandler = (req, res) => {
   res.status(404).json({
     success: false,
-    error: { code: 'not_found', message: `Route ${req.method} ${req.originalUrl} not found` },
+    error: { code: 'NOT_FOUND', message: `Route ${req.method} ${req.originalUrl} not found` },
   });
 };
 
@@ -51,7 +51,7 @@ const v2ErrorHandler: ErrorRequestHandler = (error: unknown, req, res, _next) =>
   (req.log ?? logger).error({ err: error }, 'unhandled error');
   return res.status(500).json({
     success: false,
-    error: { code: 'internal_error', message: 'Something went wrong' },
+    error: { code: 'INTERNAL_ERROR', message: 'Something went wrong' },
   });
 };
 

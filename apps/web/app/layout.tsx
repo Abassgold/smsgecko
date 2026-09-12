@@ -35,8 +35,6 @@ export const metadata: Metadata = {
   ],
   applicationName: SITE_NAME,
   alternates: { canonical: '/' },
-  // Google Search Console site-ownership verification (HTML tag method).
-  // Keep this even after verification succeeds — removing it drops ownership.
   verification: { google: 'krc2GEwG_z_L9f1UQx-qQPidSAK3aLFGK-_1nUJX-sw' },
   robots: {
     index: true,
@@ -89,10 +87,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <div className="page-backdrop" aria-hidden />
-        <Providers>{children}</Providers>
+        <Providers>
+          {/* {children} */}
+          <div className='text-center text-4xl'>
+            Coming soon ...
+          </div>
+        </Providers>
         <script
           type="application/ld+json"
-          // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </body>

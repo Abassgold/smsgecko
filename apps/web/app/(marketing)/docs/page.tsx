@@ -16,6 +16,7 @@ const NAV: { group: string; items: { id: string; label: string }[] }[] = [
       { id: 'overview', label: 'Overview' },
       { id: 'auth', label: 'Authentication' },
       { id: 'base-url', label: 'Base URL' },
+      { id: 'response-format', label: 'Response format' },
       { id: 'idempotency', label: 'Idempotency' },
       { id: 'errors', label: 'Errors' },
       { id: 'rate-limits', label: 'Rate limits' },
@@ -158,15 +159,21 @@ function Endpoint({ method, path }: { method: string; path: string }) {
   );
 }
 
-function Params({ rows }: { rows: [string, string, string][] }) {
+function Params({
+  rows,
+  headers = ['Field', 'Type', 'Notes'],
+}: {
+  rows: [string, string, string][];
+  headers?: [string, string, string];
+}) {
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
       <table className="w-full min-w-[560px] text-left text-sm">
         <thead>
           <tr className="border-b border-border text-[11px] uppercase tracking-widest text-faint">
-            <th className="px-4 py-2.5 font-medium">Field</th>
-            <th className="px-4 py-2.5 font-medium">Type</th>
-            <th className="px-4 py-2.5 font-medium">Notes</th>
+            <th className="px-4 py-2.5 font-medium">{headers[0]}</th>
+            <th className="px-4 py-2.5 font-medium">{headers[1]}</th>
+            <th className="px-4 py-2.5 font-medium">{headers[2]}</th>
           </tr>
         </thead>
         <tbody>
@@ -213,11 +220,11 @@ export default function DocsPage() {
           <Section id="overview" title="Overview">
             <p>
               The API is versioned under <code>/api/v2</code>. Every response is JSON with a{' '}
-              <code>success</code> boolean at the top: <code>{'{ "success": true, "data": ... }'}</code>{' '}
-              on success, <code>{'{ "success": false, "error": {...} }'}</code> on failure — see{' '}
-              <a href="#errors" className="text-accent">Errors</a>. Money is a decimal USD string
-              with variable precision (<code>&quot;0.5&quot;</code>, <code>&quot;0.425&quot;</code>)
-              — parse it, don&apos;t assume two places. Timestamps are ISO 8601 UTC.
+              <code>success</code> boolean at the top — see{' '}
+              <a href="#response-format" className="text-accent">Response format</a>. Money is a
+              decimal USD string with variable precision (<code>&quot;0.5&quot;</code>,{' '}
+              <code>&quot;0.425&quot;</code>) — parse it, don&apos;t assume two places. Timestamps
+              are ISO 8601 UTC.
             </p>
             <p>
               Typical integration: list <a href="#list-products" className="text-accent">products</a>{' '}
@@ -238,8 +245,8 @@ export default function DocsPage() {
               tabs={[curl('cURL', `curl ${BASE}/api/v2/orders/active \\\n  -H "Authorization: Bearer smsg_live_xxxxxxxxxxxx"`)]}
             />
             <p className="text-sm text-faint">
-              A missing or invalid key returns <code>401 unauthorized</code>. A valid key for a
-              suspended account returns <code>403 forbidden</code>.
+              A missing or invalid key returns <code>401 UNAUTHORIZED</code>. A valid key for a
+              suspended account returns <code>403 FORBIDDEN</code>.
             </p>
           </Section>
 
@@ -252,6 +259,46 @@ export default function DocsPage() {
             />
           </Section>
 
+          <Section id="response-format" title="Response format">
+            <p>
+              Every response is JSON with a top-level <code>success</code> boolean — check it
+              before touching <code>data</code>.
+            </p>
+            <CodeLabel>Success</CodeLabel>
+            <CodeBlock
+              tabs={[
+                curl(
+                  'JSON',
+                  `{
+  "success": true,
+  "data": { ... }
+}`,
+                ),
+              ]}
+            />
+            <CodeLabel>Error</CodeLabel>
+            <CodeBlock
+              tabs={[
+                curl(
+                  'JSON',
+                  `{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable message"
+  }
+}`,
+                ),
+              ]}
+            />
+            <p className="text-sm text-faint">
+              <code>error.code</code> is a stable machine-readable string (e.g.{' '}
+              <code>INSUFFICIENT_BALANCE</code>) — switch on it, not on{' '}
+              <code>error.message</code>, which can change. Full list in{' '}
+              <a href="#errors" className="text-accent">Errors</a>.
+            </p>
+          </Section>
+
           <Section id="idempotency" title="Idempotency">
             <p>
               <code>POST /orders</code> is retry-safe. Send an <code>Idempotency-Key</code> header
@@ -262,25 +309,29 @@ export default function DocsPage() {
 
           <Section id="errors" title="Errors">
             <p>
-              Failures use HTTP status codes and a consistent body:{' '}
-              <code>
-                {'{ "success": false, "error": { "code": string, "message": string, "details"?: unknown } }'}
-              </code>
-              . <code>success</code> is <code>true</code> on every 2xx response and{' '}
-              <code>false</code> on every error — check it before touching <code>data</code>.
+              Failures use HTTP status codes plus the{' '}
+              <a href="#response-format" className="text-accent">error envelope</a> above.{' '}
+              <code>error.code</code> is the stable, machine-readable field — switch on it, not on{' '}
+              <code>error.message</code>. <code>error.details</code> additionally carries
+              field-level messages on <code>BAD_REQUEST</code> from a failed body/query check.
             </p>
             <Params
+              headers={['Code', 'HTTP', 'Description']}
               rows={[
-                ['400 bad_request', 'error', 'Malformed body / query. `details` carries the field messages.'],
-                ['400 invalid_json', 'error', 'Request body is not valid JSON.'],
-                ['400 invalid id', 'error', 'The `:id` in the path is not a 24-hex order id.'],
-                ['401 unauthorized', 'error', 'Missing or invalid Bearer token.'],
-                ['402 insufficient_balance', 'error', 'Wallet balance is below the order price.'],
-                ['403 forbidden', 'error', 'API key belongs to a suspended account.'],
-                ['404 not_found', 'error', 'No order with that id under your account.'],
-                ['409 conflict', 'error', 'No stock, order already resolved, provider can’t resend/reactivate, …'],
-                ['422 unprocessable', 'error', 'Price moved above `max_price`, or the tier is gone.'],
-                ['429 rate_limited', 'error', 'Too many requests — back off and retry.'],
+                ['BAD_REQUEST', '400', 'Malformed request body/query, or an invalid `Idempotency-Key` header.'],
+                ['INVALID_JSON', '400', 'Request body is not valid JSON.'],
+                ['UNAUTHORIZED', '401', 'Missing or invalid Bearer token.'],
+                ['INSUFFICIENT_BALANCE', '402', 'Wallet balance is below the order or reactivation price.'],
+                ['FORBIDDEN', '403', 'API key belongs to a suspended account, or ordering is paused for maintenance.'],
+                ['NOT_FOUND', '404', 'No order with that id under your account, or the route doesn’t exist.'],
+                [
+                  'CONFLICT',
+                  '409',
+                  'No stock / no provider enabled, the order is already resolved, the post-purchase cancel lock hasn’t elapsed yet, or the provider can’t resend/reactivate.',
+                ],
+                ['UNPROCESSABLE', '422', 'The live price moved above your `max_price`.'],
+                ['RATE_LIMITED', '429', 'Too many requests — check the `RateLimit-Reset` header (seconds) and back off.'],
+                ['INTERNAL_ERROR', '500', 'Unexpected server error — safe to retry once.'],
               ]}
             />
           </Section>
@@ -896,7 +947,7 @@ app.post('/webhooks/smsgecko', express.raw({ type: 'application/json' }), (req, 
               ]}
             />
             <p className="text-sm text-faint">
-              <code>400 bad_request</code> if <code>webhook_url</code> isn&apos;t <code>https://</code>{' '}
+              <code>400 BAD_REQUEST</code> if <code>webhook_url</code> isn&apos;t <code>https://</code>{' '}
               or resolves to something like <code>localhost</code> or a private IP range.
             </p>
           </Section>

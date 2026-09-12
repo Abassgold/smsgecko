@@ -48,6 +48,13 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<Application>
       standardHeaders: true,
       legacyHeaders: false,
       skip: (req) => req.path === '/health',
+      // express-rate-limit's own default handler sends plain text and never
+      // reaches errorHandler/classifyError below — match their JSON shape here
+      // by hand so 429 isn't the one response in the whole API that isn't JSON.
+      handler: (req, res) => {
+        const body = { code: 'RATE_LIMITED', message: 'Too many requests' };
+        res.status(429).json(req.path.startsWith('/api/v2') ? { success: false, error: body } : { error: body });
+      },
     }),
   );
   app.use(attachUser);
@@ -78,7 +85,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<Application>
 
 const notFoundHandler: RequestHandler = (req, res) => {
   res.status(404).json({
-    error: { code: 'not_found', message: `Route ${req.method} ${req.originalUrl} not found` },
+    error: { code: 'NOT_FOUND', message: `Route ${req.method} ${req.originalUrl} not found` },
   });
 };
 
@@ -88,6 +95,6 @@ const errorHandler: ErrorRequestHandler = (error: unknown, req, res, _next) => {
 
   (req.log ?? logger).error({ err: error }, 'unhandled error');
   return res.status(500).json({
-    error: { code: 'internal_error', message: 'Something went wrong' },
+    error: { code: 'INTERNAL_ERROR', message: 'Something went wrong' },
   });
 };

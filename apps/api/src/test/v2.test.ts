@@ -46,7 +46,7 @@ describe('v2 API (Bearer)', () => {
     });
     expect(res.statusCode).toBe(403);
     expect(res.json().success).toBe(false);
-    expect(res.json().error.code).toBe('forbidden');
+    expect(res.json().error.code).toBe('FORBIDDEN');
   });
 
   it('404s an unknown v2 route with the same envelope', async () => {
@@ -61,7 +61,7 @@ describe('v2 API (Bearer)', () => {
     expect(res.statusCode).toBe(404);
     expect(res.json()).toEqual({
       success: false,
-      error: { code: 'not_found', message: 'Route GET /api/v2/nope not found' },
+      error: { code: 'NOT_FOUND', message: 'Route GET /api/v2/nope not found' },
     });
   });
 

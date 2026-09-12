@@ -15,29 +15,29 @@ export class AppError extends Error {
 }
 
 export const badRequest = (message: string, details?: unknown) =>
-  new AppError(400, 'bad_request', message, details);
+  new AppError(400, 'BAD_REQUEST', message, details);
 
 export const unauthorized = (message = 'Authentication required') =>
-  new AppError(401, 'unauthorized', message);
+  new AppError(401, 'UNAUTHORIZED', message);
 
-export const forbidden = (message = 'Not allowed') => new AppError(403, 'forbidden', message);
+export const forbidden = (message = 'Not allowed') => new AppError(403, 'FORBIDDEN', message);
 
 export const emailNotVerified = (message = 'Verify your email address to continue') =>
-  new AppError(403, 'email_not_verified', message);
+  new AppError(403, 'EMAIL_NOT_VERIFIED', message);
 
-export const notFound = (message = 'Not found') => new AppError(404, 'not_found', message);
+export const notFound = (message = 'Not found') => new AppError(404, 'NOT_FOUND', message);
 
 export const conflict = (message: string, details?: unknown) =>
-  new AppError(409, 'conflict', message, details);
+  new AppError(409, 'CONFLICT', message, details);
 
 export const unprocessable = (message: string, details?: unknown) =>
-  new AppError(422, 'unprocessable', message, details);
+  new AppError(422, 'UNPROCESSABLE', message, details);
 
 export const paymentRequired = (message = 'Insufficient balance') =>
-  new AppError(402, 'insufficient_balance', message);
+  new AppError(402, 'INSUFFICIENT_BALANCE', message);
 
 export const tooManyRequests = (message = 'Too many requests') =>
-  new AppError(429, 'rate_limited', message);
+  new AppError(429, 'RATE_LIMITED', message);
 
 export interface ErrorBody {
   code: string;
@@ -68,25 +68,25 @@ export function classifyError(error: unknown): { status: number; body: ErrorBody
   if (error instanceof ZodError || e.name === 'ZodError') {
     return {
       status: 400,
-      body: { code: 'validation_error', message: 'Request validation failed', details: e.issues },
+      body: { code: 'VALIDATION_ERROR', message: 'Request validation failed', details: e.issues },
     };
   }
 
   if (error instanceof SyntaxError && e.type === 'entity.parse.failed') {
-    return { status: 400, body: { code: 'invalid_json', message: 'Request body is not valid JSON' } };
+    return { status: 400, body: { code: 'INVALID_JSON', message: 'Request body is not valid JSON' } };
   }
 
   const status = e.status ?? e.statusCode;
 
   if (status === 429) {
-    return { status: 429, body: { code: 'rate_limited', message: 'Too many requests' } };
+    return { status: 429, body: { code: 'RATE_LIMITED', message: 'Too many requests' } };
   }
 
   if (typeof status === 'number' && status >= 400 && status < 500) {
     return {
       status,
       body: {
-        code: typeof e.code === 'string' ? e.code.toLowerCase() : 'bad_request',
+        code: typeof e.code === 'string' ? e.code.toUpperCase() : 'BAD_REQUEST',
         message: e.message ?? 'Bad request',
       },
     };
