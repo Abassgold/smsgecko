@@ -16,7 +16,11 @@ router.post(
   deposits.webhook,
 );
 
-router.use(requireVerified);
+// Scoped to /deposits* — this router is mounted at the bare '/api/v1', so an
+// unpathed router.use(requireVerified) here would match every path that falls
+// through to it and 403 unrelated sibling routes (affiliate, api-keys,
+// webhook, notifications, admin) registered after this one in app.ts.
+router.use('/deposits', requireVerified);
 
 router.post('/deposits', validate(createDepositBody), deposits.create);
 router.get('/deposits/:id', validate(idParams, 'params'), deposits.getOne);
