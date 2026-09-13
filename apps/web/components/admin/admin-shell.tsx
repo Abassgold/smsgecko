@@ -1,10 +1,12 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Logo } from '@/components/marketing/logo';
 import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { cn } from '@/lib/cn';
 import { useLogout } from '@/lib/hooks';
 
@@ -21,6 +23,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const logout = useLogout();
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
   return (
     <div className="flex min-h-full flex-1">
@@ -53,13 +56,31 @@ export function AdminShell({ children }: { children: ReactNode }) {
             ← Back to app
           </Link>
           <button
-            onClick={() => logout.mutate(undefined, { onSuccess: () => router.replace('/login') })}
+            onClick={() => setConfirmingSignOut(true)}
             className="rounded-lg px-3 py-2 text-left text-muted hover:text-text"
           >
             Sign out
           </button>
         </div>
       </aside>
+
+      <ConfirmDialog
+        open={confirmingSignOut}
+        onClose={() => setConfirmingSignOut(false)}
+        title="Sign out?"
+        body="You'll need to log in again to get back to the admin panel."
+        confirmLabel="Sign out"
+        destructive
+        pending={logout.isPending}
+        onConfirm={() =>
+          logout.mutate(undefined, {
+            onSuccess: () => {
+              setConfirmingSignOut(false);
+              router.replace('/login');
+            },
+          })
+        }
+      />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 border-b border-border px-5 py-3 md:hidden">
