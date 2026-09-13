@@ -7,14 +7,13 @@ import { cn } from '@/lib/cn';
 
 const BASE = 'https://api.smsgecko.com';
 
-/* ------------------------------------------------------------------ nav */
 
 const NAV: { group: string; items: { id: string; label: string }[] }[] = [
   {
     group: 'Getting started',
     items: [
       { id: 'overview', label: 'Overview' },
-      { id: 'auth', label: 'Authentication' },
+      // { id: 'auth', label: 'Authentication' },
       { id: 'base-url', label: 'Base URL' },
       { id: 'response-format', label: 'Response format' },
       { id: 'idempotency', label: 'Idempotency' },
@@ -159,29 +158,44 @@ function Endpoint({ method, path }: { method: string; path: string }) {
   );
 }
 
+/** N-column reference table. First column renders as a mono "name" cell, the
+ * last as prose notes; anything in between is small mono (e.g. a `type`
+ * column) — so both the 3-column `Field/Type/Notes` tables and 2-column
+ * `Event/Trigger` tables share one component. */
 function Params({
   rows,
   headers = ['Field', 'Type', 'Notes'],
 }: {
-  rows: [string, string, string][];
-  headers?: [string, string, string];
+  rows: string[][];
+  headers?: string[];
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
       <table className="w-full min-w-[560px] text-left text-sm">
         <thead>
           <tr className="border-b border-border text-[11px] uppercase tracking-widest text-faint">
-            <th className="px-4 py-2.5 font-medium">{headers[0]}</th>
-            <th className="px-4 py-2.5 font-medium">{headers[1]}</th>
-            <th className="px-4 py-2.5 font-medium">{headers[2]}</th>
+            {headers.map((h) => (
+              <th key={h} className="px-4 py-2.5 font-medium">{h}</th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map(([name, type, note]) => (
-            <tr key={name} className="border-b border-border last:border-0 align-top">
-              <td className="px-4 py-2.5 font-mono text-[12.5px] text-text">{name}</td>
-              <td className="px-4 py-2.5 font-mono text-[12px] text-faint">{type}</td>
-              <td className="px-4 py-2.5 text-muted">{note}</td>
+          {rows.map((cols, i) => (
+            <tr key={cols[0] ?? i} className="border-b border-border last:border-0 align-top">
+              {cols.map((cell, j) => (
+                <td
+                  key={j}
+                  className={
+                    j === 0
+                      ? 'px-4 py-2.5 font-mono text-[12.5px] text-text'
+                      : j === cols.length - 1
+                        ? 'px-4 py-2.5 text-muted'
+                        : 'px-4 py-2.5 font-mono text-[12px] text-faint'
+                  }
+                >
+                  {cell}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>
@@ -234,11 +248,19 @@ export default function DocsPage() {
             </p>
           </Section>
 
+          <Section id="base-url" title="Base URL">
+            <Params
+              rows={[
+                ['Production', 'string', `${BASE}/api/v2`],
+              ]}
+            />
+          </Section>
+
           <Section id="auth" title="Authentication">
             <p>
-              Every request needs a Bearer token. Mint one from the dashboard (Settings → API
-              keys) or via <code>POST /api/v1/api-keys</code> with a session cookie. Keys look
-              like <code>smsg_live_…</code> and are shown once.
+              Every request needs a Bearer token. Mint one from the dashboard (Settings → API keys)
+              using a session cookie. Keys look like <code>smsg_live_…</code> and are shown only once,
+              so copy it somewhere safe and include it in every request.
             </p>
             <CodeBlock
               title="Header"
@@ -248,15 +270,6 @@ export default function DocsPage() {
               A missing or invalid key returns <code>401 UNAUTHORIZED</code>. A valid key for a
               suspended account returns <code>403 FORBIDDEN</code>.
             </p>
-          </Section>
-
-          <Section id="base-url" title="Base URL">
-            <Params
-              rows={[
-                ['Production', 'string', `${BASE}/api/v2`],
-                ['Local dev', 'string', 'http://localhost:4000/api/v2'],
-              ]}
-            />
           </Section>
 
           <Section id="response-format" title="Response format">
@@ -303,7 +316,16 @@ export default function DocsPage() {
             <p>
               <code>POST /orders</code> is retry-safe. Send an <code>Idempotency-Key</code> header
               (8–128 chars) — replaying it returns the original order instead of buying twice.
-              Reuse the same key across every retry of one logical purchase.
+              Reuse the same key across every retry of one logical purchase (changing{' '}
+              <code>max_price</code> on a retry is fine; it isn&apos;t part of the key&apos;s
+              identity).
+            </p>
+            <p>
+              A second request with the same key while the first is still being processed gets{' '}
+              <code>409 REQUEST_IN_PROGRESS</code> — retry shortly rather than assuming it failed.
+              Reusing a key with a different <code>catalog_product_id</code> or{' '}
+              <code>operator_id</code> gets <code>422 IDEMPOTENCY_KEY_REUSED</code>; pick a new key
+              for a genuinely different order.
             </p>
           </Section>
 
@@ -322,16 +344,42 @@ export default function DocsPage() {
                 ['INVALID_JSON', '400', 'Request body is not valid JSON.'],
                 ['UNAUTHORIZED', '401', 'Missing or invalid Bearer token.'],
                 ['INSUFFICIENT_BALANCE', '402', 'Wallet balance is below the order or reactivation price.'],
-                ['FORBIDDEN', '403', 'API key belongs to a suspended account, or ordering is paused for maintenance.'],
+                ['FORBIDDEN', '403', 'API key belongs to a suspended account.'],
                 ['NOT_FOUND', '404', 'No order with that id under your account, or the route doesn’t exist.'],
                 [
                   'CONFLICT',
                   '409',
-                  'No stock / no provider enabled, the order is already resolved, the post-purchase cancel lock hasn’t elapsed yet, or the provider can’t resend/reactivate.',
+                  'No provider is enabled, the order is already resolved (finished/canceled/expired), already has a code, or the provider can’t resend/reactivate.',
+                ],
+                [
+                  'CANCEL_TOO_EARLY',
+                  '409',
+                  'The number was bought too recently — the post-purchase hold hasn’t elapsed. `error.details.retryAfterSeconds` says how much longer.',
+                ],
+                [
+                  'REQUEST_IN_PROGRESS',
+                  '409',
+                  'A create request with this exact `Idempotency-Key` is still being processed — retry shortly.',
                 ],
                 ['UNPROCESSABLE', '422', 'The live price moved above your `max_price`.'],
+                [
+                  'NO_OFFER_AVAILABLE',
+                  '422',
+                  'No active offer matches that service/country/tier right now — out of stock, or the tier no longer exists.',
+                ],
+                [
+                  'IDEMPOTENCY_KEY_REUSED',
+                  '422',
+                  'This `Idempotency-Key` was replayed with a different `catalog_product_id` or `operator_id`. Use a new key for a different logical order.',
+                ],
+                [
+                  'PROVIDER_ERROR',
+                  '422',
+                  'Every provider in the fallback chain failed to rent a number. `error.details.attempts` lists each one tried: `{ provider, outcome }`, where `outcome` is `no_numbers`, `provider_unavailable`, or `provider_error`.',
+                ],
                 ['RATE_LIMITED', '429', 'Too many requests — check the `RateLimit-Reset` header (seconds) and back off.'],
                 ['INTERNAL_ERROR', '500', 'Unexpected server error — safe to retry once.'],
+                ['SERVICE_UNAVAILABLE', '503', 'Ordering is paused for maintenance.'],
               ]}
             />
           </Section>
@@ -766,7 +814,8 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
               Buys another code on a <code>completed</code> order&apos;s number. Charges the
               current tier price and reopens the order as <code>waiting</code>, keeping its
               message history. <code>402</code> on low balance; <code>409</code> if the order
-              isn&apos;t completed or the provider can&apos;t reactivate.
+              isn&apos;t completed or the provider can&apos;t reactivate; <code>422</code> if that
+              service/country has no offer available right now.
             </p>
             <CodeLabel>Example request</CodeLabel>
             <CodeBlock
@@ -814,39 +863,69 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
             </p>
           </Section>
 
-          <Section id="webhooks-overview" title="Webhooks">
+          <Section id="webhooks-overview" title="Webhook Notifications">
             <p>
-              Configure one URL per account and SMSGecko <code>POST</code>s order events to it as
-              they happen — mainly so you don&apos;t have to poll{' '}
-              <a href="#get-order" className="text-accent">GET /orders/:id</a> waiting for the code.
-              Delivery is best-effort: one attempt, a 5s timeout, no retry queue — treat it as a
-              fast-path notification, not the source of truth. <code>GET /orders/:id</code> always
-              reflects the real state.
+              Configure a webhook URL to receive real-time push notifications for order events
+              instead of polling. This is the recommended approach for bot scripts.
             </p>
+            <CodeLabel>Events</CodeLabel>
             <Params
+              headers={['Event', 'Trigger']}
               rows={[
-                ['order.created', 'event', 'A new order was placed.'],
-                ['order.completed', 'event', 'An OTP arrived — same moment `otp_code` is set.'],
-                ['order.expired', 'event', 'No code arrived before `expires_at` — refunded.'],
-                ['order.canceled', 'event', 'You (or the API) canceled a waiting order — refunded.'],
+                ['order.created', 'A new order was placed.'],
+                ['order.completed', 'An OTP arrived — same moment `otp_code` is set.'],
+                ['order.expired', 'No code arrived before `expires_at` — refunded.'],
+                ['order.canceled', 'You (or the API) canceled a waiting order — refunded.'],
               ]}
             />
+            <CodeLabel>Payload</CodeLabel>
             <p>
-              Every delivery has the same envelope, then the{' '}
-              <a href="#order-object" className="text-accent">order object</a> as{' '}
-              <code>data</code>:
+              Every delivery has the same envelope — <code>event</code>, <code>timestamp</code>,
+              and a flat <code>data</code> object (not the same shape as the{' '}
+              <a href="#order-object" className="text-accent">order object</a> returned by the
+              REST endpoints):
             </p>
             <CodeBlock
+              title="Webhook POST Body"
               tabs={[curl('JSON', `{
   "event": "order.completed",
   "timestamp": "2026-09-10T14:03:12.000Z",
-  "data": { "id": "665f2a1b9c4d8e0012ab34cd", "status": "completed", "...": "..." }
+  "data": {
+    "order_id": "665f2a1b9c4d8e0012ab34cd",
+    "status": "completed",
+    "phone_number": "+15551234567",
+    "otp_code": "482913",
+    "otp_message": "Your WhatsApp code: 482-913",
+    "service": "WhatsApp",
+    "country": "United States",
+    "price": "0.47",
+    "created_at": "2026-09-10T14:01:02.000Z",
+    "expires_at": "2026-09-10T14:11:02.000Z",
+    "finished_at": null
+  }
 }`)]}
             />
+            <Params
+              rows={[
+                ['order_id', 'string', '24-hex order id.'],
+                ['status', 'enum', '"waiting" | "completed" | "canceled" | "expired"'],
+                ['phone_number', 'string', 'E.164, e.g. "+15551234567".'],
+                ['otp_code', 'string | null', 'Parsed code, if one was found in the message.'],
+                ['otp_message', 'string | null', 'Raw text of the SMS that completed the order.'],
+                ['service', 'string', 'Display name, e.g. "WhatsApp".'],
+                ['country', 'string', 'Display name, e.g. "United States".'],
+                ['price', 'string', 'Decimal USD charged.'],
+                ['created_at', 'string', 'ISO 8601.'],
+                ['expires_at', 'string', 'ISO 8601.'],
+                ['finished_at', 'string | null', 'ISO 8601, once you call /finish.'],
+              ]}
+            />
+            <CodeLabel>Signature verification</CodeLabel>
             <p>
-              Each request carries an <code>X-SMSGecko-Signature: sha256=&lt;hex&gt;</code> header —
-              HMAC-SHA256 of the raw request body using your <code>webhook_secret</code>. Verify it
-              before trusting the payload:
+              Each webhook request includes an{' '}
+              <code>X-SMSGecko-Signature: sha256=&lt;hex&gt;</code> header — HMAC-SHA256 of the raw
+              request body using your <code>webhook_secret</code> as the key. Verify this signature
+              on your server before trusting the payload:
             </p>
             <CodeBlock
               tabs={[
@@ -870,6 +949,11 @@ app.post('/webhooks/smsgecko', express.raw({ type: 'application/json' }), (req, 
 });`),
               ]}
             />
+            <p className="text-sm text-faint">
+              Delivery is best-effort — one attempt, a 5s timeout, no retry queue.{' '}
+              <a href="#get-order" className="text-accent">GET /orders/:id</a> always reflects the
+              real state, so treat webhooks as a fast path, not the source of truth.
+            </p>
           </Section>
 
           <Section id="get-webhook" title="Get webhook config">
@@ -877,6 +961,8 @@ app.post('/webhooks/smsgecko', express.raw({ type: 'application/json' }), (req, 
             <p>
               Your account&apos;s current webhook, or <code>null</code>s if none is configured yet.
             </p>
+            <CodeLabel>Parameters</CodeLabel>
+            <p className="text-sm italic text-faint">None</p>
             <CodeLabel>Example request</CodeLabel>
             <CodeBlock
               tabs={[curl('cURL', `curl ${BASE}/api/v2/webhook \\\n  -H "Authorization: Bearer $TOKEN"`)]}
@@ -904,16 +990,20 @@ app.post('/webhooks/smsgecko', express.raw({ type: 'application/json' }), (req, 
             <p>
               Partial update — send only the fields you&apos;re changing.
             </p>
+            <CodeLabel>Body parameters</CodeLabel>
             <Params
+              headers={['Name', 'Type', 'Required', 'Description']}
               rows={[
                 [
                   'webhook_url',
                   'string | null',
+                  'No',
                   'Must be https:// and not a local/private address. Pass null to remove the webhook (and its secret).',
                 ],
                 [
                   'webhook_secret',
-                  'string?',
+                  'string',
+                  'No',
                   '16–128 chars. Omit when first setting webhook_url and one is generated for you; omit on later calls to leave it unchanged.',
                 ],
               ]}

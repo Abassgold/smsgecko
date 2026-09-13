@@ -1,7 +1,8 @@
-import type { CreateOrderBody } from '@smsgecko/shared';
+import type { CreateOrderBody, OrderSource } from '@smsgecko/shared';
 import { mongoose, supportsTransactions } from '../db/mongoose.js';
 import { Order, type OrderDoc } from '../models/Order.js';
 import { SmsMessage } from '../models/SmsMessage.js';
+import { IdempotencyLock } from '../models/IdempotencyLock.js';
 import type { UserDoc } from '../models/User.js';
 import {
   getCatalogProvider,
@@ -12,16 +13,21 @@ import {
 import { resolveForOrder } from './catalog.service.js';
 import { getSettings } from '../lib/settings.js';
 import { parseOfferId } from '../lib/catalog.js';
+import { sha256 } from '../lib/crypto.js';
 import { debit } from '../lib/ledger.js';
 import { applyOtpToOrder, refundWaitingOrder } from '../lib/orderLifecycle.js';
 import { dispatchWebhook } from '../lib/webhooks.js';
 import { holdRemainingSeconds, minHoldSecondsFor } from '../lib/providerPolicy.js';
 import {
   badRequest,
+  cancelTooEarly,
   conflict,
-  forbidden,
+  idempotencyKeyReused,
   notFound,
+  noOfferAvailable,
   paymentRequired,
+  requestInProgress,
+  serviceUnavailable,
   unprocessable,
 } from '../lib/errors.js';
 
@@ -30,108 +36,167 @@ function isDuplicateKey(err: unknown): boolean {
   return e?.code === 11000 || e?.cause?.code === 11000;
 }
 
+/** Hash of the params that define *what* is being bought — the same key
+ * replayed with a different one of these is a different logical request.
+ * `maxPriceMicro` is deliberately excluded: it's a safety cap applied at
+ * execution time, not part of the purchase's identity, so retrying the same
+ * logical order with a relaxed (or tightened) cap is still the same request. */
+function hashOrderBody(body: CreateOrderBody): string {
+  return sha256(
+    JSON.stringify({
+      offerId: body.offerId ?? null,
+      serviceId: body.serviceId ?? null,
+      countryId: body.countryId ?? null,
+      operator: body.operator ?? null,
+    }),
+  );
+}
+
 export interface CreateOrderResult {
   order: OrderDoc;
   reused: boolean;
 }
 
-export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise<CreateOrderResult> {
+export async function createOrder(
+  user: UserDoc,
+  body: CreateOrderBody,
+  source: OrderSource = 'web',
+): Promise<CreateOrderResult> {
+  const bodyHash = body.idempotencyKey ? hashOrderBody(body) : null;
+
   if (body.idempotencyKey) {
     const existing = await Order.findOne({ userId: user._id, idempotencyKey: body.idempotencyKey });
-    if (existing) return { order: existing, reused: true };
-  }
+    if (existing) {
+      if (existing.idempotencyBodyHash && existing.idempotencyBodyHash !== bodyHash) {
+        throw idempotencyKeyReused();
+      }
+      return { order: existing, reused: true };
+    }
 
-  const settings = await getSettings();
-  if (settings.maintenanceMode && user.role !== 'admin') {
-    throw forbidden('Ordering is paused for maintenance');
-  }
-
-  // Which service/country/tier to buy. An offerId ("<svc>::<ctry>[::<i>]") names
-  // an exact price tier and wins; otherwise serviceId + countryId → cheapest tier.
-  let serviceCode = body.serviceId;
-  let countryCode = body.countryId;
-  let tierIndex: number | undefined;
-  if (body.offerId) {
-    const parsed = parseOfferId(body.offerId);
-    if (!parsed) throw badRequest('offerId must be "<serviceId>::<countryId>[::<tierIndex>]"');
-    serviceCode = parsed.serviceCode;
-    countryCode = parsed.countryCode;
-    tierIndex = parsed.tierIndex;
-  }
-  if (!serviceCode || !countryCode) {
-    throw badRequest('Provide offerId, or both serviceId and countryId');
-  }
-
-  // Price the service×country against the active (top-enabled) provider.
-  if (!(await getCatalogProvider())) throw conflict('No SMS provider is enabled');
-  const cat = await resolveForOrder(serviceCode, countryCode, settings, tierIndex, body.operator);
-  if (!cat) {
-    throw conflict('No numbers available for that service and country right now');
-  }
-
-  const price = cat.priceMicro;
-  if (body.maxPriceMicro != null && price > body.maxPriceMicro) {
-    throw unprocessable('Current price is above your max price');
-  }
-  if (price > user.balanceMicro) throw paymentRequired();
-
-  // Rent from the first provider in the fallback chain that has stock. The cap
-  // is the active provider's *raw* price, so we're never billed above what we quoted.
-  const rent = await rentWithFallback({
-    serviceSlug: serviceCode,
-    countryCode,
-    dialCode: '',
-    maxPriceMicro: cat.rawPriceMicro,
-  });
-
-  const data = {
-    userId: user._id,
-    serviceId: serviceCode,
-    countryId: countryCode,
-    serviceSlug: cat.serviceSlug,
-    serviceName: cat.serviceName,
-    serviceIconKey: cat.serviceIconKey,
-    countryName: cat.countryName,
-    countryCode: cat.countryCode,
-    countryFlagEmoji: cat.countryFlagEmoji,
-    phoneNumber: rent.result.phoneNumber,
-    priceMicro: price,
-    status: 'waiting' as const,
-    provider: rent.providerKey,
-    providerConfigId: rent.providerConfigId,
-    providerLabel: rent.providerLabel,
-    providerRef: rent.result.providerRef,
-    providerCostMicro: rent.result.costMicro ?? cat.rawPriceMicro,
-    ...(body.idempotencyKey ? { idempotencyKey: body.idempotencyKey } : {}),
-    deliverAt: rent.result.deliverAt ?? null,
-    // Never auto-expire before the provider's minimum hold — some upstreams
-    // still bill us for the number until then (mirrors FloZap's per-provider grace).
-    expiresAt: new Date(
-      Date.now() + Math.max(settings.orderTtlSeconds, minHoldSecondsFor(rent.providerKey)) * 1000,
-    ),
-  };
-
-  if (supportsTransactions()) {
-    const session = await mongoose.startSession();
+    // Claim the key for the duration of this request so a second concurrent
+    // call with it gets rejected instead of racing this one to create a
+    // duplicate order. Released in the `finally` below no matter how this
+    // resolves; the model's TTL index is the safety net if we don't get there.
     try {
-      let created: OrderDoc | undefined;
-      await session.withTransaction(async () => {
-        // Create the order first so the payment transaction can carry its id.
-        const [doc] = await Order.create([data], { session });
-        if (!doc) throw new Error('order creation returned no document');
-        await debit(user._id, price, {
-          type: 'order_payment',
-          description: 'Order payment',
-          session,
-          orderId: doc._id,
-        });
-        created = doc;
-      });
-      if (!created) throw new Error('order creation returned no document');
-      void dispatchWebhook(user, 'order.created', created);
-      return { order: created, reused: false };
+      await IdempotencyLock.create({ userId: user._id, key: body.idempotencyKey });
     } catch (err) {
-      // Order never persisted — hand the rented number back to the provider.
+      if (isDuplicateKey(err)) throw requestInProgress();
+      throw err;
+    }
+  }
+
+  try {
+    const settings = await getSettings();
+    if (settings.maintenanceMode && user.role !== 'admin') {
+      throw serviceUnavailable('Ordering is paused for maintenance');
+    }
+
+    // Which service/country/tier to buy. An offerId ("<svc>::<ctry>[::<i>]") names
+    // an exact price tier and wins; otherwise serviceId + countryId → cheapest tier.
+    let serviceCode = body.serviceId;
+    let countryCode = body.countryId;
+    let tierIndex: number | undefined;
+    if (body.offerId) {
+      const parsed = parseOfferId(body.offerId);
+      if (!parsed) throw badRequest('offerId must be "<serviceId>::<countryId>[::<tierIndex>]"');
+      serviceCode = parsed.serviceCode;
+      countryCode = parsed.countryCode;
+      tierIndex = parsed.tierIndex;
+    }
+    if (!serviceCode || !countryCode) {
+      throw badRequest('Provide offerId, or both serviceId and countryId');
+    }
+
+    // Price the service×country against the active (top-enabled) provider.
+    if (!(await getCatalogProvider())) throw conflict('No SMS provider is enabled');
+    const cat = await resolveForOrder(serviceCode, countryCode, settings, tierIndex, body.operator);
+    if (!cat) throw noOfferAvailable();
+
+    const price = cat.priceMicro;
+    if (body.maxPriceMicro != null && price > body.maxPriceMicro) {
+      throw unprocessable('Current price is above your max price');
+    }
+    if (price > user.balanceMicro) throw paymentRequired();
+
+    // Rent from the first provider in the fallback chain that has stock. The cap
+    // is the active provider's *raw* price, so we're never billed above what we quoted.
+    const rent = await rentWithFallback({
+      serviceSlug: serviceCode,
+      countryCode,
+      dialCode: '',
+      maxPriceMicro: cat.rawPriceMicro,
+    });
+
+    const data = {
+      userId: user._id,
+      source,
+      serviceId: serviceCode,
+      countryId: countryCode,
+      serviceSlug: cat.serviceSlug,
+      serviceName: cat.serviceName,
+      serviceIconKey: cat.serviceIconKey,
+      countryName: cat.countryName,
+      countryCode: cat.countryCode,
+      countryFlagEmoji: cat.countryFlagEmoji,
+      phoneNumber: rent.result.phoneNumber,
+      priceMicro: price,
+      status: 'waiting' as const,
+      provider: rent.providerKey,
+      providerConfigId: rent.providerConfigId,
+      providerLabel: rent.providerLabel,
+      providerRef: rent.result.providerRef,
+      providerCostMicro: rent.result.costMicro ?? cat.rawPriceMicro,
+      ...(body.idempotencyKey
+        ? { idempotencyKey: body.idempotencyKey, idempotencyBodyHash: bodyHash }
+        : {}),
+      deliverAt: rent.result.deliverAt ?? null,
+      // Never auto-expire before the provider's minimum hold — some upstreams
+      // still bill us for the number until then (mirrors FloZap's per-provider grace).
+      expiresAt: new Date(
+        Date.now() + Math.max(settings.orderTtlSeconds, minHoldSecondsFor(rent.providerKey)) * 1000,
+      ),
+    };
+
+    if (supportsTransactions()) {
+      const session = await mongoose.startSession();
+      try {
+        let created: OrderDoc | undefined;
+        await session.withTransaction(async () => {
+          // Create the order first so the payment transaction can carry its id.
+          const [doc] = await Order.create([data], { session });
+          if (!doc) throw new Error('order creation returned no document');
+          await debit(user._id, price, {
+            type: 'order_payment',
+            description: 'Order payment',
+            session,
+            orderId: doc._id,
+          });
+          created = doc;
+        });
+        if (!created) throw new Error('order creation returned no document');
+        void dispatchWebhook(user, 'order.created', created);
+        return { order: created, reused: false };
+      } catch (err) {
+        // Order never persisted — hand the rented number back to the provider.
+        await releaseNumber(rent.providerConfigId, rent.result.providerRef);
+        if (isDuplicateKey(err) && body.idempotencyKey) {
+          const existing = await Order.findOne({
+            userId: user._id,
+            idempotencyKey: body.idempotencyKey,
+          });
+          if (existing) return { order: existing, reused: true };
+        }
+        throw err;
+      } finally {
+        await session.endSession();
+      }
+    }
+
+    // Fallback (no replica set): sequential with compensation.
+    let doc: OrderDoc;
+    try {
+      doc = await Order.create(data);
+    } catch (err) {
       await releaseNumber(rent.providerConfigId, rent.result.providerRef);
       if (isDuplicateKey(err) && body.idempotencyKey) {
         const existing = await Order.findOne({
@@ -141,42 +206,28 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
         if (existing) return { order: existing, reused: true };
       }
       throw err;
-    } finally {
-      await session.endSession();
     }
-  }
 
-  // Fallback (no replica set): sequential with compensation.
-  let doc: OrderDoc;
-  try {
-    doc = await Order.create(data);
-  } catch (err) {
-    await releaseNumber(rent.providerConfigId, rent.result.providerRef);
-    if (isDuplicateKey(err) && body.idempotencyKey) {
-      const existing = await Order.findOne({
-        userId: user._id,
-        idempotencyKey: body.idempotencyKey,
+    try {
+      await debit(user._id, price, {
+        type: 'order_payment',
+        description: 'Order payment',
+        orderId: doc._id,
       });
-      if (existing) return { order: existing, reused: true };
+    } catch (err) {
+      // Payment failed after the order was written — undo it.
+      await doc.deleteOne();
+      await releaseNumber(rent.providerConfigId, rent.result.providerRef);
+      throw err;
     }
-    throw err;
-  }
 
-  try {
-    await debit(user._id, price, {
-      type: 'order_payment',
-      description: 'Order payment',
-      orderId: doc._id,
-    });
-  } catch (err) {
-    // Payment failed after the order was written — undo it.
-    await doc.deleteOne();
-    await releaseNumber(rent.providerConfigId, rent.result.providerRef);
-    throw err;
+    void dispatchWebhook(user, 'order.created', doc);
+    return { order: doc, reused: false };
+  } finally {
+    if (body.idempotencyKey) {
+      await IdempotencyLock.deleteOne({ userId: user._id, key: body.idempotencyKey });
+    }
   }
-
-  void dispatchWebhook(user, 'order.created', doc);
-  return { order: doc, reused: false };
 }
 
 export interface ListOrdersParams {
@@ -239,7 +290,7 @@ export async function cancelOrder(user: UserDoc, orderId: string): Promise<Order
   const holdLeft = holdRemainingSeconds(order);
   if (holdLeft > 0) {
     const mins = Math.max(1, Math.ceil(holdLeft / 60));
-    throw conflict(
+    throw cancelTooEarly(
       `This number is locked in for a few minutes after purchase. You can cancel it for a full refund in about ${mins} minute${mins === 1 ? '' : 's'}.`,
       { retryAfterSeconds: holdLeft },
     );
@@ -331,7 +382,7 @@ export async function reactivateOrder(user: UserDoc, orderId: string): Promise<O
 
   const settings = await getSettings();
   const cat = await resolveForOrder(order.serviceId, order.countryId, settings);
-  if (!cat) throw conflict('That service and country is unavailable right now');
+  if (!cat) throw noOfferAvailable();
   if (cat.priceMicro > user.balanceMicro) throw paymentRequired();
 
   const result = await provider.reactivate(order.providerRef).catch(() => null);

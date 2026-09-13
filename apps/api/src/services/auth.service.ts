@@ -21,7 +21,7 @@ import { badRequest, conflict, forbidden, unauthorized } from '../lib/errors.js'
 import { getSettings } from '../lib/settings.js';
 import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
-import { sendVerificationEmail } from '../lib/email.js';
+import { sendPasswordResetEmail, sendVerificationEmail } from '../lib/email.js';
 
 export interface SessionMeta {
   userAgent?: string | null;
@@ -132,6 +132,63 @@ export async function verifyEmail(rawToken: string): Promise<UserDoc> {
     user.isVerified = true;
     await user.save();
   }
+  return user;
+}
+
+/**
+ * Mint a password-reset token and email it, if `email` belongs to an account.
+ * Always resolves the same way either way — the caller can't tell from this
+ * whether the address is registered, so it can't be used to enumerate users.
+ */
+export async function issuePasswordReset(email: string): Promise<void> {
+  const user = await User.findOne({ email: email.toLowerCase().trim() });
+  if (!user) return;
+
+  const rawToken = randomToken(32);
+  await EmailToken.deleteMany({ userId: user._id, purpose: 'reset_password', consumedAt: null });
+  await EmailToken.create({
+    userId: user._id,
+    purpose: 'reset_password',
+    tokenHash: sha256(rawToken),
+    expiresAt: new Date(Date.now() + env.PASSWORD_RESET_TTL_MINUTES * 60 * 1000),
+  });
+
+  const link = `${env.APP_URL.replace(/\/$/, '')}/reset-password?token=${rawToken}`;
+  try {
+    await sendPasswordResetEmail(user.email, link);
+  } catch (err) {
+    logger.error({ err, userId: user.id }, 'failed to send password reset email');
+  }
+}
+
+/**
+ * Consume a reset token, set the new password, and revoke every existing
+ * session — a stolen session cookie shouldn't survive its owner resetting
+ * their password.
+ */
+export async function resetPassword(rawToken: string, newPassword: string): Promise<UserDoc> {
+  const record = await EmailToken.findOne({
+    tokenHash: sha256(rawToken),
+    purpose: 'reset_password',
+  });
+  if (!record || record.consumedAt || record.expiresAt.getTime() < Date.now()) {
+    throw badRequest('This reset link is invalid or has expired');
+  }
+
+  const user = await User.findById(record.userId);
+  if (!user) throw badRequest('This reset link is invalid or has expired');
+
+  record.consumedAt = new Date();
+  await record.save();
+
+  user.passwordHash = await hashPassword(newPassword);
+  await user.save();
+
+  await RefreshToken.updateMany(
+    { userId: user._id, revokedAt: null },
+    { $set: { revokedAt: new Date() } },
+  );
+
   return user;
 }
 

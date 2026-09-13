@@ -51,6 +51,8 @@ const envSchema = z.object({
   APP_URL: z.string().default('http://localhost:3000'),
   /** Minutes a verification link stays valid. */
   EMAIL_VERIFICATION_TTL_MINUTES: z.coerce.number().int().positive().default(5),
+  /** Minutes a password reset link stays valid. */
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(30),
 });
 
 export type Env = z.infer<typeof envSchema>;

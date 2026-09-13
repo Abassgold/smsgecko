@@ -26,5 +26,5 @@ export const deposits = asyncHandler(async (req, res) => {
 export const updateDeposit = asyncHandler(async (req, res) => {
   const { id } = valid<IdParams>(req, 'params');
   const { status } = req.body as { status: 'confirmed' | 'failed' };
-  res.json(await updateDepositStatus(id, status));
+  res.json(await updateDepositStatus(id, status, req.authUser!.id as string));
 });

@@ -145,6 +145,44 @@ describe('v2 webhooks: config', () => {
     expect(res.json().data.webhook_secret).toBe(secret);
   });
 
+  it('regenerate_secret replaces the secret without touching the url', async () => {
+    const { userId } = await makeUser(app);
+    const key = await keyFor(userId);
+
+    const set = await inject({
+      method: 'PATCH',
+      url: '/api/v2/webhook',
+      headers: { authorization: `Bearer ${key}` },
+      payload: { webhook_url: 'https://example.com/hook' },
+    });
+    const original = set.json().data.webhook_secret as string;
+
+    const rotated = await inject({
+      method: 'PATCH',
+      url: '/api/v2/webhook',
+      headers: { authorization: `Bearer ${key}` },
+      payload: { regenerate_secret: true },
+    });
+    expect(rotated.statusCode).toBe(200);
+    expect(rotated.json().data.webhook_url).toBe('https://example.com/hook');
+    expect(rotated.json().data.webhook_secret).not.toBe(original);
+    expect(rotated.json().data.webhook_secret).toMatch(/^[\w-]{20,}$/);
+  });
+
+  it('an explicit webhook_secret wins over regenerate_secret in the same call', async () => {
+    const { userId } = await makeUser(app);
+    const key = await keyFor(userId);
+    const secret = 'b'.repeat(20);
+
+    const res = await inject({
+      method: 'PATCH',
+      url: '/api/v2/webhook',
+      headers: { authorization: `Bearer ${key}` },
+      payload: { webhook_url: 'https://example.com/hook', webhook_secret: secret, regenerate_secret: true },
+    });
+    expect(res.json().data.webhook_secret).toBe(secret);
+  });
+
   it('409s the test endpoint when no webhook is configured', async () => {
     const { userId } = await makeUser(app);
     const key = await keyFor(userId);
@@ -202,7 +240,7 @@ describe('v2 webhooks: delivery', () => {
 
     const createdReq = await sink.waitForNth(0);
     expect(received(createdReq, secret).event).toBe('order.created');
-    expect(received(createdReq, secret).data.id).toBe(orderId);
+    expect(received(createdReq, secret).data.order_id).toBe(orderId);
 
     await simulateOtp(orderId);
 
@@ -214,7 +252,7 @@ describe('v2 webhooks: delivery', () => {
 
     function received(r: CapturedRequest, expectedSecret: string) {
       expect(r.headers['x-smsgecko-signature']).toBe(sign(expectedSecret, r.body));
-      return JSON.parse(r.body) as { event: string; data: { id: string; otp_code: string | null } };
+      return JSON.parse(r.body) as { event: string; data: { order_id: string; otp_code: string | null } };
     }
   });
 
@@ -258,5 +296,75 @@ describe('v2 webhooks: delivery', () => {
     expect(isSafeWebhookUrl('http://example.com/hook')).toBe(false);
     expect(isSafeWebhookUrl('https://127.0.0.1/hook')).toBe(false);
     expect(isSafeWebhookUrl('not a url')).toBe(false);
+  });
+});
+
+// The dashboard manages the same webhook config over the session-cookie
+// /api/v1/webhook, so it doesn't need an API key just to set a URL. It shares
+// applyWebhookPatch()/sendTestWebhook() with /api/v2 — this only checks the
+// v1-specific bits (route wiring, session auth, camelCase body/response).
+describe('v1 webhook config (session)', () => {
+  it('requires a session', async () => {
+    const res = await inject({ method: 'GET', url: '/api/v1/webhook' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('sets a url, auto-generates a secret, GET reflects it, null clears both', async () => {
+    const { cookie } = await makeUser(app);
+
+    const set = await inject({
+      method: 'PATCH',
+      url: '/api/v1/webhook',
+      headers: { cookie },
+      payload: { webhookUrl: 'https://example.com/hook' },
+    });
+    expect(set.statusCode).toBe(200);
+    expect(set.json().webhookUrl).toBe('https://example.com/hook');
+    expect(set.json().webhookSecret).toMatch(/^[\w-]{20,}$/);
+
+    const got = await inject({ method: 'GET', url: '/api/v1/webhook', headers: { cookie } });
+    expect(got.json().webhookUrl).toBe('https://example.com/hook');
+
+    const cleared = await inject({
+      method: 'PATCH',
+      url: '/api/v1/webhook',
+      headers: { cookie },
+      payload: { webhookUrl: null },
+    });
+    expect(cleared.json()).toEqual({ webhookUrl: null, webhookSecret: null });
+  });
+
+  it('rejects non-https and private/local hosts', async () => {
+    const { cookie } = await makeUser(app);
+    const res = await inject({
+      method: 'PATCH',
+      url: '/api/v1/webhook',
+      headers: { cookie },
+      payload: { webhookUrl: 'http://example.com/hook' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('delivers a signed test event through the v1 route', async () => {
+    const sink = createSink();
+    const url = await sink.listen();
+    const { cookie, userId } = await makeUser(app);
+    const secret = 'e'.repeat(20);
+    await User.updateOne({ _id: userId }, { $set: { webhookUrl: url, webhookSecret: secret } });
+
+    const res = await inject({ method: 'POST', url: '/api/v1/webhook/test', headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ delivered: true, statusCode: 200 });
+
+    const received = await sink.waitForNth(0);
+    expect(received.headers['x-smsgecko-signature']).toBe(sign(secret, received.body));
+
+    await sink.close();
+  });
+
+  it('409s the test endpoint when no webhook is configured', async () => {
+    const { cookie } = await makeUser(app);
+    const res = await inject({ method: 'POST', url: '/api/v1/webhook/test', headers: { cookie } });
+    expect(res.statusCode).toBe(409);
   });
 });

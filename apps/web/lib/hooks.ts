@@ -9,16 +9,21 @@ import type {
   CountryView,
   CreateOrderBody,
   DepositView,
+  ForgotPasswordBody,
   LoginBody,
   NotificationsResponse,
   OrderStatsResponse,
   OrderView,
   QuoteResponse,
   RegisterBody,
+  ResetPasswordBody,
   ServiceView,
   TransactionView,
+  UpdateWebhookBody,
   VerifyEmailBody,
   WalletResponse,
+  WebhookConfig,
+  WebhookTestResult,
 } from '@smsgecko/shared';
 import { apiFetch } from './api';
 
@@ -79,6 +84,22 @@ export function useResendVerification() {
   return useMutation({
     mutationFn: () =>
       apiFetch<{ ok: true }>('/v1/auth/resend-verification', { method: 'POST' }),
+  });
+}
+
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: (body: ForgotPasswordBody) =>
+      apiFetch<{ ok: true }>('/v1/auth/forgot-password', { method: 'POST', body }),
+  });
+}
+
+export function useResetPassword() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ResetPasswordBody) =>
+      apiFetch<AuthResponse>('/v1/auth/reset-password', { method: 'POST', body }),
+    onSuccess: (data) => qc.setQueryData(['me'], data),
   });
 }
 
@@ -290,5 +311,29 @@ export function useRevokeApiKey() {
     mutationFn: (id: string) =>
       apiFetch<{ ok: true }>(`/v1/api-keys/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['api-keys'] }),
+  });
+}
+
+/* ---------- webhook ---------- */
+
+export function useWebhook() {
+  return useQuery({
+    queryKey: ['webhook'],
+    queryFn: () => apiFetch<WebhookConfig>('/v1/webhook'),
+  });
+}
+
+export function useUpdateWebhook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateWebhookBody) =>
+      apiFetch<WebhookConfig>('/v1/webhook', { method: 'PATCH', body }),
+    onSuccess: (data) => qc.setQueryData(['webhook'], data),
+  });
+}
+
+export function useTestWebhook() {
+  return useMutation({
+    mutationFn: () => apiFetch<WebhookTestResult>('/v1/webhook/test', { method: 'POST' }),
   });
 }

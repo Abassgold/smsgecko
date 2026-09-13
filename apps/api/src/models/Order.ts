@@ -1,9 +1,11 @@
 import { Schema, model, type InferSchemaType, type HydratedDocument } from 'mongoose';
-import { ORDER_STATUSES } from '@smsgecko/shared';
+import { ORDER_SOURCES, ORDER_STATUSES } from '@smsgecko/shared';
 
 const orderSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    /** Which surface created it: the dashboard (session cookie) or the public API (Bearer key). */
+    source: { type: String, enum: ORDER_SOURCES, default: 'web' },
     /** The active provider's own service / country codes at order time. */
     serviceId: { type: String, required: true },
     countryId: { type: String, required: true },
@@ -35,6 +37,9 @@ const orderSchema = new Schema(
 
     /** Per-user idempotency key for create; left unset (not null) when unused. */
     idempotencyKey: { type: String },
+    /** sha256 of the normalized create-order params, so a replayed key with a
+     *  different body can be rejected instead of silently returning this order. */
+    idempotencyBodyHash: { type: String, default: null },
 
     /**
      * Earliest time a code is expected (null = unknown). Real adapters leave it

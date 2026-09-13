@@ -15,7 +15,7 @@ const display = Space_Grotesk({
 const SITE_URL = 'https://smsgecko.com';
 const SITE_NAME = 'SMSGecko';
 const DESCRIPTION =
-  'Buy virtual numbers for OTP & verification — fast activation, clean stock, global coverage. Use it via API or dashboard for WhatsApp, Telegram, Gmail, and more.';
+  'Buy virtual numbers for OTP & SMS verification across 200+ countries and 1,000+ platforms — pay-per-use, instant delivery, developer-friendly API.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -88,10 +88,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <div className="page-backdrop" aria-hidden />
         <Providers>
-          {/* {children} */}
-          <div className='text-center text-4xl'>
+          {children}
+          {/* <div className='text-center text-4xl'>
             Coming soon ...
-          </div>
+          </div> */}
         </Providers>
         <script
           type="application/ld+json"

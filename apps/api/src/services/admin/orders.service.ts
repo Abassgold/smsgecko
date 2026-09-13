@@ -7,6 +7,7 @@ import { refundWaitingOrder } from '../../lib/orderLifecycle.js';
 import { pollOrderOnce } from '../../workers/index.js';
 import { conflict, notFound } from '../../lib/errors.js';
 import { toOrderView } from '../orders.mapper.js';
+import { logAdminAction } from '../../lib/adminLog.js';
 import type { AdminOrdersQuery } from '../../lib/validation/admin/orders.schema.js';
 
 function toRow(o: OrderDoc, email: string, payment?: TransactionDoc): AdminOrderRow {
@@ -17,6 +18,7 @@ function toRow(o: OrderDoc, email: string, payment?: TransactionDoc): AdminOrder
   return {
     id: o.id as string,
     status: o.status,
+    source: o.source,
     user: { id: String(o.userId), email },
     service: o.serviceName,
     country: o.countryName,
@@ -80,11 +82,17 @@ export async function getOrderDetail(id: string) {
   return toOrderView(order, messages);
 }
 
-export async function cancelOrder(id: string) {
+export async function cancelOrder(id: string, actingUserId: string) {
   const order = await Order.findById(id);
   if (!order) throw notFound('Order not found');
   if (order.status !== 'waiting') throw conflict(`Order is already ${order.status}`);
   const canceled = await refundWaitingOrder(order._id, 'canceled');
+  void logAdminAction(
+    actingUserId,
+    'order_cancel',
+    { type: 'order', id },
+    `${order.phoneNumber} — refunded`,
+  );
   return toOrderView(canceled ?? (await Order.findById(order._id))!);
 }
 

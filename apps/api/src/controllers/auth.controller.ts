@@ -1,4 +1,4 @@
-import type { LoginBody, RegisterBody, VerifyEmailBody } from '@smsgecko/shared';
+import type { ForgotPasswordBody, LoginBody, RegisterBody, ResetPasswordBody, VerifyEmailBody } from '@smsgecko/shared';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { toPublicUser } from '../models/User.js';
 import { clearAuthCookies, REFRESH_COOKIE, setAuthCookies } from '../lib/authCookies.js';
@@ -6,8 +6,10 @@ import { unauthorized } from '../lib/errors.js';
 import {
   authenticate,
   issueEmailVerification,
+  issuePasswordReset,
   issueSession,
   registerUser,
+  resetPassword as resetPasswordToken,
   revokeRefresh,
   rotateRefresh,
   verifyEmail as verifyEmailToken,
@@ -46,6 +48,22 @@ export const resendVerification = asyncHandler(async (req, res) => {
   const user = req.authUser!;
   if (!user.isVerified) await issueEmailVerification(user);
   res.json({ ok: true as const });
+});
+
+export const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body as ForgotPasswordBody;
+  await issuePasswordReset(email);
+  res.json({ ok: true as const });
+});
+
+export const resetPassword = asyncHandler(async (req, res) => {
+  const { token, password } = req.body as ResetPasswordBody;
+  const user = await resetPasswordToken(token, password);
+  // Reset implies "get me back in" — sign them in on the spot instead of
+  // making them retype the password they just set on the login page.
+  const { accessToken, refreshToken } = await issueSession(user, sessionMeta(req));
+  setAuthCookies(res, accessToken, refreshToken);
+  res.json({ user: toPublicUser(user) });
 });
 
 export const refresh = asyncHandler(async (req, res) => {

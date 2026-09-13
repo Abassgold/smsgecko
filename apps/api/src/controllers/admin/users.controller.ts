@@ -29,5 +29,5 @@ export const update = asyncHandler(async (req, res) => {
 export const adjust = asyncHandler(async (req, res) => {
   const { id } = valid<IdParams>(req, 'params');
   const { amountMicro, reason } = req.body as { amountMicro: number; reason: string };
-  res.json(await adjustBalance(id, amountMicro, reason));
+  res.json(await adjustBalance(id, amountMicro, reason, req.authUser!.id as string));
 });

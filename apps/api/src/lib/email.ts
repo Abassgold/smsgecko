@@ -45,3 +45,19 @@ export async function sendVerificationEmail(to: string, link: string): Promise<v
 </div>`;
   await sendEmail({ to, subject, html, text });
 }
+
+export async function sendPasswordResetEmail(to: string, link: string): Promise<void> {
+  const subject = 'Reset your SMSGecko password';
+  const text = `We got a request to reset your SMSGecko password.\n\nChoose a new password here:\n${link}\n\nThis link expires in ${env.PASSWORD_RESET_TTL_MINUTES} minutes. If you didn't request this, you can ignore this email — your password won't change.`;
+  const html = `<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#0f172a">
+  <h1 style="font-size:20px;margin:0 0 12px">Reset your password</h1>
+  <p style="margin:0 0 20px;line-height:1.5;color:#475569">We got a request to reset your SMSGecko password.</p>
+  <p style="margin:0 0 24px">
+    <a href="${link}" style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:12px 20px;border-radius:12px;font-weight:600">Reset password</a>
+  </p>
+  <p style="margin:0 0 8px;font-size:13px;color:#64748b">Or paste this link into your browser:</p>
+  <p style="margin:0 0 24px;font-size:13px;word-break:break-all"><a href="${link}" style="color:#2563eb">${link}</a></p>
+  <p style="margin:0;font-size:12px;color:#94a3b8">This link expires in ${env.PASSWORD_RESET_TTL_MINUTES} minutes. If you didn't request this, ignore this email — your password won't change.</p>
+</div>`;
+  await sendEmail({ to, subject, html, text });
+}

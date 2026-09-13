@@ -9,9 +9,9 @@ import { credit } from './ledger.js';
 import { dispatchWebhook, type WebhookEvent } from './webhooks.js';
 
 /** Fire-and-forget: never let a webhook delivery affect the caller. */
-function fireWebhook(order: OrderDoc, event: WebhookEvent): void {
+function fireWebhook(order: OrderDoc, event: WebhookEvent, otpMessage: string | null = null): void {
   void User.findById(order.userId).then((user) => {
-    if (user) void dispatchWebhook(user, event, order);
+    if (user) void dispatchWebhook(user, event, order, otpMessage);
   });
 }
 
@@ -35,16 +35,17 @@ export async function applyOtpToOrder(
   );
   if (!updated) return null;
 
-  const rows = (messages.length ? messages : otp ? [{ sender: updated.providerLabel ?? 'SMS', text: `Your code is ${otp}` }] : []).map(
-    (m) => ({
-      orderId: updated._id,
-      userId: updated.userId,
-      sender: m.sender,
-      text: m.text,
-      parsedOtp: parseOtp(m.text) ?? otp,
-      receivedAt: m.receivedAt ?? new Date(),
-    }),
-  );
+  const fallbackText = otp ? `Your code is ${otp}` : null;
+  const rows = (
+    messages.length ? messages : fallbackText ? [{ sender: updated.providerLabel ?? 'SMS', text: fallbackText }] : []
+  ).map((m) => ({
+    orderId: updated._id,
+    userId: updated.userId,
+    sender: m.sender,
+    text: m.text,
+    parsedOtp: parseOtp(m.text) ?? otp,
+    receivedAt: m.receivedAt ?? new Date(),
+  }));
   if (rows.length) await SmsMessage.insertMany(rows);
 
   await recordOtpReceived(updated);
@@ -55,7 +56,7 @@ export async function applyOtpToOrder(
     otp ? `Your code is ${otp}.` : 'A message arrived for your number.',
     updated._id,
   );
-  fireWebhook(updated, 'order.completed');
+  fireWebhook(updated, 'order.completed', primary?.text ?? fallbackText);
 
   return updated;
 }

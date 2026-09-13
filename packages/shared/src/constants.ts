@@ -3,6 +3,10 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export const ACTIVE_ORDER_STATUSES: readonly OrderStatus[] = ['waiting'];
 
+/** Which surface created the order: the dashboard (session cookie) or the public API (Bearer key). */
+export const ORDER_SOURCES = ['web', 'api'] as const;
+export type OrderSource = (typeof ORDER_SOURCES)[number];
+
 export const TRANSACTION_TYPES = [
   'deposit',
   'order_payment',

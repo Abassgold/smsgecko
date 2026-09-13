@@ -3,6 +3,7 @@ import type { Application } from 'express';
 import { makeInject } from './inject.js';
 import { buildApp } from '../app.js';
 import { makeAdmin, makeCatalog, makeProvider, makeUser } from './factories.js';
+import { ApiKey } from '../models/ApiKey.js';
 import { ProviderConfig } from '../models/ProviderConfig.js';
 import { Order } from '../models/Order.js';
 import { Transaction } from '../models/Transaction.js';
@@ -109,7 +110,8 @@ describe('admin panel', () => {
       serviceId: 'whatsapp',
       countryId: 'us',
     });
-    expect(res.statusCode).toBe(409);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe('NO_OFFER_AVAILABLE');
     expect((await User.findById(userId))!.balanceMicro).toBe(1_000_000);
     expect(await Order.countDocuments({ userId })).toBe(0);
   });
@@ -157,6 +159,36 @@ describe('admin panel', () => {
     expect((await User.findById(userId))!.balanceMicro).toBe(1_000_000);
   });
 
+  it('tags orders with their source (web vs api) and surfaces it in admin views', async () => {
+    const { cookie: adminCookie } = await makeAdmin(app);
+    const { service, country } = await makeCatalog({ priceMicro: 100_000, stock: 5 });
+    const { cookie, userId } = await makeUser(app, { balanceMicro: 1_000_000 });
+    const { key } = await ApiKey.issue(userId, 'test');
+
+    const webOrder = (
+      await post('/api/v1/orders', cookie, { serviceId: service.id, countryId: country.id })
+    ).json();
+    const apiOrder = (
+      await inject({
+        method: 'POST',
+        url: '/api/v2/orders',
+        headers: { authorization: `Bearer ${key}` },
+        payload: { catalog_product_id: `${service.id}::${country.id}` },
+      })
+    ).json().data;
+
+    expect((await Order.findById(webOrder.id))!.source).toBe('web');
+    expect((await Order.findById(apiOrder.id))!.source).toBe('api');
+
+    const rows = (await get('/api/v1/admin/orders', adminCookie)).json().items;
+    expect(rows.find((r: { id: string }) => r.id === webOrder.id).source).toBe('web');
+    expect(rows.find((r: { id: string }) => r.id === apiOrder.id).source).toBe('api');
+
+    const detail = (await get(`/api/v1/admin/users/${userId}`, adminCookie)).json();
+    expect(detail.recentOrders.find((o: { id: string }) => o.id === webOrder.id).source).toBe('web');
+    expect(detail.recentOrders.find((o: { id: string }) => o.id === apiOrder.id).source).toBe('api');
+  });
+
   it('patches settings and getSettings() reflects it', async () => {
     const { cookie } = await makeAdmin(app);
     const res = await patch('/api/v1/admin/settings', cookie, {
@@ -185,5 +217,40 @@ describe('admin panel', () => {
     );
     // 100_000 * 1.20 + 5_000
     expect(quote.json().bestOffer.priceMicro).toBe(125_000);
+  });
+
+  it('records an audit-log entry for a balance adjustment, suspension, and settings change', async () => {
+    const { cookie: adminCookie, userId: adminId } = await makeAdmin(app);
+    const adminEmail = (await User.findById(adminId))!.email;
+    const { userId } = await makeUser(app, { balanceMicro: 1_000_000 });
+
+    await post(`/api/v1/admin/users/${userId}/adjust-balance`, adminCookie, {
+      amountMicro: 200_000,
+      reason: 'goodwill credit',
+    });
+    await patch(`/api/v1/admin/users/${userId}`, adminCookie, { status: 'suspended' });
+    await patch('/api/v1/admin/settings', adminCookie, { orderTtlSeconds: 50 });
+
+    const all = await get('/api/v1/admin/logs', adminCookie);
+    expect(all.statusCode).toBe(200);
+    const actions = all.json().items.map((a: { action: string }) => a.action);
+    expect(actions).toEqual(
+      expect.arrayContaining(['balance_adjust', 'user_update', 'settings_update']),
+    );
+    expect(all.json().items[0].admin.email).toBe(adminEmail);
+
+    const balanceEntry = all
+      .json()
+      .items.find((a: { action: string }) => a.action === 'balance_adjust');
+    expect(balanceEntry.targetType).toBe('user');
+    expect(balanceEntry.targetId).toBe(userId);
+    expect(balanceEntry.detail).toContain('goodwill credit');
+
+    const userEntry = all.json().items.find((a: { action: string }) => a.action === 'user_update');
+    expect(userEntry.detail).toContain('status: active → suspended');
+
+    // Scoped to just this user's actions.
+    const scoped = await get(`/api/v1/admin/logs?targetType=user&targetId=${userId}`, adminCookie);
+    expect(scoped.json().items).toHaveLength(2);
   });
 });

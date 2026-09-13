@@ -2,8 +2,11 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  AdminActionRow,
+  AdminDepositRow,
   AdminOverview,
   AdminOrderRow,
+  AdminTransactionRow,
   AdminUserView,
   ProviderConfigView,
   SettingsView,
@@ -159,14 +162,14 @@ export function useAdminTransactions(params: Record<string, string | number | un
   return useQuery({
     queryKey: ['admin', 'txns', params],
     queryFn: () =>
-      apiFetch<Paginated<Record<string, unknown>>>(`/v1/admin/finance/transactions?${qs({ ...params, limit: 25 })}`),
+      apiFetch<Paginated<AdminTransactionRow>>(`/v1/admin/finance/transactions?${qs({ ...params, limit: 25 })}`),
   });
 }
 export function useAdminDeposits(params: Record<string, string | number | undefined>) {
   return useQuery({
     queryKey: ['admin', 'deposits', params],
     queryFn: () =>
-      apiFetch<Paginated<Record<string, unknown>>>(`/v1/admin/finance/deposits?${qs({ ...params, limit: 25 })}`),
+      apiFetch<Paginated<AdminDepositRow>>(`/v1/admin/finance/deposits?${qs({ ...params, limit: 25 })}`),
   });
 }
 export function useUpdateDeposit() {
@@ -194,5 +197,14 @@ export function useUpdateSettings() {
     mutationFn: (body: Partial<SettingsView>) =>
       apiFetch<SettingsView>('/v1/admin/settings/', { method: 'PATCH', body }),
     onSuccess: (data) => qc.setQueryData(['admin', 'settings'], data),
+  });
+}
+
+/* ---------- audit log ---------- */
+export function useAdminLogs(params: Record<string, string | number | undefined>) {
+  return useQuery({
+    queryKey: ['admin', 'logs', params],
+    queryFn: () =>
+      apiFetch<Paginated<AdminActionRow>>(`/v1/admin/logs/?${qs({ ...params, limit: 25 })}`),
   });
 }

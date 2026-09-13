@@ -1,7 +1,8 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Application } from 'express';
 import { makeInject } from './inject.js';
 import { buildApp } from '../app.js';
+import * as email from '../lib/email.js';
 
 let app: Application;
 let inject: ReturnType<typeof makeInject>;
@@ -161,5 +162,115 @@ describe('auth', () => {
       headers: { cookie },
     });
     expect(refresh.statusCode).toBe(401);
+  });
+});
+
+describe('password reset', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** Captures the link forgot-password would have emailed, without hitting Resend. */
+  function spyOnResetLink() {
+    return vi.spyOn(email, 'sendPasswordResetEmail').mockResolvedValue(undefined);
+  }
+
+  it('resets the password, logs the user in, and revokes older sessions', async () => {
+    const reg = await registerUser('resetme@test.dev');
+    const oldCookie = cookieHeader(reg);
+    const sendSpy = spyOnResetLink();
+
+    const forgot = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/forgot-password',
+      payload: { email: 'resetme@test.dev' },
+    });
+    expect(forgot.statusCode).toBe(200);
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    const link = sendSpy.mock.calls[0]![1] as string;
+    const token = new URL(link).searchParams.get('token');
+    expect(token).toBeTruthy();
+
+    const reset = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/reset-password',
+      payload: { token, password: 'brandnewpass1' },
+    });
+    expect(reset.statusCode).toBe(200);
+    expect(reset.json().user.email).toBe('resetme@test.dev');
+    // Reset logs the user straight back in with a fresh session.
+    expect(reset.cookies.map((c) => c.name)).toEqual(
+      expect.arrayContaining(['smsg_access', 'smsg_refresh']),
+    );
+
+    // The session that existed before the reset is dead now.
+    const oldRefresh = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: { cookie: oldCookie },
+    });
+    expect(oldRefresh.statusCode).toBe(401);
+
+    // Old password no longer works; the new one does.
+    const loginOld = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { identifier: 'resetme@test.dev', password: 'supersecret1' },
+    });
+    expect(loginOld.statusCode).toBe(401);
+    const loginNew = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { identifier: 'resetme@test.dev', password: 'brandnewpass1' },
+    });
+    expect(loginNew.statusCode).toBe(200);
+  });
+
+  it('does not reveal whether an email is registered', async () => {
+    const sendSpy = spyOnResetLink();
+    const res = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/forgot-password',
+      payload: { email: 'never-registered@test.dev' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true });
+    expect(sendSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unknown or malformed reset token', async () => {
+    const res = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/reset-password',
+      payload: { token: 'x'.repeat(32), password: 'whatever123' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('BAD_REQUEST');
+  });
+
+  it('rejects reusing an already-consumed reset token', async () => {
+    await registerUser('reuse@test.dev');
+    const sendSpy = spyOnResetLink();
+    await inject({
+      method: 'POST',
+      url: '/api/v1/auth/forgot-password',
+      payload: { email: 'reuse@test.dev' },
+    });
+    const link = sendSpy.mock.calls[0]![1] as string;
+    const token = new URL(link).searchParams.get('token');
+
+    const first = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/reset-password',
+      payload: { token, password: 'firstnewpass1' },
+    });
+    expect(first.statusCode).toBe(200);
+
+    const second = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/reset-password',
+      payload: { token, password: 'secondnewpass1' },
+    });
+    expect(second.statusCode).toBe(400);
   });
 });

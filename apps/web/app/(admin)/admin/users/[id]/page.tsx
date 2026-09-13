@@ -72,7 +72,12 @@ export default function AdminUserDetailPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="p-4">
-          <div className="mb-3 text-xs uppercase tracking-widest text-faint">Recent orders</div>
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-xs uppercase tracking-widest text-faint">Recent orders</div>
+            <Link href={`/admin/users/${u.id}/orders`} className="text-xs text-accent">
+              View all →
+            </Link>
+          </div>
           {u.recentOrders.length === 0 ? (
             <p className="text-sm text-faint">No orders yet.</p>
           ) : (
@@ -83,6 +88,7 @@ export default function AdminUserDetailPage() {
                     {o.service} · {o.country}
                   </span>
                   <span className="flex items-center gap-2 whitespace-nowrap">
+                    <Badge tone={o.source === 'api' ? 'accent' : 'muted'}>{o.source}</Badge>
                     <Badge tone={o.status === 'completed' ? 'success' : 'muted'}>{o.status}</Badge>
                     <span className="font-mono text-muted">{formatUsd(o.priceMicro)}</span>
                   </span>
@@ -93,8 +99,11 @@ export default function AdminUserDetailPage() {
         </Card>
 
         <Card className="p-4">
-          <div className="mb-3 text-xs uppercase tracking-widest text-faint">
-            Recent transactions
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-xs uppercase tracking-widest text-faint">Recent transactions</div>
+            <Link href={`/admin/users/${u.id}/transactions`} className="text-xs text-accent">
+              View all →
+            </Link>
           </div>
           {u.recentTransactions.length === 0 ? (
             <p className="text-sm text-faint">No transactions yet.</p>

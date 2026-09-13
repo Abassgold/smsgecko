@@ -85,6 +85,11 @@ h4 {
 
 a {
   color: inherit;
+  cursor: pointer;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
 }
 
 /* Page background: soft green top glow + faint dotted starfield. */

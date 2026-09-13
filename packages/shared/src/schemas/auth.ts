@@ -16,6 +16,15 @@ export interface VerifyEmailBody {
   token: string;
 }
 
+export interface ForgotPasswordBody {
+  email: string;
+}
+
+export interface ResetPasswordBody {
+  token: string;
+  password: string;
+}
+
 export interface PublicUser {
   id: string;
   email: string;

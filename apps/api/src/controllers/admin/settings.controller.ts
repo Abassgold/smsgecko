@@ -8,5 +8,5 @@ export const get = asyncHandler(async (_req, res) => {
 });
 
 export const patch = asyncHandler(async (req, res) => {
-  res.json(await applySettingsPatch(req.body as SettingsPatch));
+  res.json(await applySettingsPatch(req.body as SettingsPatch, req.authUser!.id as string));
 });

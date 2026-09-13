@@ -16,6 +16,7 @@ import orderRoutes from './routes/orders.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
 import depositRoutes from './routes/deposits.routes.js';
 import webhookRoutes from './routes/webhooks.routes.js';
+import webhookConfigRoutes from './routes/webhook.routes.js';
 import affiliateRoutes from './routes/affiliate.routes.js';
 import notificationRoutes from './routes/notifications.routes.js';
 import adminRoutes from './routes/admin/index.js';
@@ -73,6 +74,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<Application>
   app.use('/api/v1', depositRoutes);
   app.use('/api/v1/affiliate', affiliateRoutes);
   app.use('/api/v1/api-keys', apiKeyRoutes);
+  app.use('/api/v1/webhook', webhookConfigRoutes);
   app.use('/api/v1/notifications', notificationRoutes);
   app.use('/api/v1/admin', adminRoutes);
   app.use('/api/v2', v2Routes);

@@ -33,8 +33,12 @@ export const v2PatchWebhookBody = yup.object({
   // Explicit `null` clears the webhook (and its secret); omit to leave as-is.
   webhook_url: yup.string().url('webhook_url must be a valid URL').nullable().optional(),
   webhook_secret: yup.string().min(16, 'webhook_secret must be at least 16 characters').max(128).optional(),
+  // Replace the current secret with a fresh server-generated one. Ignored if
+  // webhook_secret is also given (an explicit value always wins).
+  regenerate_secret: yup.boolean().optional(),
 });
 export interface V2PatchWebhookBody {
   webhook_url?: string | null;
   webhook_secret?: string;
+  regenerate_secret?: boolean;
 }

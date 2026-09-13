@@ -1,8 +1,9 @@
 import { logger } from './logger.js';
-import { hmacSha256Hex } from './crypto.js';
+import { hmacSha256Hex, randomToken } from './crypto.js';
+import { badRequest } from './errors.js';
 import type { UserDoc } from '../models/User.js';
 import type { OrderDoc } from '../models/Order.js';
-import { toV2Order } from '../services/v2.mapper.js';
+import { usdString } from '../services/v2.mapper.js';
 
 export type WebhookEvent = 'order.created' | 'order.completed' | 'order.expired' | 'order.canceled';
 
@@ -56,6 +57,42 @@ async function post(url: string, payload: string, signature: string | null) {
   });
 }
 
+export interface WebhookOrderData {
+  order_id: string;
+  status: OrderDoc['status'];
+  phone_number: string;
+  otp_code: string | null;
+  otp_message: string | null;
+  service: string;
+  country: string;
+  price: string;
+  created_at: string;
+  expires_at: string;
+  finished_at: string | null;
+}
+
+/**
+ * Flat, single-level shape for the `data` field of a webhook delivery — kept
+ * separate from `toV2Order()` (used by GET/POST /orders) so the two can vary
+ * independently: this one is the wire contract customers' receivers parse,
+ * that one is the REST resource shape.
+ */
+function toWebhookData(order: OrderDoc, otpMessage: string | null = null): WebhookOrderData {
+  return {
+    order_id: order.id as string,
+    status: order.status,
+    phone_number: order.phoneNumber,
+    otp_code: order.otpCode ?? null,
+    otp_message: otpMessage,
+    service: order.serviceName,
+    country: order.countryName,
+    price: usdString(order.priceMicro),
+    created_at: (order.get('createdAt') as Date).toISOString(),
+    expires_at: order.expiresAt.toISOString(),
+    finished_at: order.finishedAt ? order.finishedAt.toISOString() : null,
+  };
+}
+
 /**
  * Best-effort webhook delivery: one POST, short timeout, no retry queue. A
  * no-op when the user hasn't configured a webhook. Never throws — a broken or
@@ -65,13 +102,14 @@ export async function dispatchWebhook(
   user: UserDoc,
   event: WebhookEvent,
   order: OrderDoc,
+  otpMessage: string | null = null,
 ): Promise<void> {
   if (!user.webhookUrl) return;
 
   const payload = JSON.stringify({
     event,
     timestamp: new Date().toISOString(),
-    data: toV2Order(order),
+    data: toWebhookData(order, otpMessage),
   });
 
   try {
@@ -84,6 +122,43 @@ export async function dispatchWebhook(
   }
 }
 
+export interface WebhookPatch {
+  /** `null` clears the webhook (and its secret); `undefined` leaves it as-is. */
+  webhookUrl?: string | null;
+  webhookSecret?: string;
+  /** Replace the current secret with a fresh one. Ignored if webhookSecret is also given. */
+  regenerateSecret?: boolean;
+}
+
+/**
+ * Apply a partial webhook config update to `user` in place and save it — the
+ * one place this logic lives, so the v1 (session) and v2 (Bearer) controllers
+ * can't drift on validation or the auto-generate-a-secret behavior. Does not
+ * respond; callers shape their own response envelope.
+ */
+export async function applyWebhookPatch(user: UserDoc, patch: WebhookPatch): Promise<void> {
+  if (patch.webhookUrl === null) {
+    user.webhookUrl = null;
+    user.webhookSecret = null;
+  } else {
+    if (patch.webhookUrl !== undefined) {
+      if (!isSafeWebhookUrl(patch.webhookUrl)) {
+        throw badRequest('webhookUrl must be an https:// URL, not a local or private address');
+      }
+      user.webhookUrl = patch.webhookUrl;
+    }
+    if (patch.webhookSecret !== undefined) {
+      user.webhookSecret = patch.webhookSecret;
+    } else if (user.webhookUrl && (patch.regenerateSecret || !user.webhookSecret)) {
+      // Either an explicit rotation, or the first time a URL is set with no
+      // secret given — generate one so signature verification works from the
+      // start.
+      user.webhookSecret = randomToken(24);
+    }
+  }
+  await user.save();
+}
+
 export interface TestWebhookResult {
   delivered: boolean;
   statusCode: number | null;
@@ -92,21 +167,23 @@ export interface TestWebhookResult {
 
 /** Sends a synthetic `webhook.test` event to the user's configured URL right now. */
 export async function sendTestWebhook(user: UserDoc): Promise<TestWebhookResult> {
+  const now = new Date().toISOString();
   const payload = JSON.stringify({
     event: 'webhook.test',
-    timestamp: new Date().toISOString(),
+    timestamp: now,
     data: {
-      id: '000000000000000000000000',
+      order_id: '000000000000000000000000',
       status: 'completed',
-      product: { service: 'Whatsapp', country: 'United States' },
       phone_number: '+15551234567',
-      price: '0.47',
       otp_code: '482913',
-      sms: [{ sender: 'WhatsApp', text: 'Your WhatsApp code: 482-913', received_at: new Date().toISOString() }],
-      created_at: new Date().toISOString(),
-      expires_at: new Date().toISOString(),
+      otp_message: 'Your WhatsApp code: 482-913',
+      service: 'Whatsapp',
+      country: 'United States',
+      price: '0.47',
+      created_at: now,
+      expires_at: now,
       finished_at: null,
-    },
+    } satisfies WebhookOrderData,
   });
 
   try {
