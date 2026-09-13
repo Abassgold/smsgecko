@@ -4,6 +4,8 @@ import { Order } from '../../models/Order.js';
 import { Transaction } from '../../models/Transaction.js';
 import { credit, debit } from '../../lib/ledger.js';
 import { badRequest, notFound } from '../../lib/errors.js';
+import { logAdminAction } from '../../lib/adminLog.js';
+import { usdString } from '../v2.mapper.js';
 import type { AdminUsersQuery } from '../../lib/validation/admin/users.schema.js';
 
 export async function toRow(u: UserDoc): Promise<AdminUserView> {
@@ -84,19 +86,25 @@ export async function updateUser(
 ): Promise<AdminUserView> {
   const user = await User.findById(id);
   if (!user) throw notFound('User not found');
+  const changes: string[] = [];
   if (body.role !== undefined) {
     if (user.id === actingUserId && body.role !== 'admin') {
       throw badRequest('You cannot remove your own admin role');
     }
+    if (body.role !== user.role) changes.push(`role: ${user.role} → ${body.role}`);
     user.role = body.role;
   }
   if (body.status !== undefined) {
     if (user.id === actingUserId && body.status === 'suspended') {
       throw badRequest('You cannot suspend yourself');
     }
+    if (body.status !== user.status) changes.push(`status: ${user.status} → ${body.status}`);
     user.status = body.status;
   }
   await user.save();
+  if (changes.length) {
+    void logAdminAction(actingUserId, 'user_update', { type: 'user', id }, changes.join(', '));
+  }
   return toRow(user);
 }
 
@@ -104,6 +112,7 @@ export async function adjustBalance(
   id: string,
   amountMicro: number,
   reason: string,
+  actingUserId: string,
 ): Promise<AdminUserView> {
   const user = await User.findById(id);
   if (!user) throw notFound('User not found');
@@ -113,6 +122,12 @@ export async function adjustBalance(
   } else {
     await debit(user._id, -amountMicro, { type: 'adjustment', description });
   }
+  void logAdminAction(
+    actingUserId,
+    'balance_adjust',
+    { type: 'user', id },
+    `${amountMicro >= 0 ? '+' : '-'}${usdString(Math.abs(amountMicro))} — ${reason}`,
+  );
   const fresh = await User.findById(user._id);
   return toRow(fresh!);
 }

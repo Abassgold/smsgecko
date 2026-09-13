@@ -6,6 +6,7 @@ import userRoutes from './users.routes.js';
 import orderRoutes from './orders.routes.js';
 import financeRoutes from './finance.routes.js';
 import settingsRoutes from './settings.routes.js';
+import logsRoutes from './logs.routes.js';
 
 /** Everything under /api/v1/admin, gated by requireUser + requireAdmin. */
 const router = Router();
@@ -18,5 +19,6 @@ router.use('/users', userRoutes);
 router.use('/orders', orderRoutes);
 router.use('/finance', financeRoutes);
 router.use('/settings', settingsRoutes);
+router.use('/logs', logsRoutes);
 
 export default router;

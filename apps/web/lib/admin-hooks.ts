@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  AdminActionRow,
   AdminDepositRow,
   AdminOverview,
   AdminOrderRow,
@@ -196,5 +197,14 @@ export function useUpdateSettings() {
     mutationFn: (body: Partial<SettingsView>) =>
       apiFetch<SettingsView>('/v1/admin/settings/', { method: 'PATCH', body }),
     onSuccess: (data) => qc.setQueryData(['admin', 'settings'], data),
+  });
+}
+
+/* ---------- audit log ---------- */
+export function useAdminLogs(params: Record<string, string | number | undefined>) {
+  return useQuery({
+    queryKey: ['admin', 'logs', params],
+    queryFn: () =>
+      apiFetch<Paginated<AdminActionRow>>(`/v1/admin/logs/?${qs({ ...params, limit: 25 })}`),
   });
 }

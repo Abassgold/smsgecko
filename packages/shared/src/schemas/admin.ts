@@ -163,6 +163,18 @@ export interface AdminDepositRow {
   confirmedAt: string | null;
 }
 
+/* ---------------- audit log ---------------- */
+
+export interface AdminActionRow {
+  id: string;
+  admin: { id: string; email: string };
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  detail: string;
+  createdAt: string;
+}
+
 /* ---------------- settings ---------------- */
 
 export interface SettingsView {

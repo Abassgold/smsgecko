@@ -4,6 +4,8 @@ import { Deposit, type DepositDoc } from '../../models/Deposit.js';
 import { User } from '../../models/User.js';
 import { conflict, notFound } from '../../lib/errors.js';
 import { confirmDeposit } from '../deposits.service.js';
+import { logAdminAction } from '../../lib/adminLog.js';
+import { usdString } from '../v2.mapper.js';
 import type {
   AdminDepositsQuery,
   AdminTransactionsQuery,
@@ -71,6 +73,7 @@ export async function listDeposits(query: AdminDepositsQuery) {
 export async function updateDepositStatus(
   id: string,
   status: 'confirmed' | 'failed',
+  actingUserId: string,
 ): Promise<AdminDepositRow> {
   const deposit = await Deposit.findById(id);
   if (!deposit) throw notFound('Deposit not found');
@@ -82,6 +85,12 @@ export async function updateDepositStatus(
     deposit.status = 'failed';
     await deposit.save();
   }
+  void logAdminAction(
+    actingUserId,
+    status === 'confirmed' ? 'deposit_confirm' : 'deposit_fail',
+    { type: 'deposit', id },
+    usdString(deposit.amountMicro),
+  );
   const fresh = await Deposit.findById(deposit._id);
   const email = (await User.findById(fresh!.userId, { email: 1 }))?.email ?? '—';
   return depositRow(fresh!, email);

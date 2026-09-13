@@ -22,7 +22,7 @@ export const getOne = asyncHandler(async (req, res) => {
 
 export const cancel = asyncHandler(async (req, res) => {
   const { id } = valid<IdParams>(req, 'params');
-  res.json(await cancelOrder(id));
+  res.json(await cancelOrder(id, req.authUser!.id as string));
 });
 
 export const repoll = asyncHandler(async (req, res) => {
