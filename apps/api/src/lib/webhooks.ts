@@ -126,6 +126,8 @@ export interface WebhookPatch {
   /** `null` clears the webhook (and its secret); `undefined` leaves it as-is. */
   webhookUrl?: string | null;
   webhookSecret?: string;
+  /** Replace the current secret with a fresh one. Ignored if webhookSecret is also given. */
+  regenerateSecret?: boolean;
 }
 
 /**
@@ -147,9 +149,10 @@ export async function applyWebhookPatch(user: UserDoc, patch: WebhookPatch): Pro
     }
     if (patch.webhookSecret !== undefined) {
       user.webhookSecret = patch.webhookSecret;
-    } else if (user.webhookUrl && !user.webhookSecret) {
-      // First time a URL is set with no secret given — generate one so
-      // signature verification works from the start.
+    } else if (user.webhookUrl && (patch.regenerateSecret || !user.webhookSecret)) {
+      // Either an explicit rotation, or the first time a URL is set with no
+      // secret given — generate one so signature verification works from the
+      // start.
       user.webhookSecret = randomToken(24);
     }
   }

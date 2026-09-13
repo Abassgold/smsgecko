@@ -8,6 +8,8 @@ export interface UpdateWebhookBody {
   webhookUrl?: string | null;
   /** Omit to auto-generate on first set, or to leave an existing one unchanged. */
   webhookSecret?: string;
+  /** Replace the current secret with a fresh server-generated one. Ignored if webhookSecret is also given. */
+  regenerateSecret?: boolean;
 }
 
 export interface WebhookTestResult {

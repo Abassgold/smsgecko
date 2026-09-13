@@ -145,6 +145,44 @@ describe('v2 webhooks: config', () => {
     expect(res.json().data.webhook_secret).toBe(secret);
   });
 
+  it('regenerate_secret replaces the secret without touching the url', async () => {
+    const { userId } = await makeUser(app);
+    const key = await keyFor(userId);
+
+    const set = await inject({
+      method: 'PATCH',
+      url: '/api/v2/webhook',
+      headers: { authorization: `Bearer ${key}` },
+      payload: { webhook_url: 'https://example.com/hook' },
+    });
+    const original = set.json().data.webhook_secret as string;
+
+    const rotated = await inject({
+      method: 'PATCH',
+      url: '/api/v2/webhook',
+      headers: { authorization: `Bearer ${key}` },
+      payload: { regenerate_secret: true },
+    });
+    expect(rotated.statusCode).toBe(200);
+    expect(rotated.json().data.webhook_url).toBe('https://example.com/hook');
+    expect(rotated.json().data.webhook_secret).not.toBe(original);
+    expect(rotated.json().data.webhook_secret).toMatch(/^[\w-]{20,}$/);
+  });
+
+  it('an explicit webhook_secret wins over regenerate_secret in the same call', async () => {
+    const { userId } = await makeUser(app);
+    const key = await keyFor(userId);
+    const secret = 'b'.repeat(20);
+
+    const res = await inject({
+      method: 'PATCH',
+      url: '/api/v2/webhook',
+      headers: { authorization: `Bearer ${key}` },
+      payload: { webhook_url: 'https://example.com/hook', webhook_secret: secret, regenerate_secret: true },
+    });
+    expect(res.json().data.webhook_secret).toBe(secret);
+  });
+
   it('409s the test endpoint when no webhook is configured', async () => {
     const { userId } = await makeUser(app);
     const key = await keyFor(userId);

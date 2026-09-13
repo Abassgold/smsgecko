@@ -94,7 +94,11 @@ export const getWebhook = asyncHandler(async (req, res) => {
 export const patchWebhook = asyncHandler(async (req, res) => {
   const body = valid<V2PatchWebhookBody>(req, 'body');
   const user = req.apiUser!;
-  await applyWebhookPatch(user, { webhookUrl: body.webhook_url, webhookSecret: body.webhook_secret });
+  await applyWebhookPatch(user, {
+    webhookUrl: body.webhook_url,
+    webhookSecret: body.webhook_secret,
+    regenerateSecret: body.regenerate_secret,
+  });
   res.json(ok({ webhook_url: user.webhookUrl, webhook_secret: user.webhookSecret }));
 });
 
