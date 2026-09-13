@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { LoadingRow } from '@/components/ui/spinner';
 import { CopyButton } from '@/components/ui/copy-button';
 import { ApiKeys } from '@/components/dashboard/api-keys';
+import { Webhook } from '@/components/dashboard/webhook';
 import { formatBalanceUsd } from '@/lib/format';
 import { useMe } from '@/lib/hooks';
 
@@ -48,6 +49,8 @@ export default function SettingsPage() {
       </Card>
 
       <ApiKeys />
+
+      <Webhook />
     </div>
   );
 }

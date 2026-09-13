@@ -17,8 +17,11 @@ import type {
   RegisterBody,
   ServiceView,
   TransactionView,
+  UpdateWebhookBody,
   VerifyEmailBody,
   WalletResponse,
+  WebhookConfig,
+  WebhookTestResult,
 } from '@smsgecko/shared';
 import { apiFetch } from './api';
 
@@ -290,5 +293,29 @@ export function useRevokeApiKey() {
     mutationFn: (id: string) =>
       apiFetch<{ ok: true }>(`/v1/api-keys/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['api-keys'] }),
+  });
+}
+
+/* ---------- webhook ---------- */
+
+export function useWebhook() {
+  return useQuery({
+    queryKey: ['webhook'],
+    queryFn: () => apiFetch<WebhookConfig>('/v1/webhook'),
+  });
+}
+
+export function useUpdateWebhook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateWebhookBody) =>
+      apiFetch<WebhookConfig>('/v1/webhook', { method: 'PATCH', body }),
+    onSuccess: (data) => qc.setQueryData(['webhook'], data),
+  });
+}
+
+export function useTestWebhook() {
+  return useMutation({
+    mutationFn: () => apiFetch<WebhookTestResult>('/v1/webhook/test', { method: 'POST' }),
   });
 }
