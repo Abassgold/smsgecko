@@ -9,12 +9,14 @@ import type {
   CountryView,
   CreateOrderBody,
   DepositView,
+  ForgotPasswordBody,
   LoginBody,
   NotificationsResponse,
   OrderStatsResponse,
   OrderView,
   QuoteResponse,
   RegisterBody,
+  ResetPasswordBody,
   ServiceView,
   TransactionView,
   UpdateWebhookBody,
@@ -82,6 +84,22 @@ export function useResendVerification() {
   return useMutation({
     mutationFn: () =>
       apiFetch<{ ok: true }>('/v1/auth/resend-verification', { method: 'POST' }),
+  });
+}
+
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: (body: ForgotPasswordBody) =>
+      apiFetch<{ ok: true }>('/v1/auth/forgot-password', { method: 'POST', body }),
+  });
+}
+
+export function useResetPassword() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ResetPasswordBody) =>
+      apiFetch<AuthResponse>('/v1/auth/reset-password', { method: 'POST', body }),
+    onSuccess: (data) => qc.setQueryData(['me'], data),
   });
 }
 

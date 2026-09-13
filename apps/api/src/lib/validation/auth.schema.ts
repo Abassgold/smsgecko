@@ -22,3 +22,12 @@ export const loginBody = yup.object({
 export const verifyEmailBody = yup.object({
   token: yup.string().trim().min(10).max(200).required(),
 });
+
+export const forgotPasswordBody = yup.object({
+  email: yup.string().trim().email().max(254).required(),
+});
+
+export const resetPasswordBody = yup.object({
+  token: yup.string().trim().min(10).max(200).required(),
+  password: yup.string().min(8).max(200).required(),
+});
