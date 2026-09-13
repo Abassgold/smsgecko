@@ -56,6 +56,7 @@ export async function getUserDetail(id: string): Promise<AdminUserDetail> {
     recentOrders: orders.map((o) => ({
       id: o.id as string,
       status: o.status,
+      source: o.source,
       service: o.serviceName,
       country: o.countryName,
       priceMicro: o.priceMicro,

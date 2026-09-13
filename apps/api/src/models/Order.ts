@@ -1,9 +1,11 @@
 import { Schema, model, type InferSchemaType, type HydratedDocument } from 'mongoose';
-import { ORDER_STATUSES } from '@smsgecko/shared';
+import { ORDER_SOURCES, ORDER_STATUSES } from '@smsgecko/shared';
 
 const orderSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    /** Which surface created it: the dashboard (session cookie) or the public API (Bearer key). */
+    source: { type: String, enum: ORDER_SOURCES, default: 'web' },
     /** The active provider's own service / country codes at order time. */
     serviceId: { type: String, required: true },
     countryId: { type: String, required: true },

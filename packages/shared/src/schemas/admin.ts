@@ -1,4 +1,4 @@
-import type { OrderStatus, TransactionType, DepositStatus } from '../constants';
+import type { OrderSource, OrderStatus, TransactionType, DepositStatus } from '../constants';
 
 /* ---------------- providers ---------------- */
 
@@ -99,6 +99,7 @@ export interface AdminUserDetail extends AdminUserView {
   recentOrders: Array<{
     id: string;
     status: OrderStatus;
+    source: OrderSource;
     service: string;
     country: string;
     priceMicro: number;
@@ -118,6 +119,7 @@ export interface AdminUserDetail extends AdminUserView {
 export interface AdminOrderRow {
   id: string;
   status: OrderStatus;
+  source: OrderSource;
   user: { id: string; email: string };
   service: string;
   country: string;

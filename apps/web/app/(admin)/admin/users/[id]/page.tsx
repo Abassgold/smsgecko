@@ -83,6 +83,7 @@ export default function AdminUserDetailPage() {
                     {o.service} · {o.country}
                   </span>
                   <span className="flex items-center gap-2 whitespace-nowrap">
+                    <Badge tone={o.source === 'api' ? 'accent' : 'muted'}>{o.source}</Badge>
                     <Badge tone={o.status === 'completed' ? 'success' : 'muted'}>{o.status}</Badge>
                     <span className="font-mono text-muted">{formatUsd(o.priceMicro)}</span>
                   </span>

@@ -1,4 +1,4 @@
-import type { CreateOrderBody } from '@smsgecko/shared';
+import type { CreateOrderBody, OrderSource } from '@smsgecko/shared';
 import { mongoose, supportsTransactions } from '../db/mongoose.js';
 import { Order, type OrderDoc } from '../models/Order.js';
 import { SmsMessage } from '../models/SmsMessage.js';
@@ -57,7 +57,11 @@ export interface CreateOrderResult {
   reused: boolean;
 }
 
-export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise<CreateOrderResult> {
+export async function createOrder(
+  user: UserDoc,
+  body: CreateOrderBody,
+  source: OrderSource = 'web',
+): Promise<CreateOrderResult> {
   const bodyHash = body.idempotencyKey ? hashOrderBody(body) : null;
 
   if (body.idempotencyKey) {
@@ -125,6 +129,7 @@ export async function createOrder(user: UserDoc, body: CreateOrderBody): Promise
 
     const data = {
       userId: user._id,
+      source,
       serviceId: serviceCode,
       countryId: countryCode,
       serviceSlug: cat.serviceSlug,

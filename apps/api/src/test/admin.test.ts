@@ -3,6 +3,7 @@ import type { Application } from 'express';
 import { makeInject } from './inject.js';
 import { buildApp } from '../app.js';
 import { makeAdmin, makeCatalog, makeProvider, makeUser } from './factories.js';
+import { ApiKey } from '../models/ApiKey.js';
 import { ProviderConfig } from '../models/ProviderConfig.js';
 import { Order } from '../models/Order.js';
 import { Transaction } from '../models/Transaction.js';
@@ -156,6 +157,36 @@ describe('admin panel', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe('canceled');
     expect((await User.findById(userId))!.balanceMicro).toBe(1_000_000);
+  });
+
+  it('tags orders with their source (web vs api) and surfaces it in admin views', async () => {
+    const { cookie: adminCookie } = await makeAdmin(app);
+    const { service, country } = await makeCatalog({ priceMicro: 100_000, stock: 5 });
+    const { cookie, userId } = await makeUser(app, { balanceMicro: 1_000_000 });
+    const { key } = await ApiKey.issue(userId, 'test');
+
+    const webOrder = (
+      await post('/api/v1/orders', cookie, { serviceId: service.id, countryId: country.id })
+    ).json();
+    const apiOrder = (
+      await inject({
+        method: 'POST',
+        url: '/api/v2/orders',
+        headers: { authorization: `Bearer ${key}` },
+        payload: { catalog_product_id: `${service.id}::${country.id}` },
+      })
+    ).json().data;
+
+    expect((await Order.findById(webOrder.id))!.source).toBe('web');
+    expect((await Order.findById(apiOrder.id))!.source).toBe('api');
+
+    const rows = (await get('/api/v1/admin/orders', adminCookie)).json().items;
+    expect(rows.find((r: { id: string }) => r.id === webOrder.id).source).toBe('web');
+    expect(rows.find((r: { id: string }) => r.id === apiOrder.id).source).toBe('api');
+
+    const detail = (await get(`/api/v1/admin/users/${userId}`, adminCookie)).json();
+    expect(detail.recentOrders.find((o: { id: string }) => o.id === webOrder.id).source).toBe('web');
+    expect(detail.recentOrders.find((o: { id: string }) => o.id === apiOrder.id).source).toBe('api');
   });
 
   it('patches settings and getSettings() reflects it', async () => {

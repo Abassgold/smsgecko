@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
 import { TextInput } from '@/components/ui/field';
 import { LoadingRow } from '@/components/ui/spinner';
@@ -47,10 +48,11 @@ export default function AdminOrdersPage() {
         ) : !orders.data || orders.data.items.length === 0 ? (
           <EmptyState title="No orders match" />
         ) : (
-          <table className="w-full min-w-[1120px] text-sm">
+          <table className="w-full min-w-[1220px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-[11px] uppercase tracking-widest text-faint">
                 <th className="px-4 py-3 font-medium">Order</th>
+                <th className="px-4 py-3 font-medium">Source</th>
                 <th className="px-4 py-3 font-medium">User</th>
                 <th className="px-4 py-3 font-medium">Service / Country</th>
                 <th className="px-4 py-3 font-medium">Provider</th>
@@ -65,6 +67,9 @@ export default function AdminOrdersPage() {
               {orders.data.items.map((o) => (
                 <tr key={o.id} className="border-b border-border last:border-0">
                   <td className="px-4 py-3 font-mono text-xs text-accent">#{o.id.slice(-8)}</td>
+                  <td className="px-4 py-3">
+                    <Badge tone={o.source === 'api' ? 'accent' : 'muted'}>{o.source}</Badge>
+                  </td>
                   <td className="px-4 py-3 text-xs text-muted">{o.user.email}</td>
                   <td className="px-4 py-3">
                     {o.service}
