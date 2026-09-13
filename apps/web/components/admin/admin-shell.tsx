@@ -24,7 +24,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-full flex-1">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-surface/40 p-4 md:flex">
+      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col overflow-y-auto border-r border-border bg-surface/40 p-4 md:flex">
         <div className="flex items-center gap-2">
           <Logo href="/admin" />
           <Badge tone="accent">Admin</Badge>
