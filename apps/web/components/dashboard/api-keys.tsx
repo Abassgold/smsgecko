@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { TextInput } from '@/components/ui/field';
 import { CopyButton } from '@/components/ui/copy-button';
 import { Badge } from '@/components/ui/badge';
 import { LoadingRow } from '@/components/ui/spinner';
@@ -14,7 +13,6 @@ export function ApiKeys() {
   const keys = useApiKeys();
   const create = useCreateApiKey();
   const revoke = useRevokeApiKey();
-  const [label, setLabel] = useState('');
   const [freshKey, setFreshKey] = useState<string | null>(null);
 
   return (
@@ -25,27 +23,14 @@ export function ApiKeys() {
         <code className="text-xs">/api/v2</code>.
       </p>
 
-      <form
-        className="mt-4 flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          create.mutate(label || 'API key', {
-            onSuccess: (k) => {
-              setFreshKey(k.key);
-              setLabel('');
-            },
-          });
-        }}
-      >
-        <TextInput
-          placeholder="Label (e.g. production)"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-        />
-        <Button type="submit" disabled={create.isPending}>
-          {create.isPending ? 'Creating…' : 'Create'}
+      <div className="mt-4">
+        <Button
+          disabled={create.isPending}
+          onClick={() => create.mutate('API key', { onSuccess: (k) => setFreshKey(k.key) })}
+        >
+          {create.isPending ? 'Generating…' : 'Generate'}
         </Button>
-      </form>
+      </div>
 
       {freshKey ? (
         <div className="mt-4 rounded-xl border border-[var(--accent-ring)]/40 bg-accent-soft p-4">
@@ -81,7 +66,7 @@ export function ApiKeys() {
                 </div>
                 {!k.revoked ? (
                   <Button
-                    variant="ghost"
+                    variant="danger"
                     size="sm"
                     onClick={() => revoke.mutate(k.id)}
                     disabled={revoke.isPending}
