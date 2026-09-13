@@ -2,8 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  AdminDepositRow,
   AdminOverview,
   AdminOrderRow,
+  AdminTransactionRow,
   AdminUserView,
   ProviderConfigView,
   SettingsView,
@@ -159,14 +161,14 @@ export function useAdminTransactions(params: Record<string, string | number | un
   return useQuery({
     queryKey: ['admin', 'txns', params],
     queryFn: () =>
-      apiFetch<Paginated<Record<string, unknown>>>(`/v1/admin/finance/transactions?${qs({ ...params, limit: 25 })}`),
+      apiFetch<Paginated<AdminTransactionRow>>(`/v1/admin/finance/transactions?${qs({ ...params, limit: 25 })}`),
   });
 }
 export function useAdminDeposits(params: Record<string, string | number | undefined>) {
   return useQuery({
     queryKey: ['admin', 'deposits', params],
     queryFn: () =>
-      apiFetch<Paginated<Record<string, unknown>>>(`/v1/admin/finance/deposits?${qs({ ...params, limit: 25 })}`),
+      apiFetch<Paginated<AdminDepositRow>>(`/v1/admin/finance/deposits?${qs({ ...params, limit: 25 })}`),
   });
 }
 export function useUpdateDeposit() {
