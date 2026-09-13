@@ -8,3 +8,4 @@ export * from './affiliate';
 export * from './apikeys';
 export * from './notifications';
 export * from './admin';
+export * from './webhooks';

@@ -2,8 +2,7 @@ import type { V2CreateOrderBody } from '@smsgecko/shared';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { valid } from '../middleware/validation.js';
 import { badRequest, conflict } from '../lib/errors.js';
-import { randomToken } from '../lib/crypto.js';
-import { isSafeWebhookUrl, sendTestWebhook } from '../lib/webhooks.js';
+import { applyWebhookPatch, sendTestWebhook } from '../lib/webhooks.js';
 import { idempotencyHeader, type ProductsQuery, type V2PatchWebhookBody } from '../lib/validation/v2.schema.js';
 import {
   cancelOrder,
@@ -95,28 +94,7 @@ export const getWebhook = asyncHandler(async (req, res) => {
 export const patchWebhook = asyncHandler(async (req, res) => {
   const body = valid<V2PatchWebhookBody>(req, 'body');
   const user = req.apiUser!;
-
-  if (body.webhook_url === null) {
-    // Explicit null clears the webhook entirely.
-    user.webhookUrl = null;
-    user.webhookSecret = null;
-  } else {
-    if (body.webhook_url !== undefined) {
-      if (!isSafeWebhookUrl(body.webhook_url)) {
-        throw badRequest('webhook_url must be an https:// URL, not a local or private address');
-      }
-      user.webhookUrl = body.webhook_url;
-    }
-    if (body.webhook_secret !== undefined) {
-      user.webhookSecret = body.webhook_secret;
-    } else if (user.webhookUrl && !user.webhookSecret) {
-      // First time a URL is set with no secret given — generate one so
-      // signature verification works from the start.
-      user.webhookSecret = randomToken(24);
-    }
-  }
-
-  await user.save();
+  await applyWebhookPatch(user, { webhookUrl: body.webhook_url, webhookSecret: body.webhook_secret });
   res.json(ok({ webhook_url: user.webhookUrl, webhook_secret: user.webhookSecret }));
 });
 
