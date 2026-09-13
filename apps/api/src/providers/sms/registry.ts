@@ -1,4 +1,4 @@
-import { conflict } from '../../lib/errors.js';
+import { conflict, providerError } from '../../lib/errors.js';
 import { bustCatalogCache } from '../../lib/catalog.js';
 import { decryptJson } from '../../lib/secretbox.js';
 import { ProviderConfig, type ProviderConfigDoc } from '../../models/ProviderConfig.js';
@@ -183,6 +183,11 @@ export async function rentWithFallback(input: RentInput): Promise<RentWithFallba
   if (chain.length === 0) throw conflict('No SMS provider is enabled');
 
   const errors: string[] = [];
+  // Per-provider outcome for the caller — only the two failure modes our
+  // adapters actually distinguish today (no stock vs. misconfigured/unreachable);
+  // anything else falls into the generic 'provider_error' bucket rather than
+  // guessing at a finer-grained cause we can't actually tell apart.
+  const attempts: Array<{ provider: string; outcome: string }> = [];
   for (const { cfg, provider } of chain) {
     await bumpStat(cfg._id, { rentAttempts: 1 });
     try {
@@ -196,15 +201,22 @@ export async function rentWithFallback(input: RentInput): Promise<RentWithFallba
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      const outcome =
+        err instanceof NoStockError
+          ? 'no_numbers'
+          : err instanceof ProviderConfigError
+            ? 'provider_unavailable'
+            : 'provider_error';
       await bumpStat(cfg._id, {
         [err instanceof NoStockError ? 'rentNoStock' : 'rentError']: 1,
         lastError: msg,
         lastErrorAt: new Date(),
       });
+      attempts.push({ provider: cfg.label, outcome });
       errors.push(`${cfg.label}: ${msg}`);
     }
   }
-  throw conflict(`No provider could supply a number — ${errors.join('; ')}`);
+  throw providerError(`No provider could supply a number — ${errors.join('; ')}`, { attempts });
 }
 
 export async function recordOtpReceived(order: OrderDoc): Promise<void> {

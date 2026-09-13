@@ -5,6 +5,9 @@ import { buildApp } from '../app.js';
 import { makeCatalog, makeUser, simulateOtp } from './factories.js';
 import { ApiKey } from '../models/ApiKey.js';
 import { User } from '../models/User.js';
+import { ProviderConfig } from '../models/ProviderConfig.js';
+import { encryptJson } from '../lib/secretbox.js';
+import { bustProviderCache } from '../providers/sms/registry.js';
 
 let app: Application;
 let inject: ReturnType<typeof makeInject>;
@@ -156,6 +159,98 @@ describe('v2 API (Bearer)', () => {
       payload: { catalog_product_id: `${serviceCode}::${countryCode}`, max_price: '0.10' },
     });
     expect(res.statusCode).toBe(422);
+  });
+
+  it('rejects a replayed idempotency key used with a different body', async () => {
+    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 150_000, stock: 5 });
+    const { userId } = await makeUser(app, { balanceMicro: 2_000_000 });
+    const key = await keyFor(userId);
+    const idKey = 'reuse-check-key';
+    const productId = `${serviceCode}::${countryCode}`;
+
+    const first = await inject({
+      method: 'POST',
+      url: '/api/v2/orders',
+      headers: { authorization: `Bearer ${key}`, 'idempotency-key': idKey },
+      payload: { catalog_product_id: productId },
+    });
+    expect(first.statusCode).toBe(201);
+
+    // Same key, same product, but a different operator_id — the hash mismatch
+    // is caught before any catalog/operator lookup, so this operator need not
+    // actually exist for the check itself to be exercised.
+    const replay = await inject({
+      method: 'POST',
+      url: '/api/v2/orders',
+      headers: { authorization: `Bearer ${key}`, 'idempotency-key': idKey },
+      payload: { catalog_product_id: productId, operator_id: 'a-different-carrier' },
+    });
+    expect(replay.statusCode).toBe(422);
+    expect(replay.json().error.code).toBe('IDEMPOTENCY_KEY_REUSED');
+  });
+
+  it('rejects a concurrent create with the same idempotency key still in flight', async () => {
+    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 150_000, stock: 5 });
+    const { userId } = await makeUser(app, { balanceMicro: 2_000_000 });
+    const key = await keyFor(userId);
+    const idKey = 'in-flight-key';
+    const payload = { catalog_product_id: `${serviceCode}::${countryCode}` };
+
+    const [first, second] = await Promise.all([
+      inject({
+        method: 'POST',
+        url: '/api/v2/orders',
+        headers: { authorization: `Bearer ${key}`, 'idempotency-key': idKey },
+        payload,
+      }),
+      inject({
+        method: 'POST',
+        url: '/api/v2/orders',
+        headers: { authorization: `Bearer ${key}`, 'idempotency-key': idKey },
+        payload,
+      }),
+    ]);
+
+    const codes = [first, second].map((r) => r.statusCode).sort();
+    expect(codes).toEqual([201, 409]);
+    const losing = first.statusCode === 409 ? first : second;
+    expect(losing.json().error.code).toBe('REQUEST_IN_PROGRESS');
+  });
+
+  it('reports PROVIDER_ERROR with per-attempt outcomes when every provider fails to rent', async () => {
+    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 150_000, stock: 5 });
+    // The lone 'mock' provider config makeCatalog just set up — flip it to fail
+    // `rent()` while keeping the same catalog, so pricing still succeeds and
+    // only the rental attempt itself fails.
+    await ProviderConfig.updateOne(
+      { key: 'mock' },
+      {
+        $set: {
+          configEnc: encryptJson({
+            catalogPriceMicro: 150_000,
+            catalogStock: 5,
+            catalogServices: [{ code: serviceCode, name: serviceCode }],
+            catalogCountries: [{ code: countryCode, name: countryCode, iso2: 'us', dialCode: '1' }],
+            failRent: true,
+          }),
+        },
+      },
+    );
+    bustProviderCache();
+    const { userId } = await makeUser(app, { balanceMicro: 2_000_000 });
+    const key = await keyFor(userId);
+
+    const res = await inject({
+      method: 'POST',
+      url: '/api/v2/orders',
+      headers: { authorization: `Bearer ${key}` },
+      payload: { catalog_product_id: `${serviceCode}::${countryCode}` },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe('PROVIDER_ERROR');
+    expect(res.json().error.details.attempts).toEqual([
+      { provider: 'Mock SIM bank', outcome: 'provider_error' },
+    ]);
   });
 
   it('cancels and refunds via v2', async () => {

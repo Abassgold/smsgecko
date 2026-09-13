@@ -39,6 +39,26 @@ export const paymentRequired = (message = 'Insufficient balance') =>
 export const tooManyRequests = (message = 'Too many requests') =>
   new AppError(429, 'RATE_LIMITED', message);
 
+export const noOfferAvailable = (message = 'No active offer matches that product and policy') =>
+  new AppError(422, 'NO_OFFER_AVAILABLE', message);
+
+export const cancelTooEarly = (message: string, details?: unknown) =>
+  new AppError(409, 'CANCEL_TOO_EARLY', message, details);
+
+export const serviceUnavailable = (message = 'Service temporarily unavailable') =>
+  new AppError(503, 'SERVICE_UNAVAILABLE', message);
+
+export const requestInProgress = (
+  message = 'A create request with this idempotency key is still in progress',
+) => new AppError(409, 'REQUEST_IN_PROGRESS', message);
+
+export const idempotencyKeyReused = (
+  message = 'This idempotency key was already used with a different request body',
+) => new AppError(422, 'IDEMPOTENCY_KEY_REUSED', message);
+
+export const providerError = (message: string, details?: unknown) =>
+  new AppError(422, 'PROVIDER_ERROR', message, details);
+
 export interface ErrorBody {
   code: string;
   message: string;

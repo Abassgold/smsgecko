@@ -7,6 +7,7 @@ import { Order } from '../models/Order.js';
 import { Transaction } from '../models/Transaction.js';
 import { User } from '../models/User.js';
 import { refundWaitingOrder } from '../lib/orderLifecycle.js';
+import { updateSettings } from '../lib/settings.js';
 
 let app: Application;
 let inject: ReturnType<typeof makeInject>;
@@ -105,7 +106,8 @@ describe('orders', () => {
     const { service, country } = await makeCatalog({ priceMicro: 10_000, stock: 0 });
     const { cookie } = await makeUser(app, { balanceMicro: 1_000_000 });
     const res = await buy(cookie, { serviceId: service.id, countryId: country.id });
-    expect(res.statusCode).toBe(409);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe('NO_OFFER_AVAILABLE');
   });
 
   it('honors maxPriceMicro', async () => {
@@ -139,6 +141,39 @@ describe('orders', () => {
       headers: { cookie },
     });
     expect(again.statusCode).toBe(409);
+  });
+
+  it('refuses to cancel before the provider hold elapses', async () => {
+    const { service, country } = await makeCatalog({ priceMicro: 200_000, stock: 3 });
+    const { cookie } = await makeUser(app, { balanceMicro: 1_000_000 });
+
+    const order = (await buy(cookie, { serviceId: service.id, countryId: country.id })).json();
+    // The mock provider holds for 0s; relabel the order under one that holds for
+    // 180s (a fresh order is always within that window) to exercise the lock.
+    await Order.updateOne({ _id: order.id }, { $set: { provider: 'hero_sms' } });
+
+    const res = await inject({
+      method: 'POST',
+      url: `/api/v1/orders/${order.id}/cancel`,
+      headers: { cookie },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('CANCEL_TOO_EARLY');
+    expect(res.json().error.details.retryAfterSeconds).toBeGreaterThan(0);
+  });
+
+  it('503s ordering during maintenance mode for a non-admin', async () => {
+    const { service, country } = await makeCatalog({ priceMicro: 100_000, stock: 3 });
+    const { cookie } = await makeUser(app, { balanceMicro: 1_000_000 });
+
+    await updateSettings({ maintenanceMode: true });
+    try {
+      const res = await buy(cookie, { serviceId: service.id, countryId: country.id });
+      expect(res.statusCode).toBe(503);
+      expect(res.json().error.code).toBe('SERVICE_UNAVAILABLE');
+    } finally {
+      await updateSettings({ maintenanceMode: false });
+    }
   });
 
   it('lists and filters orders and computes stats', async () => {

@@ -35,6 +35,9 @@ const orderSchema = new Schema(
 
     /** Per-user idempotency key for create; left unset (not null) when unused. */
     idempotencyKey: { type: String },
+    /** sha256 of the normalized create-order params, so a replayed key with a
+     *  different body can be rejected instead of silently returning this order. */
+    idempotencyBodyHash: { type: String, default: null },
 
     /**
      * Earliest time a code is expected (null = unknown). Real adapters leave it

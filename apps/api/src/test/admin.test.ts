@@ -109,7 +109,8 @@ describe('admin panel', () => {
       serviceId: 'whatsapp',
       countryId: 'us',
     });
-    expect(res.statusCode).toBe(409);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe('NO_OFFER_AVAILABLE');
     expect((await User.findById(userId))!.balanceMicro).toBe(1_000_000);
     expect(await Order.countDocuments({ userId })).toBe(0);
   });
