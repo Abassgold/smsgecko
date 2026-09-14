@@ -13,6 +13,11 @@ export interface RefreshClaims {
   family: string;
 }
 
+export interface TwoFactorPendingClaims {
+  sub: string;
+  type: '2fa_pending';
+}
+
 export function signAccessToken(userId: string): string {
   const opts: SignOptions = { expiresIn: env.ACCESS_TOKEN_TTL as SignOptions['expiresIn'] };
   return jwt.sign({ sub: userId, type: 'access' } satisfies AccessClaims, env.JWT_ACCESS_SECRET, opts);
@@ -40,6 +45,26 @@ export function verifyRefreshToken(token: string): RefreshClaims | null {
   try {
     const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET) as RefreshClaims;
     return decoded.type === 'refresh' ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Identifies who passed the password check, before the 2FA code is verified.
+ *  Short-lived and single-purpose — it cannot be used as an access token
+ *  (verifyAccessToken rejects anything whose `type` isn't 'access'). */
+export function signTwoFactorPendingToken(userId: string): string {
+  return jwt.sign(
+    { sub: userId, type: '2fa_pending' } satisfies TwoFactorPendingClaims,
+    env.JWT_ACCESS_SECRET,
+    { expiresIn: '5m' },
+  );
+}
+
+export function verifyTwoFactorPendingToken(token: string): TwoFactorPendingClaims | null {
+  try {
+    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as TwoFactorPendingClaims;
+    return decoded.type === '2fa_pending' ? decoded : null;
   } catch {
     return null;
   }

@@ -15,13 +15,17 @@ import {
   decodeExpiry,
   signAccessToken,
   signRefreshToken,
+  signTwoFactorPendingToken,
   verifyRefreshToken,
+  verifyTwoFactorPendingToken,
 } from '../lib/tokens.js';
 import { badRequest, conflict, forbidden, unauthorized } from '../lib/errors.js';
 import { getSettings } from '../lib/settings.js';
 import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { sendPasswordResetEmail, sendVerificationEmail } from '../lib/email.js';
+import { decryptJson, encryptJson } from '../lib/secretbox.js';
+import { generateTotpSecret, totpUri, verifyTotp } from '../lib/totp.js';
 
 export interface SessionMeta {
   userAgent?: string | null;
@@ -211,6 +215,73 @@ export async function authenticate(identifier: string, password: string): Promis
   if (user.status === 'suspended') throw forbidden('This account has been suspended');
   return user;
 }
+
+interface TotpSecretBlob {
+  secret?: string;
+}
+
+/** Start 2FA setup: a fresh secret, held as "pending" until confirmed with a
+ *  real code (so a scan gone wrong can't lock the account into a bad state). */
+export async function setupTwoFactor(user: UserDoc): Promise<{ secret: string; otpauthUrl: string }> {
+  const secret = generateTotpSecret();
+  user.twoFactorPendingSecretEnc = encryptJson({ secret } satisfies TotpSecretBlob);
+  await user.save();
+  return { secret, otpauthUrl: totpUri(secret, user.email) };
+}
+
+/** Confirm setup with a live code, turn 2FA on, and hand back one-time
+ *  recovery codes (shown once — only their hashes are kept). */
+export async function enableTwoFactor(user: UserDoc, code: string): Promise<string[]> {
+  const pending = decryptJson<TotpSecretBlob>(user.twoFactorPendingSecretEnc);
+  if (!pending.secret) throw badRequest('Start two-factor setup first');
+  if (!verifyTotp(pending.secret, code)) throw badRequest('Incorrect code');
+
+  const recoveryCodes = Array.from({ length: 10 }, () => friendlyCode(10));
+  user.twoFactorEnabled = true;
+  user.twoFactorSecretEnc = encryptJson({ secret: pending.secret } satisfies TotpSecretBlob);
+  user.twoFactorPendingSecretEnc = null;
+  user.twoFactorRecoveryHashes = recoveryCodes.map((c) => sha256(c));
+  await user.save();
+  return recoveryCodes;
+}
+
+/** A code is valid if it matches the live TOTP secret, or an unused recovery
+ *  code — the latter is burned (removed) the moment it's spent either way. */
+async function checkTwoFactorCode(user: UserDoc, code: string): Promise<boolean> {
+  const { secret } = decryptJson<TotpSecretBlob>(user.twoFactorSecretEnc);
+  if (secret && verifyTotp(secret, code)) return true;
+
+  const idx = user.twoFactorRecoveryHashes.indexOf(sha256(code));
+  if (idx === -1) return false;
+  user.twoFactorRecoveryHashes.splice(idx, 1);
+  await user.save();
+  return true;
+}
+
+export async function disableTwoFactor(user: UserDoc, password: string, code: string): Promise<void> {
+  if (!(await verifyPassword(user.passwordHash, password))) {
+    throw unauthorized('Incorrect password');
+  }
+  if (!(await checkTwoFactorCode(user, code))) throw badRequest('Incorrect code');
+  user.twoFactorEnabled = false;
+  user.twoFactorSecretEnc = null;
+  user.twoFactorRecoveryHashes = [];
+  await user.save();
+}
+
+/** The second step of login for a 2FA-enabled account: exchange the
+ *  pending-login token + a code for the actual user (caller issues the session). */
+export async function verifyTwoFactorLogin(pendingToken: string, code: string): Promise<UserDoc> {
+  const claims = verifyTwoFactorPendingToken(pendingToken);
+  if (!claims) throw unauthorized('This login attempt has expired — sign in again');
+  const user = await User.findById(claims.sub);
+  if (!user || !user.twoFactorEnabled) throw unauthorized('Invalid session');
+  if (user.status === 'suspended') throw forbidden('This account has been suspended');
+  if (!(await checkTwoFactorCode(user, code))) throw unauthorized('Incorrect code');
+  return user;
+}
+
+export { signTwoFactorPendingToken };
 
 export async function issueSession(user: UserDoc, meta: SessionMeta = {}): Promise<IssuedSession> {
   const family = randomUUID();

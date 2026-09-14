@@ -35,9 +35,46 @@ export interface PublicUser {
   balanceMicro: number;
   affiliateCode: string;
   affiliateTermsVersion: string | null;
+  twoFactorEnabled: boolean;
   createdAt: string;
 }
 
 export interface AuthResponse {
   user: PublicUser;
+}
+
+/** What POST /auth/login returns for a 2FA-enabled account instead of a session. */
+export interface TwoFactorRequiredResponse {
+  twoFactorRequired: true;
+  /** Short-lived — identifies who passed the password check. Exchanged for a
+   *  session at POST /auth/2fa/verify along with a code. */
+  pendingToken: string;
+}
+
+export type LoginResponse = AuthResponse | TwoFactorRequiredResponse;
+
+export interface VerifyTwoFactorBody {
+  pendingToken: string;
+  code: string;
+}
+
+export interface TwoFactorSetupResponse {
+  /** Base32 secret — shown for manual entry alongside the QR code. */
+  secret: string;
+  /** otpauth:// URI to render as a QR code. */
+  otpauthUrl: string;
+}
+
+export interface EnableTwoFactorBody {
+  code: string;
+}
+
+export interface TwoFactorEnabledResponse {
+  /** Shown once — only their hashes are kept server-side. */
+  recoveryCodes: string[];
+}
+
+export interface DisableTwoFactorBody {
+  password: string;
+  code: string;
 }

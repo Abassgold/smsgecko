@@ -3,13 +3,18 @@ import { requireUser } from '../middleware/auth.js';
 import { validate } from '../middleware/validation.js';
 import { tightAuthLimiter } from '../middleware/rateLimiters.js';
 import {
+  disableTwoFactorBody,
+  enableTwoFactorBody,
   forgotPasswordBody,
   loginBody,
   registerBody,
   resetPasswordBody,
   verifyEmailBody,
+  verifyTwoFactorBody,
 } from '../lib/validation/auth.schema.js';
 import {
+  disableTwoFactorHandler,
+  enableTwoFactorHandler,
   forgotPassword,
   login,
   logout,
@@ -18,7 +23,9 @@ import {
   register,
   resendVerification,
   resetPassword,
+  setupTwoFactorHandler,
   verifyEmail,
+  verifyTwoFactor,
 } from '../controllers/auth.controller.js';
 
 const router = Router();
@@ -29,6 +36,22 @@ router.post('/verify-email', tightAuthLimiter, validate(verifyEmailBody), verify
 router.post('/resend-verification', tightAuthLimiter, requireUser, resendVerification);
 router.post('/forgot-password', tightAuthLimiter, validate(forgotPasswordBody), forgotPassword);
 router.post('/reset-password', tightAuthLimiter, validate(resetPasswordBody), resetPassword);
+router.post('/2fa/verify', tightAuthLimiter, validate(verifyTwoFactorBody), verifyTwoFactor);
+router.post('/2fa/setup', tightAuthLimiter, requireUser, setupTwoFactorHandler);
+router.post(
+  '/2fa/enable',
+  tightAuthLimiter,
+  requireUser,
+  validate(enableTwoFactorBody),
+  enableTwoFactorHandler,
+);
+router.post(
+  '/2fa/disable',
+  tightAuthLimiter,
+  requireUser,
+  validate(disableTwoFactorBody),
+  disableTwoFactorHandler,
+);
 router.post('/refresh', tightAuthLimiter, refresh);
 router.post('/logout', logout);
 router.get('/me', requireUser, me);

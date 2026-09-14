@@ -9,8 +9,11 @@ import type {
   CountryView,
   CreateOrderBody,
   DepositView,
+  DisableTwoFactorBody,
+  EnableTwoFactorBody,
   ForgotPasswordBody,
   LoginBody,
+  LoginResponse,
   NotificationsResponse,
   OrderStatsResponse,
   OrderView,
@@ -19,8 +22,11 @@ import type {
   ResetPasswordBody,
   ServiceView,
   TransactionView,
+  TwoFactorEnabledResponse,
+  TwoFactorSetupResponse,
   UpdateWebhookBody,
   VerifyEmailBody,
+  VerifyTwoFactorBody,
   WalletResponse,
   WebhookConfig,
   WebhookTestResult,
@@ -49,8 +55,47 @@ export function useLogin() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: LoginBody) =>
-      apiFetch<AuthResponse>('/v1/auth/login', { method: 'POST', body }),
+      apiFetch<LoginResponse>('/v1/auth/login', { method: 'POST', body }),
+    onSuccess: (data) => {
+      // The 2FA-pending branch isn't a session yet — nothing to cache.
+      if (!('twoFactorRequired' in data)) qc.setQueryData(['me'], data);
+    },
+  });
+}
+
+export function useVerifyTwoFactor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: VerifyTwoFactorBody) =>
+      apiFetch<AuthResponse>('/v1/auth/2fa/verify', { method: 'POST', body }),
     onSuccess: (data) => qc.setQueryData(['me'], data),
+  });
+}
+
+/* ---------- two-factor auth (settings) ---------- */
+
+export function useSetupTwoFactor() {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<TwoFactorSetupResponse>('/v1/auth/2fa/setup', { method: 'POST' }),
+  });
+}
+
+export function useEnableTwoFactor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: EnableTwoFactorBody) =>
+      apiFetch<TwoFactorEnabledResponse>('/v1/auth/2fa/enable', { method: 'POST', body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+  });
+}
+
+export function useDisableTwoFactor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DisableTwoFactorBody) =>
+      apiFetch<{ ok: true }>('/v1/auth/2fa/disable', { method: 'POST', body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
   });
 }
 

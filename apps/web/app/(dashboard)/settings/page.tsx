@@ -6,6 +6,7 @@ import { LoadingRow } from '@/components/ui/spinner';
 import { CopyButton } from '@/components/ui/copy-button';
 import { ApiKeys } from '@/components/dashboard/api-keys';
 import { Webhook } from '@/components/dashboard/webhook';
+import { TwoFactor } from '@/components/dashboard/two-factor';
 import { formatBalanceUsd } from '@/lib/format';
 import { useMe } from '@/lib/hooks';
 
@@ -47,6 +48,8 @@ export default function SettingsPage() {
           Manage affiliate →
         </Link>
       </Card>
+
+      <TwoFactor />
 
       <ApiKeys />
 

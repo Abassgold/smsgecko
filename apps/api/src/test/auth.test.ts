@@ -3,6 +3,7 @@ import type { Application } from 'express';
 import { makeInject } from './inject.js';
 import { buildApp } from '../app.js';
 import * as email from '../lib/email.js';
+import { currentTotpCode } from '../lib/totp.js';
 
 let app: Application;
 let inject: ReturnType<typeof makeInject>;
@@ -272,5 +273,139 @@ describe('password reset', () => {
       payload: { token, password: 'secondnewpass1' },
     });
     expect(second.statusCode).toBe(400);
+  });
+});
+
+describe('two-factor auth', () => {
+  /** Registers a user and turns 2FA on for them, returning the secret,
+   * session cookie, and unused recovery codes. */
+  async function registerWithTwoFactor(email: string) {
+    const reg = await registerUser(email);
+    const cookie = cookieHeader(reg);
+
+    const setup = await inject({ method: 'POST', url: '/api/v1/auth/2fa/setup', headers: { cookie } });
+    expect(setup.statusCode).toBe(200);
+    const secret = setup.json().secret as string;
+    expect(setup.json().otpauthUrl).toContain('otpauth://totp/');
+
+    const enable = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/2fa/enable',
+      headers: { cookie },
+      payload: { code: currentTotpCode(secret) },
+    });
+    expect(enable.statusCode).toBe(200);
+    const recoveryCodes = enable.json().recoveryCodes as string[];
+    expect(recoveryCodes).toHaveLength(10);
+
+    return { cookie, secret, recoveryCodes };
+  }
+
+  it('setup requires a correct code to actually turn 2FA on', async () => {
+    const reg = await registerUser('badcode@test.dev');
+    const cookie = cookieHeader(reg);
+
+    await inject({ method: 'POST', url: '/api/v1/auth/2fa/setup', headers: { cookie } });
+    const wrong = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/2fa/enable',
+      headers: { cookie },
+      payload: { code: '000000' },
+    });
+    expect(wrong.statusCode).toBe(400);
+
+    const me = await inject({ method: 'GET', url: '/api/v1/auth/me', headers: { cookie } });
+    expect(me.json().user.twoFactorEnabled).toBe(false);
+  });
+
+  it('login holds off on a session until the code is verified', async () => {
+    const { secret } = await registerWithTwoFactor('twofa@test.dev');
+
+    const login = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { identifier: 'twofa@test.dev', password: 'supersecret1' },
+    });
+    expect(login.statusCode).toBe(200);
+    expect(login.json().twoFactorRequired).toBe(true);
+    expect(login.cookies).toHaveLength(0);
+    const pendingToken = login.json().pendingToken as string;
+
+    const wrongCode = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/2fa/verify',
+      payload: { pendingToken, code: '000000' },
+    });
+    expect(wrongCode.statusCode).toBe(401);
+
+    const verified = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/2fa/verify',
+      payload: { pendingToken, code: currentTotpCode(secret) },
+    });
+    expect(verified.statusCode).toBe(200);
+    expect(verified.json().user.email).toBe('twofa@test.dev');
+    expect(verified.cookies.map((c) => c.name)).toEqual(
+      expect.arrayContaining(['smsg_access', 'smsg_refresh']),
+    );
+  });
+
+  it('a recovery code logs in once and is then burned', async () => {
+    const { recoveryCodes } = await registerWithTwoFactor('recovery@test.dev');
+    const login = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { identifier: 'recovery@test.dev', password: 'supersecret1' },
+    });
+    const pendingToken = login.json().pendingToken as string;
+    const code = recoveryCodes[0]!;
+
+    const first = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/2fa/verify',
+      payload: { pendingToken, code },
+    });
+    expect(first.statusCode).toBe(200);
+
+    // Same recovery code, a fresh login attempt — already spent.
+    const login2 = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { identifier: 'recovery@test.dev', password: 'supersecret1' },
+    });
+    const second = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/2fa/verify',
+      payload: { pendingToken: login2.json().pendingToken, code },
+    });
+    expect(second.statusCode).toBe(401);
+  });
+
+  it('disabling requires the password and a valid code, then login skips 2FA', async () => {
+    const { cookie, secret } = await registerWithTwoFactor('disable2fa@test.dev');
+
+    const wrongPassword = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/2fa/disable',
+      headers: { cookie },
+      payload: { password: 'nope-not-it-12', code: currentTotpCode(secret) },
+    });
+    expect(wrongPassword.statusCode).toBe(401);
+
+    const disable = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/2fa/disable',
+      headers: { cookie },
+      payload: { password: 'supersecret1', code: currentTotpCode(secret) },
+    });
+    expect(disable.statusCode).toBe(200);
+
+    const login = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { identifier: 'disable2fa@test.dev', password: 'supersecret1' },
+    });
+    expect(login.json().twoFactorRequired).toBeUndefined();
+    expect(login.json().user.email).toBe('disable2fa@test.dev');
   });
 });

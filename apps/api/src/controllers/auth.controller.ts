@@ -1,10 +1,21 @@
-import type { ForgotPasswordBody, LoginBody, RegisterBody, ResetPasswordBody, VerifyEmailBody } from '@smsgecko/shared';
+import type {
+  DisableTwoFactorBody,
+  EnableTwoFactorBody,
+  ForgotPasswordBody,
+  LoginBody,
+  RegisterBody,
+  ResetPasswordBody,
+  VerifyEmailBody,
+  VerifyTwoFactorBody,
+} from '@smsgecko/shared';
 import { asyncHandler } from '../lib/asyncHandler.js';
 import { toPublicUser } from '../models/User.js';
 import { clearAuthCookies, REFRESH_COOKIE, setAuthCookies } from '../lib/authCookies.js';
 import { unauthorized } from '../lib/errors.js';
 import {
   authenticate,
+  disableTwoFactor,
+  enableTwoFactor,
   issueEmailVerification,
   issuePasswordReset,
   issueSession,
@@ -12,7 +23,10 @@ import {
   resetPassword as resetPasswordToken,
   revokeRefresh,
   rotateRefresh,
+  setupTwoFactor,
+  signTwoFactorPendingToken,
   verifyEmail as verifyEmailToken,
+  verifyTwoFactorLogin,
 } from '../services/auth.service.js';
 
 function sessionMeta(req: { headers: Record<string, unknown>; ip?: string }) {
@@ -33,9 +47,38 @@ export const register = asyncHandler(async (req, res) => {
 export const login = asyncHandler(async (req, res) => {
   const { identifier, password } = req.body as LoginBody;
   const user = await authenticate(identifier, password);
+  if (user.twoFactorEnabled) {
+    // Password checked out, but the session waits on a code — no cookies yet.
+    res.json({ twoFactorRequired: true as const, pendingToken: signTwoFactorPendingToken(user.id as string) });
+    return;
+  }
   const { accessToken, refreshToken } = await issueSession(user, sessionMeta(req));
   setAuthCookies(res, accessToken, refreshToken);
   res.json({ user: toPublicUser(user) });
+});
+
+export const verifyTwoFactor = asyncHandler(async (req, res) => {
+  const { pendingToken, code } = req.body as VerifyTwoFactorBody;
+  const user = await verifyTwoFactorLogin(pendingToken, code);
+  const { accessToken, refreshToken } = await issueSession(user, sessionMeta(req));
+  setAuthCookies(res, accessToken, refreshToken);
+  res.json({ user: toPublicUser(user) });
+});
+
+export const setupTwoFactorHandler = asyncHandler(async (req, res) => {
+  res.json(await setupTwoFactor(req.authUser!));
+});
+
+export const enableTwoFactorHandler = asyncHandler(async (req, res) => {
+  const { code } = req.body as EnableTwoFactorBody;
+  const recoveryCodes = await enableTwoFactor(req.authUser!, code);
+  res.json({ recoveryCodes });
+});
+
+export const disableTwoFactorHandler = asyncHandler(async (req, res) => {
+  const { password, code } = req.body as DisableTwoFactorBody;
+  await disableTwoFactor(req.authUser!, password, code);
+  res.json({ ok: true as const });
 });
 
 export const verifyEmail = asyncHandler(async (req, res) => {

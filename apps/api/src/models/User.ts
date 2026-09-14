@@ -22,6 +22,16 @@ const userSchema = new Schema(
      *  and GET /webhook must be able to show it back. */
     webhookUrl: { type: String, default: null },
     webhookSecret: { type: String, default: null },
+
+    /** TOTP two-factor auth. Secrets are AES-256-GCM encrypted (lib/secretbox) —
+     *  unlike the webhook secret, we only ever need to check these, never show
+     *  them back. */
+    twoFactorEnabled: { type: Boolean, default: false },
+    twoFactorSecretEnc: { type: String, default: null },
+    /** Set while setup is in progress but not yet confirmed with a code. */
+    twoFactorPendingSecretEnc: { type: String, default: null },
+    /** sha256 of each unused recovery code; consumed (spliced out) on use. */
+    twoFactorRecoveryHashes: { type: [String], default: [] },
   },
   { timestamps: true },
 );
@@ -43,6 +53,7 @@ export function toPublicUser(user: UserDoc) {
     balanceMicro: user.balanceMicro,
     affiliateCode: user.affiliateCode,
     affiliateTermsVersion: user.affiliateTermsVersion ?? null,
+    twoFactorEnabled: user.twoFactorEnabled,
     createdAt: (user.get('createdAt') as Date).toISOString(),
   };
 }
