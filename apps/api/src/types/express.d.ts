@@ -9,6 +9,8 @@ declare global {
       /** Populated by `requireApiKey` on /api/v2 routes. */
       apiUser: UserDoc | null;
       apiKeyDoc: ApiKeyDoc | null;
+      /** Raw request body bytes, captured by the `express.json()` verify callback — needed for Stripe webhook signature checks. */
+      rawBody?: Buffer;
     }
   }
 }

@@ -55,6 +55,52 @@ describe('deposits', () => {
     expect((await User.findById(userId))!.balanceMicro).toBe(10_000_000);
   });
 
+  it('lists a user\'s own deposits, newest first, paginated', async () => {
+    const { cookie } = await makeUser(app);
+    const other = await makeUser(app);
+
+    for (const amountMicro of [1_000_000, 2_000_000, 3_000_000]) {
+      await inject({
+        method: 'POST',
+        url: '/api/v1/deposits',
+        headers: { cookie },
+        payload: { method: 'mock', amountMicro },
+      });
+    }
+    // Another user's deposit must not leak into this list.
+    await inject({
+      method: 'POST',
+      url: '/api/v1/deposits',
+      headers: { cookie: other.cookie },
+      payload: { method: 'mock', amountMicro: 9_000_000 },
+    });
+
+    const page1 = await inject({
+      method: 'GET',
+      url: '/api/v1/deposits?page=1&limit=2',
+      headers: { cookie },
+    });
+    expect(page1.statusCode).toBe(200);
+    expect(page1.json().total).toBe(3);
+    expect(page1.json().totalPages).toBe(2);
+    expect(page1.json().items).toHaveLength(2);
+    expect(page1.json().items[0].amountMicro).toBe(3_000_000);
+    expect(page1.json().items[1].amountMicro).toBe(2_000_000);
+
+    const page2 = await inject({
+      method: 'GET',
+      url: '/api/v1/deposits?page=2&limit=2',
+      headers: { cookie },
+    });
+    expect(page2.json().items).toHaveLength(1);
+    expect(page2.json().items[0].amountMicro).toBe(1_000_000);
+  });
+
+  it('requires auth to list deposits', async () => {
+    const res = await inject({ method: 'GET', url: '/api/v1/deposits' });
+    expect(res.statusCode).toBe(401);
+  });
+
   it('enforces the minimum deposit', async () => {
     const { cookie } = await makeUser(app);
     const res = await inject({
@@ -93,5 +139,90 @@ describe('deposits', () => {
       payload: { method: 'mock', amountMicro: 10_000_000 },
     });
     expect(res.statusCode).toBe(401);
+  });
+
+  it('falls back to the mock provider for card deposits when Stripe is unconfigured', async () => {
+    const { cookie } = await makeUser(app);
+    const create = await inject({
+      method: 'POST',
+      url: '/api/v1/deposits',
+      headers: { cookie },
+      payload: { method: 'card', amountMicro: 5_000_000 },
+    });
+    expect(create.statusCode).toBe(201);
+    const deposit = await Deposit.findById(create.json().id);
+    expect(deposit!.provider).toBe('mock');
+    expect(deposit!.payUrl).toBeTruthy();
+  });
+
+  it('falls back to the mock provider for korapay deposits when Korapay is unconfigured', async () => {
+    const { cookie } = await makeUser(app);
+    const create = await inject({
+      method: 'POST',
+      url: '/api/v1/deposits',
+      headers: { cookie },
+      payload: { method: 'korapay', amountMicro: 5_000_000 },
+    });
+    expect(create.statusCode).toBe(201);
+    const deposit = await Deposit.findById(create.json().id);
+    expect(deposit!.provider).toBe('mock');
+  });
+
+  it('falls back to the mock provider for cryptomus deposits when Cryptomus is unconfigured', async () => {
+    const { cookie } = await makeUser(app);
+    const create = await inject({
+      method: 'POST',
+      url: '/api/v1/deposits',
+      headers: { cookie },
+      payload: { method: 'cryptomus', amountMicro: 5_000_000 },
+    });
+    expect(create.statusCode).toBe(201);
+    const deposit = await Deposit.findById(create.json().id);
+    expect(deposit!.provider).toBe('mock');
+  });
+
+  it('rejects a webhook for an unknown provider', async () => {
+    const res = await inject({
+      method: 'POST',
+      url: '/api/v1/webhooks/payments/some_random_provider',
+      payload: { foo: 'bar' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects a stripe webhook when Stripe is unconfigured', async () => {
+    const res = await inject({
+      method: 'POST',
+      url: '/api/v1/webhooks/payments/stripe',
+      payload: { type: 'checkout.session.completed', data: { object: { id: 'cs_test', payment_status: 'paid' } } },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects a nowpayments webhook when NowPayments is unconfigured', async () => {
+    const res = await inject({
+      method: 'POST',
+      url: '/api/v1/webhooks/payments/nowpayments',
+      payload: { invoice_id: 'inv_1', payment_status: 'finished' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects a korapay webhook when Korapay is unconfigured', async () => {
+    const res = await inject({
+      method: 'POST',
+      url: '/api/v1/webhooks/payments/korapay',
+      payload: { event: 'charge.success', data: { reference: 'dep_1', status: 'success' } },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects a cryptomus webhook when Cryptomus is unconfigured', async () => {
+    const res = await inject({
+      method: 'POST',
+      url: '/api/v1/webhooks/payments/cryptomus',
+      payload: { order_id: 'dep_1', status: 'paid', sign: 'whatever' },
+    });
+    expect(res.statusCode).toBe(400);
   });
 });

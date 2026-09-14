@@ -276,7 +276,10 @@ export function useCreateDeposit() {
   return useMutation({
     mutationFn: (body: { method: string; amountMicro: number }) =>
       apiFetch<DepositView>('/v1/deposits', { method: 'POST', body }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['wallet'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['wallet'] });
+      qc.invalidateQueries({ queryKey: ['deposits'] });
+    },
   });
 }
 
@@ -288,8 +291,16 @@ export function useConfirmDeposit() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['wallet'] });
       qc.invalidateQueries({ queryKey: ['transactions'] });
+      qc.invalidateQueries({ queryKey: ['deposits'] });
       qc.invalidateQueries({ queryKey: ['me'] });
     },
+  });
+}
+
+export function useDeposits(page: number) {
+  return useQuery({
+    queryKey: ['deposits', page],
+    queryFn: () => apiFetch<Paginated<DepositView>>(`/v1/deposits?page=${page}&limit=8`),
   });
 }
 

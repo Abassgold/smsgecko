@@ -186,6 +186,8 @@ export interface SettingsView {
   minDepositMicro: number;
   numberMarkupPercent: number;
   numberMarkupFlatMicro: number;
+  /** USD→NGN rate used to convert deposit amounts for NGN-only gateways (Korapay). Admin-editable, no live FX feed. */
+  usdToNgnRate: number;
   signupsEnabled: boolean;
   maintenanceMode: boolean;
 }

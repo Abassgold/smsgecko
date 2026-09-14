@@ -109,6 +109,19 @@ export default function AdminSettingsPage() {
         </Card>
 
         <Card className="flex flex-col gap-4 p-6">
+          <div>
+            <h3 className="font-display text-sm font-semibold">Payments</h3>
+            <p className="mt-1 text-xs text-muted">
+              Korapay only settles in Naira — deposits are quoted to the customer in USD, then
+              converted at this rate before the charge is created.
+            </p>
+          </div>
+          <Field label="USD → NGN rate" hint="No live feed; update by hand as the rate moves">
+            <TextInput type="number" step="1" min="1" value={form.usdToNgnRate} onChange={num('usdToNgnRate')} />
+          </Field>
+        </Card>
+
+        <Card className="flex flex-col gap-4 p-6">
           <h3 className="font-display text-sm font-semibold">Economics</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Affiliate rate (%)">

@@ -10,6 +10,7 @@ export interface ResolvedSettings {
   /** Customer markup over the provider's raw number price. */
   numberMarkupPercent: number;
   numberMarkupFlatMicro: number;
+  usdToNgnRate: number;
   signupsEnabled: boolean;
   maintenanceMode: boolean;
 }
@@ -21,6 +22,7 @@ export const SETTINGS_DEFAULTS: ResolvedSettings = {
   minDepositMicro: MIN_DEPOSIT_MICRO,
   numberMarkupPercent: 0,
   numberMarkupFlatMicro: 0,
+  usdToNgnRate: 1600,
   signupsEnabled: true,
   maintenanceMode: false,
 };

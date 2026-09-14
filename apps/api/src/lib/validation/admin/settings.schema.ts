@@ -9,6 +9,7 @@ export const settingsPatch = yup.object({
   minDepositMicro: yup.number().integer().min(0).optional(),
   numberMarkupPercent: yup.number().min(0).max(1000).optional(),
   numberMarkupFlatMicro: yup.number().integer().min(0).optional(),
+  usdToNgnRate: yup.number().min(1).optional(),
   signupsEnabled: yup.boolean().optional(),
   maintenanceMode: yup.boolean().optional(),
 });

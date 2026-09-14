@@ -14,6 +14,8 @@ const settingSchema = new Schema(
     minDepositMicro: { type: Number, required: true, min: 0 },
     numberMarkupPercent: { type: Number, default: 0, min: 0 },
     numberMarkupFlatMicro: { type: Number, default: 0, min: 0 },
+    /** USD→NGN rate for gateways that only settle in Naira (Korapay). No live feed — admin sets it by hand. */
+    usdToNgnRate: { type: Number, default: 1600, min: 1 },
     signupsEnabled: { type: Boolean, default: true },
     maintenanceMode: { type: Boolean, default: false },
   },

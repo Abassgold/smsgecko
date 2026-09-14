@@ -4,23 +4,30 @@ import { valid } from '../middleware/validation.js';
 import { env } from '../config/env.js';
 import { forbidden } from '../lib/errors.js';
 import type { IdParams } from '../lib/validation/common.schema.js';
-import type { ProviderParams, WebhookBody } from '../lib/validation/deposits.schema.js';
+import type { DepositsQuery, ProviderParams } from '../lib/validation/deposits.schema.js';
 import {
   createDeposit,
   getDeposit,
   handleWebhook,
+  listDeposits,
   mockConfirm,
   toDepositView,
 } from '../services/deposits.service.js';
 
 export const webhook = asyncHandler(async (req, res) => {
   const { provider } = valid<ProviderParams>(req, 'params');
-  res.json(await handleWebhook(provider, req.body as WebhookBody));
+  res.json(await handleWebhook(provider, req));
 });
 
 export const create = asyncHandler(async (req, res) => {
   const deposit = await createDeposit(req.authUser!, req.body as CreateDepositBody);
   res.status(201).json(toDepositView(deposit));
+});
+
+export const list = asyncHandler(async (req, res) => {
+  const { page, limit } = valid<DepositsQuery>(req, 'query');
+  const { items, total, totalPages } = await listDeposits(req.authUser!, { page, limit });
+  res.json({ items, page, limit, total, totalPages });
 });
 
 export const getOne = asyncHandler(async (req, res) => {

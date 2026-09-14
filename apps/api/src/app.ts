@@ -40,7 +40,16 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<Application>
   app.use(helmet({ contentSecurityPolicy: false }));
   app.use(cors({ origin: env.WEB_ORIGIN, credentials: true }));
   app.use(cookieParser());
-  app.use(express.json());
+  app.use(
+    express.json({
+      // Stripe webhook signature verification needs the exact raw bytes, not
+      // a re-serialized copy of the parsed body — stash them here once, for
+      // every request, rather than special-casing the route's body parser.
+      verify: (req, _res, buf) => {
+        (req as express.Request).rawBody = buf;
+      },
+    }),
+  );
   app.use(
     rateLimit({
       windowMs: 60_000,

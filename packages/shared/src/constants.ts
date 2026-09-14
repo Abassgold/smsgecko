@@ -16,7 +16,15 @@ export const TRANSACTION_TYPES = [
 ] as const;
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 
-export const DEPOSIT_METHODS = ['mock', 'crypto_usdt', 'ewallet', 'qris'] as const;
+export const DEPOSIT_METHODS = [
+  'mock',
+  'card',
+  'crypto_usdt',
+  'korapay',
+  'cryptomus',
+  'ewallet',
+  'qris',
+] as const;
 export type DepositMethod = (typeof DEPOSIT_METHODS)[number];
 
 export const DEPOSIT_STATUSES = ['pending', 'confirmed', 'failed', 'expired'] as const;
