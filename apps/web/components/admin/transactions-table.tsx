@@ -43,7 +43,12 @@ export function TransactionsTable({ userId }: { userId?: string }) {
                   <td className="px-4 py-3 text-xs text-muted">{t.user.email}</td>
                 )}
                 <td className="px-4 py-3"><Badge tone="default">{t.type}</Badge></td>
-                <td className="px-4 py-3 text-muted">{t.description}</td>
+                <td className="px-4 py-3 text-muted">
+                  {t.description}
+                  {t.reference ? (
+                    <div className="mt-0.5 font-mono text-xs text-faint">Ref: {t.reference}</div>
+                  ) : null}
+                </td>
                 <td className={`px-4 py-3 text-right font-mono ${t.amountMicro >= 0 ? 'text-success' : 'text-danger'}`}>
                   {formatSignedUsd(t.amountMicro)}
                 </td>

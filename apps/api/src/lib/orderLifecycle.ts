@@ -1,5 +1,6 @@
 import { Order, type OrderDoc } from '../models/Order.js';
 import { SmsMessage } from '../models/SmsMessage.js';
+import { Transaction } from '../models/Transaction.js';
 import { notify } from '../models/Notification.js';
 import { User } from '../models/User.js';
 import { getProviderForOrder, recordOtpReceived } from '../providers/sms/registry.js';
@@ -81,10 +82,18 @@ export async function refundWaitingOrder(
   );
   if (!order) return null;
 
+  // Pairs with the charge it reverses. Most orders only have the one creation
+  // charge, but a reactivated order has a second, separate charge — refund
+  // that one's reference instead so the pairing stays correct.
+  const reactivated = await Transaction.exists({
+    orderId: order._id,
+    reference: `${order._id}_reactivate`,
+  });
   await credit(order.userId, order.priceMicro, {
     type: 'refund',
-    description: 'Order canceled — refund',
+    description: to === 'expired' ? 'Order expired — refund' : 'Order canceled — refund',
     orderId: order._id,
+    reference: reactivated ? `${order._id}_reactivate_R` : `${order._id}_R`,
   });
   try {
     // Cancel with the provider that actually rented this number — resolved from

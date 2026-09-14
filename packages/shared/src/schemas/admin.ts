@@ -150,6 +150,8 @@ export interface AdminTransactionRow {
   balanceBeforeMicro: number;
   balanceAfterMicro: number;
   description: string;
+  /** Pairs a charge with the refund that reverses it, e.g. `<orderId>` / `<orderId>_R`. */
+  reference: string | null;
   createdAt: string;
 }
 

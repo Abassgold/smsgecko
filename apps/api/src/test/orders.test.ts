@@ -40,6 +40,7 @@ describe('orders', () => {
     const debitTx = await Transaction.findOne({ userId, type: 'order_payment' });
     expect(debitTx!.amountMicro).toBe(-250_000);
     expect(debitTx!.balanceAfterMicro).toBe(750_000);
+    expect(debitTx!.reference).toBe(order.id);
 
     // deliver the mock OTP via the polling path
     const delivered = await simulateOtp(order.id);
@@ -75,7 +76,24 @@ describe('orders', () => {
     expect((await User.findById(userId))!.balanceMicro).toBe(1_000_000); // fully refunded
     const refund = await Transaction.findOne({ userId, type: 'refund' });
     expect(refund!.amountMicro).toBe(400_000);
+    expect(refund!.description).toBe('Order expired — refund');
+    // Pairs with the original charge's own reference.
+    expect(refund!.reference).toBe(`${order.id}_R`);
+    const charge = await Transaction.findOne({ userId, type: 'order_payment' });
+    expect(refund!.reference).toBe(`${charge!.reference}_R`);
+  });
+
+  it('a canceled order is described as such, distinctly from an expired one', async () => {
+    const { service, country } = await makeCatalog({ priceMicro: 150_000, stock: 5 });
+    const { cookie, userId } = await makeUser(app, { balanceMicro: 1_000_000 });
+    const order = (await buy(cookie, { serviceId: service.id, countryId: country.id })).json();
+
+    const canceled = await refundWaitingOrder(order.id, 'canceled');
+    expect(canceled!.status).toBe('canceled');
+
+    const refund = await Transaction.findOne({ userId, type: 'refund' });
     expect(refund!.description).toBe('Order canceled — refund');
+    expect(refund!.reference).toBe(`${order.id}_R`);
   });
 
   it('is idempotent for repeated create with the same key', async () => {
@@ -257,6 +275,33 @@ describe('orders', () => {
     const again = await simulateOtp(order.id);
     expect(again!.status).toBe('completed');
     expect(await Order.countDocuments({ userId })).toBe(1); // same order, reused
+  });
+
+  it('a refund after reactivation is paired with the reactivation charge, not the original', async () => {
+    const { service, country } = await makeCatalog({ priceMicro: 200_000, stock: 5 });
+    const { cookie, userId } = await makeUser(app, { balanceMicro: 1_000_000 });
+    const order = (await buy(cookie, { serviceId: service.id, countryId: country.id })).json();
+    await simulateOtp(order.id);
+
+    await inject({
+      method: 'POST',
+      url: `/api/v1/orders/${order.id}/reactivate`,
+      headers: { cookie },
+    });
+    const reactivationCharge = await Transaction.findOne({
+      userId,
+      type: 'order_payment',
+      reference: `${order.id}_reactivate`,
+    });
+    expect(reactivationCharge).not.toBeNull();
+
+    await Order.updateOne({ _id: order.id }, { $set: { expiresAt: new Date(Date.now() - 1000) } });
+    await refundWaitingOrder(order.id, 'expired');
+
+    const refund = await Transaction.findOne({ userId, type: 'refund' });
+    expect(refund!.reference).toBe(`${order.id}_reactivate_R`);
+    // Not the original creation charge's reference.
+    expect(refund!.reference).not.toBe(`${order.id}_R`);
   });
 
   it('completes an order via the inbound SMS webhook', async () => {

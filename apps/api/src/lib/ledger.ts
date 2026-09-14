@@ -9,6 +9,8 @@ export interface LedgerContext {
   description: string;
   orderId?: Types.ObjectId | string | null;
   depositId?: Types.ObjectId | string | null;
+  /** Human-visible pairing key — see Transaction.reference. */
+  reference?: string | null;
   session?: ClientSession;
 }
 
@@ -73,6 +75,7 @@ async function writeEntry(
         description: ctx.description,
         orderId: ctx.orderId ?? null,
         depositId: ctx.depositId ?? null,
+        reference: ctx.reference ?? null,
       },
     ],
     { session: ctx.session ?? undefined },

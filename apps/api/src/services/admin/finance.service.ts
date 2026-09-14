@@ -37,6 +37,7 @@ export async function listTransactions(query: AdminTransactionsQuery) {
     balanceBeforeMicro: t.balanceBeforeMicro ?? t.balanceAfterMicro - t.amountMicro,
     balanceAfterMicro: t.balanceAfterMicro,
     description: t.description,
+    reference: t.reference ?? null,
     createdAt: (t.get('createdAt') as Date).toISOString(),
   }));
   return { items, total, totalPages: Math.max(1, Math.ceil(total / limit)) };

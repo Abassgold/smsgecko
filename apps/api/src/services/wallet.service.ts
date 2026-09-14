@@ -13,6 +13,7 @@ export function toTransactionView(t: TransactionDoc): TransactionView {
     description: t.description,
     orderId: t.orderId ? String(t.orderId) : null,
     depositId: t.depositId ? String(t.depositId) : null,
+    reference: t.reference ?? null,
     createdAt: (t.get('createdAt') as Date).toISOString(),
   };
 }

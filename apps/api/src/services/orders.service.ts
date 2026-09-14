@@ -170,6 +170,7 @@ export async function createOrder(
             description: 'Order payment',
             session,
             orderId: doc._id,
+            reference: String(doc._id),
           });
           created = doc;
         });
@@ -213,6 +214,7 @@ export async function createOrder(
         type: 'order_payment',
         description: 'Order payment',
         orderId: doc._id,
+        reference: String(doc._id),
       });
     } catch (err) {
       // Payment failed after the order was written — undo it.
@@ -392,6 +394,9 @@ export async function reactivateOrder(user: UserDoc, orderId: string): Promise<O
     type: 'order_payment',
     description: 'Number reactivation',
     orderId: order._id,
+    // Distinct from the original creation charge's reference — reactivation is
+    // a second, separate payment on the same order.
+    reference: `${order._id}_reactivate`,
   });
 
   const expiresAt = new Date(

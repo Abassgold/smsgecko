@@ -14,6 +14,8 @@ export interface TransactionView {
   description: string;
   orderId: string | null;
   depositId: string | null;
+  /** Pairs a charge with the refund that reverses it — see the API for the format. */
+  reference: string | null;
   createdAt: string;
 }
 
