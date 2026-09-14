@@ -37,6 +37,7 @@ export async function createDeposit(user: UserDoc, body: CreateDepositBody): Pro
     amountMicro: body.amountMicro,
     method: body.method,
     userEmail: user.email,
+    korapayCurrency: body.korapayCurrency,
   });
   return Deposit.create({
     userId: user._id,

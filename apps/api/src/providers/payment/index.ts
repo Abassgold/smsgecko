@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import type { DepositMethod } from '@smsgecko/shared';
+import type { DepositMethod, KorapayCurrency } from '@smsgecko/shared';
 import { env } from '../../config/env.js';
 import { StripeProvider } from './stripe.js';
 import { NowPaymentsProvider } from './nowpayments.js';
@@ -11,6 +11,8 @@ export interface CreateChargeInput {
   method: DepositMethod;
   /** Needed by gateways that require a customer identity up front (Korapay). Unused by the rest. */
   userEmail: string;
+  /** Which of Korapay's African corridors to bill in (NGN/GHS/KES/ZAR). Ignored by every other provider. */
+  korapayCurrency?: KorapayCurrency;
 }
 
 export interface Charge {

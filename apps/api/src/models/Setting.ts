@@ -14,8 +14,17 @@ const settingSchema = new Schema(
     minDepositMicro: { type: Number, required: true, min: 0 },
     numberMarkupPercent: { type: Number, default: 0, min: 0 },
     numberMarkupFlatMicro: { type: Number, default: 0, min: 0 },
-    /** USD→NGN rate for gateways that only settle in Naira (Korapay). No live feed — admin sets it by hand. */
-    usdToNgnRate: { type: Number, default: 1600, min: 1 },
+    /** USD→local-currency rates for Korapay's African corridors. No live feed — admin sets them by hand. */
+    korapayFxRates: {
+      type: {
+        NGN: { type: Number, default: 1600, min: 1 },
+        GHS: { type: Number, default: 12, min: 1 },
+        KES: { type: Number, default: 129, min: 1 },
+        ZAR: { type: Number, default: 16, min: 1 },
+      },
+      default: () => ({ NGN: 1600, GHS: 12, KES: 129, ZAR: 16 }),
+      _id: false,
+    },
     signupsEnabled: { type: Boolean, default: true },
     maintenanceMode: { type: Boolean, default: false },
   },

@@ -161,11 +161,33 @@ describe('deposits', () => {
       method: 'POST',
       url: '/api/v1/deposits',
       headers: { cookie },
-      payload: { method: 'korapay', amountMicro: 5_000_000 },
+      payload: { method: 'korapay', amountMicro: 5_000_000, korapayCurrency: 'GHS' },
     });
     expect(create.statusCode).toBe(201);
     const deposit = await Deposit.findById(create.json().id);
     expect(deposit!.provider).toBe('mock');
+  });
+
+  it('requires a korapayCurrency for the korapay method', async () => {
+    const { cookie } = await makeUser(app);
+    const res = await inject({
+      method: 'POST',
+      url: '/api/v1/deposits',
+      headers: { cookie },
+      payload: { method: 'korapay', amountMicro: 5_000_000 },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects an unsupported korapayCurrency', async () => {
+    const { cookie } = await makeUser(app);
+    const res = await inject({
+      method: 'POST',
+      url: '/api/v1/deposits',
+      headers: { cookie },
+      payload: { method: 'korapay', amountMicro: 5_000_000, korapayCurrency: 'EUR' },
+    });
+    expect(res.statusCode).toBe(400);
   });
 
   it('falls back to the mock provider for cryptomus deposits when Cryptomus is unconfigured', async () => {

@@ -27,6 +27,16 @@ export const DEPOSIT_METHODS = [
 ] as const;
 export type DepositMethod = (typeof DEPOSIT_METHODS)[number];
 
+/** Korapay's African corridors — each settles in its own local currency, not USD. */
+export const KORAPAY_CURRENCIES = ['NGN', 'GHS', 'KES', 'ZAR'] as const;
+export type KorapayCurrency = (typeof KORAPAY_CURRENCIES)[number];
+export const KORAPAY_COUNTRY_LABEL: Record<KorapayCurrency, string> = {
+  NGN: 'Nigeria',
+  GHS: 'Ghana',
+  KES: 'Kenya',
+  ZAR: 'South Africa',
+};
+
 export const DEPOSIT_STATUSES = ['pending', 'confirmed', 'failed', 'expired'] as const;
 export type DepositStatus = (typeof DEPOSIT_STATUSES)[number];
 

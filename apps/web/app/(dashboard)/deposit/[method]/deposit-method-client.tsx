@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import type { DepositView } from '@smsgecko/shared';
+import { KORAPAY_CURRENCIES, KORAPAY_COUNTRY_LABEL } from '@smsgecko/shared';
+import type { DepositView, KorapayCurrency } from '@smsgecko/shared';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Field, TextInput } from '@/components/ui/field';
@@ -23,6 +24,7 @@ export function DepositMethodClient() {
   const createDeposit = useCreateDeposit();
   const confirmDeposit = useConfirmDeposit();
   const [amount, setAmount] = useState('10');
+  const [korapayCurrency, setKorapayCurrency] = useState<KorapayCurrency>('NGN');
   const [pending, setPending] = useState<DepositView | null>(null);
   const [done, setDone] = useState(false);
 
@@ -42,7 +44,7 @@ export function DepositMethodClient() {
     setDone(false);
     const amountMicro = usdToMicro(Number(amount));
     createDeposit.mutate(
-      { method, amountMicro },
+      { method, amountMicro, ...(method === 'korapay' ? { korapayCurrency } : {}) },
       {
         onSuccess: (dep) => {
           if (method === 'mock' || method === 'qris') {
@@ -88,11 +90,27 @@ export function DepositMethodClient() {
 
       <Card className="p-6">
         <form className="flex flex-col gap-4" onSubmit={submit}>
+          {method === 'korapay' ? (
+            <Field label="Country">
+              <select
+                value={korapayCurrency}
+                onChange={(e) => setKorapayCurrency(e.target.value as KorapayCurrency)}
+                className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm outline-none focus:border-border-strong"
+              >
+                {KORAPAY_CURRENCIES.map((c) => (
+                  <option key={c} value={c}>
+                    {KORAPAY_COUNTRY_LABEL[c]} ({c})
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
+
           <Field
             label="Amount (USD)"
             hint={
               method === 'korapay'
-                ? 'Minimum $0.50. Charged in NGN at the current rate.'
+                ? `Minimum $0.50. Charged in ${korapayCurrency} at the current rate.`
                 : 'Minimum $0.50.'
             }
           >

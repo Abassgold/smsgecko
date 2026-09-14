@@ -10,9 +10,12 @@ const CHARGE_TTL_MS = 30 * 60 * 1000;
 
 /**
  * Real (test-mode) Korapay integration via hand-rolled REST calls — cards,
- * bank transfer and USSD for Nigeria, via one hosted checkout. Korapay only
- * settles in NGN, so the USD deposit amount is converted using the
- * admin-set `usdToNgnRate` (no live FX feed — see Settings > Payments).
+ * bank transfer and USSD across Korapay's African corridors (Nigeria, Ghana,
+ * Kenya, South Africa), via one hosted checkout. Korapay never settles in
+ * USD — each corridor is billed in its own local currency — so the USD
+ * deposit amount is converted using the admin-set `korapayFxRates` for
+ * whichever currency the customer picked (no live FX feed — see
+ * Settings > Payments).
  */
 export class KorapayProvider implements PaymentProvider {
   readonly name = 'korapay';
@@ -20,8 +23,10 @@ export class KorapayProvider implements PaymentProvider {
   constructor(private readonly secretKey: string) {}
 
   async createCharge(input: CreateChargeInput): Promise<Charge> {
-    const { usdToNgnRate } = await getSettings();
-    const amountNgn = Math.round((input.amountMicro / 1_000_000) * usdToNgnRate * 100) / 100;
+    const currency = input.korapayCurrency ?? 'NGN';
+    const { korapayFxRates } = await getSettings();
+    const rate = korapayFxRates[currency];
+    const amountLocal = Math.round((input.amountMicro / 1_000_000) * rate * 100) / 100;
     const reference = `dep_${Date.now().toString(36)}_${randomUUID().slice(0, 8)}`;
     const expiresAt = new Date(Date.now() + CHARGE_TTL_MS);
 
@@ -32,8 +37,8 @@ export class KorapayProvider implements PaymentProvider {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        amount: amountNgn,
-        currency: 'NGN',
+        amount: amountLocal,
+        currency,
         reference,
         customer: { email: input.userEmail },
         notification_url: `${env.API_PUBLIC_URL}/api/v1/webhooks/payments/korapay`,

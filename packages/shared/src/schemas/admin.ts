@@ -1,4 +1,10 @@
-import type { OrderSource, OrderStatus, TransactionType, DepositStatus } from '../constants';
+import type {
+  OrderSource,
+  OrderStatus,
+  TransactionType,
+  DepositStatus,
+  KorapayCurrency,
+} from '../constants';
 
 /* ---------------- providers ---------------- */
 
@@ -186,8 +192,8 @@ export interface SettingsView {
   minDepositMicro: number;
   numberMarkupPercent: number;
   numberMarkupFlatMicro: number;
-  /** USD→NGN rate used to convert deposit amounts for NGN-only gateways (Korapay). Admin-editable, no live FX feed. */
-  usdToNgnRate: number;
+  /** USD→local-currency rates for Korapay's African corridors. Admin-editable, no live FX feed. */
+  korapayFxRates: Record<KorapayCurrency, number>;
   signupsEnabled: boolean;
   maintenanceMode: boolean;
 }

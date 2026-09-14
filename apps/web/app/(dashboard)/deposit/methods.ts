@@ -24,9 +24,9 @@ export const DEPOSIT_METHOD_INFO: DepositMethodInfo[] = [
   {
     method: 'korapay',
     label: 'Korapay',
-    blurb: 'Nigerian cards, bank transfer & USSD.',
+    blurb: 'African cards, bank transfer & USSD — Nigeria, Ghana, Kenya & South Africa.',
     group: 'fiat',
-    fee: '1.5% (capped ₦2,000)',
+    fee: '~1.5%',
   },
   {
     method: 'crypto_usdt',
