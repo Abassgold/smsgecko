@@ -3,6 +3,7 @@ import { requireUser } from '../middleware/auth.js';
 import { validate } from '../middleware/validation.js';
 import { tightAuthLimiter } from '../middleware/rateLimiters.js';
 import {
+  changePasswordBody,
   disableTwoFactorBody,
   enableTwoFactorBody,
   forgotPasswordBody,
@@ -13,6 +14,7 @@ import {
   verifyTwoFactorBody,
 } from '../lib/validation/auth.schema.js';
 import {
+  changePassword,
   disableTwoFactorHandler,
   enableTwoFactorHandler,
   forgotPassword,
@@ -36,6 +38,13 @@ router.post('/verify-email', tightAuthLimiter, validate(verifyEmailBody), verify
 router.post('/resend-verification', tightAuthLimiter, requireUser, resendVerification);
 router.post('/forgot-password', tightAuthLimiter, validate(forgotPasswordBody), forgotPassword);
 router.post('/reset-password', tightAuthLimiter, validate(resetPasswordBody), resetPassword);
+router.post(
+  '/change-password',
+  tightAuthLimiter,
+  requireUser,
+  validate(changePasswordBody),
+  changePassword,
+);
 router.post('/2fa/verify', tightAuthLimiter, validate(verifyTwoFactorBody), verifyTwoFactor);
 router.post('/2fa/setup', tightAuthLimiter, requireUser, setupTwoFactorHandler);
 router.post(

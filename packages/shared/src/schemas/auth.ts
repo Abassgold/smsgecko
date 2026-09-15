@@ -25,6 +25,11 @@ export interface ResetPasswordBody {
   password: string;
 }
 
+export interface ChangePasswordBody {
+  currentPassword: string;
+  newPassword: string;
+}
+
 export interface PublicUser {
   id: string;
   email: string;

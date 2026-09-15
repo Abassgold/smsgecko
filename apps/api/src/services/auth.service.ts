@@ -196,6 +196,29 @@ export async function resetPassword(rawToken: string, newPassword: string): Prom
   return user;
 }
 
+/**
+ * Change the password of an already-logged-in user (Settings, not the email
+ * reset flow). Same "revoke every session" guard as `resetPassword` — a
+ * stolen cookie on another device shouldn't survive this either — the
+ * caller re-issues a fresh session for the request that triggered it.
+ */
+export async function changePassword(
+  user: UserDoc,
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const ok = await verifyPassword(user.passwordHash, currentPassword);
+  if (!ok) throw badRequest('Current password is incorrect');
+
+  user.passwordHash = await hashPassword(newPassword);
+  await user.save();
+
+  await RefreshToken.updateMany(
+    { userId: user._id, revokedAt: null },
+    { $set: { revokedAt: new Date() } },
+  );
+}
+
 async function ensureUsernameAvailable(username: string): Promise<string> {
   if (await User.exists({ username })) throw conflict('That username is taken');
   return username;

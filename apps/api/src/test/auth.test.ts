@@ -276,6 +276,75 @@ describe('password reset', () => {
   });
 });
 
+describe('change password', () => {
+  it('changes the password, keeps the current session, revokes others', async () => {
+    const reg = await registerUser('changeme@test.dev');
+    const currentCookie = cookieHeader(reg);
+    const otherLogin = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { identifier: 'changeme@test.dev', password: 'supersecret1' },
+    });
+    const otherCookie = cookieHeader(otherLogin);
+
+    const change = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/change-password',
+      headers: { cookie: currentCookie },
+      payload: { currentPassword: 'supersecret1', newPassword: 'brandnewpass1' },
+    });
+    expect(change.statusCode).toBe(200);
+    expect(change.json()).toEqual({ ok: true });
+    // A fresh session is issued for the request that made the change.
+    expect(change.cookies.map((c) => c.name)).toEqual(
+      expect.arrayContaining(['smsg_access', 'smsg_refresh']),
+    );
+
+    // The other, previously-existing session is dead.
+    const otherRefresh = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: { cookie: otherCookie },
+    });
+    expect(otherRefresh.statusCode).toBe(401);
+
+    // Old password no longer works; the new one does.
+    const loginOld = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { identifier: 'changeme@test.dev', password: 'supersecret1' },
+    });
+    expect(loginOld.statusCode).toBe(401);
+    const loginNew = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { identifier: 'changeme@test.dev', password: 'brandnewpass1' },
+    });
+    expect(loginNew.statusCode).toBe(200);
+  });
+
+  it('rejects the wrong current password', async () => {
+    const reg = await registerUser('wrongcurrent@test.dev');
+    const cookie = cookieHeader(reg);
+    const res = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/change-password',
+      headers: { cookie },
+      payload: { currentPassword: 'not-the-real-password', newPassword: 'brandnewpass1' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('requires auth', async () => {
+    const res = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/change-password',
+      payload: { currentPassword: 'whatever', newPassword: 'brandnewpass1' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
 describe('two-factor auth', () => {
   /** Registers a user and turns 2FA on for them, returning the secret,
    * session cookie, and unused recovery codes. */

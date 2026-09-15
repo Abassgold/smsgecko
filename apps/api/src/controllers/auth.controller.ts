@@ -1,4 +1,5 @@
 import type {
+  ChangePasswordBody,
   DisableTwoFactorBody,
   EnableTwoFactorBody,
   ForgotPasswordBody,
@@ -14,6 +15,7 @@ import { clearAuthCookies, REFRESH_COOKIE, setAuthCookies } from '../lib/authCoo
 import { unauthorized } from '../lib/errors.js';
 import {
   authenticate,
+  changePassword as changePasswordService,
   disableTwoFactor,
   enableTwoFactor,
   issueEmailVerification,
@@ -107,6 +109,16 @@ export const resetPassword = asyncHandler(async (req, res) => {
   const { accessToken, refreshToken } = await issueSession(user, sessionMeta(req));
   setAuthCookies(res, accessToken, refreshToken);
   res.json({ user: toPublicUser(user) });
+});
+
+export const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body as ChangePasswordBody;
+  await changePasswordService(req.authUser!, currentPassword, newPassword);
+  // Every session (including this one's refresh token) was just revoked —
+  // issue a fresh one so the tab that made the change doesn't get logged out.
+  const { accessToken, refreshToken } = await issueSession(req.authUser!, sessionMeta(req));
+  setAuthCookies(res, accessToken, refreshToken);
+  res.json({ ok: true as const });
 });
 
 export const refresh = asyncHandler(async (req, res) => {

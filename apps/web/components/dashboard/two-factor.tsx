@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { toDataURL } from 'qrcode';
 import { Card } from '@/components/ui/card';
+import { SectionTitle } from '@/components/ui/section-title';
 import { Button } from '@/components/ui/button';
 import { Field, TextInput } from '@/components/ui/field';
 import { Badge } from '@/components/ui/badge';
@@ -40,7 +41,7 @@ export function TwoFactor() {
   if (me.isLoading || !me.data) {
     return (
       <Card className="p-6">
-        <h3 className="font-display text-sm font-semibold">Two-factor authentication</h3>
+        <SectionTitle>Two-factor authentication</SectionTitle>
       </Card>
     );
   }
@@ -96,7 +97,7 @@ export function TwoFactor() {
   return (
     <Card className="p-6">
       <div className="flex items-center justify-between">
-        <h3 className="font-display text-sm font-semibold">Two-factor authentication</h3>
+        <SectionTitle>Two-factor authentication</SectionTitle>
         <Badge tone={enabled ? 'success' : 'muted'}>{enabled ? 'Enabled' : 'Disabled'}</Badge>
       </div>
       <p className="mt-1 text-sm text-muted">

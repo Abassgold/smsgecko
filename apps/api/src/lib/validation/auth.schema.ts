@@ -32,6 +32,11 @@ export const resetPasswordBody = yup.object({
   password: yup.string().min(8).max(200).required(),
 });
 
+export const changePasswordBody = yup.object({
+  currentPassword: yup.string().min(1).max(200).required(),
+  newPassword: yup.string().min(8).max(200).required(),
+});
+
 /** A live TOTP code (6 digits) or a recovery code (10 alphanumeric chars). */
 export const twoFactorCode = yup
   .string()

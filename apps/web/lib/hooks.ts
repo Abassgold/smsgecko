@@ -6,6 +6,7 @@ import type {
   ApiKeyCreated,
   ApiKeyView,
   AuthResponse,
+  ChangePasswordBody,
   CountryView,
   CreateOrderBody,
   DepositView,
@@ -145,6 +146,13 @@ export function useResetPassword() {
     mutationFn: (body: ResetPasswordBody) =>
       apiFetch<AuthResponse>('/v1/auth/reset-password', { method: 'POST', body }),
     onSuccess: (data) => qc.setQueryData(['me'], data),
+  });
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (body: ChangePasswordBody) =>
+      apiFetch<{ ok: true }>('/v1/auth/change-password', { method: 'POST', body }),
   });
 }
 
