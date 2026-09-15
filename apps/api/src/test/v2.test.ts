@@ -299,11 +299,54 @@ describe('v2 API (Bearer)', () => {
       headers: { cookie },
     });
     expect(del.statusCode).toBe(200);
+    // Revoked keys drop out of the list entirely — only the active key (if
+    // any) is ever surfaced, not a history of dead ones.
     const listAfter = await inject({
       method: 'GET',
       url: '/api/v1/api-keys',
       headers: { cookie },
     });
-    expect(listAfter.json()[0].revoked).toBe(true);
+    expect(listAfter.json()).toHaveLength(0);
+  });
+
+  it('one active key per account: generating a new one revokes the old one', async () => {
+    const { cookie } = await makeUser(app);
+
+    const first = await inject({
+      method: 'POST',
+      url: '/api/v1/api-keys',
+      headers: { cookie },
+      payload: { label: 'first' },
+    });
+    const firstKey = first.json().key as string;
+
+    const second = await inject({
+      method: 'POST',
+      url: '/api/v1/api-keys',
+      headers: { cookie },
+      payload: { label: 'second' },
+    });
+    expect(second.statusCode).toBe(201);
+
+    // Only the new key is listed.
+    const list = await inject({ method: 'GET', url: '/api/v1/api-keys', headers: { cookie } });
+    expect(list.json()).toHaveLength(1);
+    expect(list.json()[0].label).toBe('second');
+
+    // The old key no longer authenticates.
+    const usedOld = await inject({
+      method: 'GET',
+      url: '/api/v2/balance',
+      headers: { authorization: `Bearer ${firstKey}` },
+    });
+    expect(usedOld.statusCode).toBe(401);
+
+    // The new key works.
+    const usedNew = await inject({
+      method: 'GET',
+      url: '/api/v2/balance',
+      headers: { authorization: `Bearer ${second.json().key}` },
+    });
+    expect(usedNew.statusCode).toBe(200);
   });
 });

@@ -14,12 +14,24 @@ export function toApiKeyView(k: ApiKeyDoc): ApiKeyView {
   };
 }
 
+/**
+ * One active key per account — like GitHub's/Stripe's single-token
+ * "regenerate" model, not a list of many live keys. Revoked keys still exist
+ * in the collection (audit trail, and `ApiKey.verify` already excludes them
+ * from auth), they're just not surfaced here.
+ */
 export async function listKeys(user: UserDoc): Promise<ApiKeyView[]> {
-  const keys = await ApiKey.find({ userId: user._id }).sort({ createdAt: -1 });
+  const keys = await ApiKey.find({ userId: user._id, revokedAt: null }).sort({ createdAt: -1 });
   return keys.map(toApiKeyView);
 }
 
+/** Revokes any key(s) currently active for this user before issuing the new
+ * one, so generating always replaces rather than piling up. */
 export async function createKey(user: UserDoc, label: string): Promise<ApiKeyCreated> {
+  await ApiKey.updateMany(
+    { userId: user._id, revokedAt: null },
+    { $set: { revokedAt: new Date() } },
+  );
   const { id, key, prefix } = await ApiKey.issue(user._id, label);
   const doc = await ApiKey.findById(id);
   return { ...toApiKeyView(doc!), prefix, key };
