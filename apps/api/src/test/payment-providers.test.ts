@@ -148,8 +148,11 @@ describe('korapay webhook verification', () => {
 
 const CRYPTOMUS_API_KEY = 'cryptomus_test_api_key';
 
+// Mirrors Cryptomus's own PHP-side json_encode, which escapes forward
+// slashes — a real webhook (e.g. a txid or url field) can contain one.
 function signCryptomus(payload: Record<string, unknown>, apiKey: string): string {
-  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64');
+  const json = JSON.stringify(payload).replace(/\//g, '\\/');
+  const encoded = Buffer.from(json).toString('base64');
   return createHash('md5').update(encoded + apiKey).digest('hex');
 }
 
@@ -183,5 +186,16 @@ describe('cryptomus webhook verification', () => {
     const sign = signCryptomus(rest, CRYPTOMUS_API_KEY);
     const tampered = { ...rest, amount: '99.00', sign };
     expect(verifyAndParseCryptomusEvent(tampered, CRYPTOMUS_API_KEY)).toBeNull();
+  });
+
+  it('verifies correctly when a field contains a slash (their signature escapes it, ours must too)', () => {
+    // A real payload field with a "/" — e.g. Cryptomus's own txid/url fields
+    // can contain one. Their PHP-side json_encode escapes it before
+    // signing; a naive JSON.stringify on our side would silently produce a
+    // different signature and always reject the webhook.
+    const rest = { order_id: 'dep_1', status: 'paid', txid: 'abc/def' };
+    const sign = signCryptomus(rest, CRYPTOMUS_API_KEY);
+    const event = verifyAndParseCryptomusEvent({ ...rest, sign }, CRYPTOMUS_API_KEY);
+    expect(event).toEqual({ providerRef: 'dep_1', paid: true });
   });
 });

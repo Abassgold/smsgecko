@@ -7,9 +7,18 @@ import type { Charge, CreateChargeInput, PaymentProvider } from './index.js';
 const API_BASE = 'https://api.cryptomus.com/v1';
 const CHARGE_TTL_MS = 60 * 60 * 1000;
 
-/** Cryptomus signs requests/webhooks as MD5(base64(JSON.stringify(payload)) + apiKey). */
+/**
+ * Cryptomus signs requests/webhooks as MD5(base64(JSON.stringify(payload)) + apiKey)
+ * — but over their PHP-side `json_encode`, which escapes forward slashes
+ * (`/` → `\/`); JSON.stringify does not. Their own docs call this out
+ * explicitly, since it silently breaks the signature the moment any field
+ * contains a `/` — which every request here does (url_callback etc. are
+ * full URLs). Replicate the escaping by hand or our signature never matches
+ * theirs.
+ */
 function sign(payload: unknown, apiKey: string): string {
-  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64');
+  const json = JSON.stringify(payload).replace(/\//g, '\\/');
+  const encoded = Buffer.from(json).toString('base64');
   return createHash('md5').update(encoded + apiKey).digest('hex');
 }
 
