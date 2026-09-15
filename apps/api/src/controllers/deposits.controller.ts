@@ -25,9 +25,13 @@ export const create = asyncHandler(async (req, res) => {
 });
 
 export const list = asyncHandler(async (req, res) => {
-  const { page, limit } = valid<DepositsQuery>(req, 'query');
-  const { items, total, totalPages } = await listDeposits(req.authUser!, { page, limit });
-  res.json({ items, page, limit, total, totalPages });
+  const { status, page, limit } = valid<DepositsQuery>(req, 'query');
+  const { items, total, totalPages, counts } = await listDeposits(req.authUser!, {
+    status,
+    page,
+    limit,
+  });
+  res.json({ items, page, limit, total, totalPages, counts });
 });
 
 export const getOne = asyncHandler(async (req, res) => {

@@ -31,8 +31,16 @@ const CHARGE_TTL_MS = 30 * 60 * 1000;
 
 /**
  * Simulated PSP — always available, used in tests and as the fallback for
- * `card`/`crypto_usdt` when Stripe/NowPayments credentials aren't configured.
- * See `StripeProvider` and `NowPaymentsProvider` for the real integrations.
+ * every real method (`card`/`korapay`/`crypto_usdt`/`cryptomus`) when that
+ * provider's credentials aren't configured. See `StripeProvider` and the
+ * other provider files for the real integrations.
+ *
+ * Every real gateway here sends the customer to a hosted checkout page —
+ * Stripe Checkout, Korapay's charge page, NowPayments'/Cryptomus' invoice
+ * page. The mock fallback matches that: it always returns a `payUrl`
+ * (a same-origin `/deposit/checkout/:id` page, not an external one) instead
+ * of surfacing pay details inline on the deposit form, so the flow looks and
+ * behaves the same regardless of whether real credentials are configured.
  */
 export class MockPaymentProvider implements PaymentProvider {
   readonly name = 'mock';
@@ -40,16 +48,14 @@ export class MockPaymentProvider implements PaymentProvider {
   async createCharge(input: CreateChargeInput): Promise<Charge> {
     const providerRef = `pay_${Date.now().toString(36)}_${randomUUID().slice(0, 8)}`;
     const expiresAt = new Date(Date.now() + CHARGE_TTL_MS);
+    const payAddress =
+      input.method === 'crypto_usdt' ? `T${randomBytes(16).toString('hex').slice(0, 33)}` : null;
 
-    if (input.method === 'crypto_usdt') {
-      return {
-        providerRef,
-        payAddress: `T${randomBytes(16).toString('hex').slice(0, 33)}`,
-        payUrl: null,
-        expiresAt,
-      };
-    }
-    return { providerRef, payAddress: null, payUrl: `/deposit/checkout/${providerRef}`, expiresAt };
+    // The real deposit id doesn't exist yet at this point (the Deposit
+    // document is created right after this call returns) — createDeposit()
+    // rewrites this placeholder path to the real `/deposit/checkout/<id>`
+    // once it does.
+    return { providerRef, payAddress, payUrl: `/deposit/checkout/${providerRef}`, expiresAt };
   }
 }
 

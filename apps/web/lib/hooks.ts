@@ -305,10 +305,31 @@ export function useConfirmDeposit() {
   });
 }
 
-export function useDeposits(page: number) {
+export interface DepositCounts {
+  all: number;
+  pending: number;
+  confirmed: number;
+  failed: number;
+  expired: number;
+}
+
+export function useDeposits(status: string, page: number) {
   return useQuery({
-    queryKey: ['deposits', page],
-    queryFn: () => apiFetch<Paginated<DepositView>>(`/v1/deposits?page=${page}&limit=8`),
+    queryKey: ['deposits', status, page],
+    queryFn: () =>
+      apiFetch<Paginated<DepositView> & { counts: DepositCounts }>(
+        `/v1/deposits?status=${status}&page=${page}&limit=8`,
+      ),
+  });
+}
+
+/** A single deposit — the mock checkout page's "poll while pending" view. */
+export function useDeposit(id: string, poll: boolean) {
+  return useQuery({
+    queryKey: ['deposit', id],
+    queryFn: () => apiFetch<DepositView>(`/v1/deposits/${id}`),
+    enabled: Boolean(id),
+    refetchInterval: poll ? 2500 : false,
   });
 }
 

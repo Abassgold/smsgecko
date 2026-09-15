@@ -96,6 +96,48 @@ describe('deposits', () => {
     expect(page2.json().items[0].amountMicro).toBe(1_000_000);
   });
 
+  it('filters by status and reports stable per-status counts', async () => {
+    const { cookie } = await makeUser(app);
+
+    const confirmed = await inject({
+      method: 'POST',
+      url: '/api/v1/deposits',
+      headers: { cookie },
+      payload: { method: 'mock', amountMicro: 1_000_000 },
+    });
+    await inject({
+      method: 'POST',
+      url: `/api/v1/deposits/${confirmed.json().id}/mock-confirm`,
+      headers: { cookie },
+    });
+    await inject({
+      method: 'POST',
+      url: '/api/v1/deposits',
+      headers: { cookie },
+      payload: { method: 'mock', amountMicro: 2_000_000 },
+    });
+
+    const all = await inject({ method: 'GET', url: '/api/v1/deposits', headers: { cookie } });
+    expect(all.json().items).toHaveLength(2);
+    expect(all.json().counts).toEqual({
+      all: 2,
+      pending: 1,
+      confirmed: 1,
+      failed: 0,
+      expired: 0,
+    });
+
+    const confirmedOnly = await inject({
+      method: 'GET',
+      url: '/api/v1/deposits?status=confirmed',
+      headers: { cookie },
+    });
+    expect(confirmedOnly.json().items).toHaveLength(1);
+    expect(confirmedOnly.json().items[0].status).toBe('confirmed');
+    // Counts stay the same regardless of which tab/filter is selected.
+    expect(confirmedOnly.json().counts).toEqual(all.json().counts);
+  });
+
   it('requires auth to list deposits', async () => {
     const res = await inject({ method: 'GET', url: '/api/v1/deposits' });
     expect(res.statusCode).toBe(401);
@@ -153,6 +195,35 @@ describe('deposits', () => {
     const deposit = await Deposit.findById(create.json().id);
     expect(deposit!.provider).toBe('mock');
     expect(deposit!.payUrl).toBeTruthy();
+  });
+
+  it('mock-fallback deposits always point to our own checkout page, keyed by the real deposit id', async () => {
+    const { cookie } = await makeUser(app);
+    const create = await inject({
+      method: 'POST',
+      url: '/api/v1/deposits',
+      headers: { cookie },
+      payload: { method: 'card', amountMicro: 5_000_000 },
+    });
+    const id = create.json().id as string;
+    // The response itself already carries the rewritten URL...
+    expect(create.json().payUrl).toBe(`/deposit/checkout/${id}`);
+    // ...and it's what's actually persisted, not the provider's placeholder ref.
+    const deposit = await Deposit.findById(id);
+    expect(deposit!.payUrl).toBe(`/deposit/checkout/${id}`);
+  });
+
+  it('mock-fallback crypto deposits get both a pay address AND a checkout page', async () => {
+    const { cookie } = await makeUser(app);
+    const create = await inject({
+      method: 'POST',
+      url: '/api/v1/deposits',
+      headers: { cookie },
+      payload: { method: 'crypto_usdt', amountMicro: 5_000_000 },
+    });
+    const id = create.json().id as string;
+    expect(create.json().payAddress).toBeTruthy();
+    expect(create.json().payUrl).toBe(`/deposit/checkout/${id}`);
   });
 
   it('falls back to the mock provider for korapay deposits when Korapay is unconfigured', async () => {

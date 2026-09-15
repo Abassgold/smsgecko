@@ -1,5 +1,5 @@
-import type { CreateDepositBody } from '@smsgecko/shared';
-import { formatUsd } from '@smsgecko/shared';
+import type { CreateDepositBody, DepositStatus } from '@smsgecko/shared';
+import { DEPOSIT_STATUSES, formatUsd } from '@smsgecko/shared';
 import { Deposit, type DepositDoc } from '../models/Deposit.js';
 import type { UserDoc } from '../models/User.js';
 import { getPaymentProvider, getPaymentProviderByName } from '../providers/payment/index.js';
@@ -39,7 +39,7 @@ export async function createDeposit(user: UserDoc, body: CreateDepositBody): Pro
     userEmail: user.email,
     korapayCurrency: body.korapayCurrency,
   });
-  return Deposit.create({
+  const doc = await Deposit.create({
     userId: user._id,
     method: body.method,
     amountMicro: body.amountMicro,
@@ -50,26 +50,59 @@ export async function createDeposit(user: UserDoc, body: CreateDepositBody): Pro
     payUrl: charge.payUrl,
     expiresAt: charge.expiresAt,
   });
+
+  // MockPaymentProvider's payUrl is a placeholder same-origin path — it
+  // can't know the deposit's real id yet, since this document didn't exist
+  // when it built the URL. Point it at the real one now.
+  if (doc.payUrl?.startsWith('/deposit/checkout/')) {
+    doc.payUrl = `/deposit/checkout/${doc.id}`;
+    await doc.save();
+  }
+
+  return doc;
 }
 
 export interface ListDepositsParams {
   page: number;
   limit: number;
+  /** 'all' (default) or a single status to filter the page by. */
+  status?: DepositStatus | 'all';
 }
 
+export type DepositStatusCounts = Record<DepositStatus, number> & { all: number };
+
 export async function listDeposits(user: UserDoc, params: ListDepositsParams) {
-  const filter = { userId: user._id };
-  const [items, total] = await Promise.all([
+  const filter: Record<string, unknown> = { userId: user._id };
+  if (params.status && params.status !== 'all') filter.status = params.status;
+
+  const [items, total, countRows] = await Promise.all([
     Deposit.find(filter)
       .sort({ createdAt: -1 })
       .skip((params.page - 1) * params.limit)
       .limit(params.limit),
     Deposit.countDocuments(filter),
+    // Unfiltered by status — the tab counts stay stable regardless of which
+    // tab is currently selected.
+    Deposit.aggregate<{ _id: DepositStatus; count: number }>([
+      { $match: { userId: user._id } },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]),
   ]);
+
+  const counts = DEPOSIT_STATUSES.reduce(
+    (acc, s) => ({ ...acc, [s]: 0 }),
+    { all: 0 } as DepositStatusCounts,
+  );
+  for (const row of countRows) {
+    counts[row._id] = row.count;
+    counts.all += row.count;
+  }
+
   return {
     items: items.map(toDepositView),
     total,
     totalPages: Math.max(1, Math.ceil(total / params.limit)),
+    counts,
   };
 }
 

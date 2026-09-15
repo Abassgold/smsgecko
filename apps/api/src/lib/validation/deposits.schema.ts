@@ -1,6 +1,6 @@
 import * as yup from 'yup';
-import { DEPOSIT_METHODS, KORAPAY_CURRENCIES, MIN_DEPOSIT_MICRO } from '@smsgecko/shared';
-import type { DepositMethod, KorapayCurrency } from '@smsgecko/shared';
+import { DEPOSIT_METHODS, DEPOSIT_STATUSES, KORAPAY_CURRENCIES, MIN_DEPOSIT_MICRO } from '@smsgecko/shared';
+import type { DepositMethod, DepositStatus, KorapayCurrency } from '@smsgecko/shared';
 import { paginationFields } from './common.schema.js';
 
 export const createDepositBody = yup.object({
@@ -24,9 +24,14 @@ export interface ProviderParams {
 }
 
 export const depositsQuery = yup.object({
+  status: yup
+    .mixed<DepositStatus | 'all'>()
+    .oneOf(['all', ...DEPOSIT_STATUSES])
+    .default('all'),
   ...paginationFields(100, 20),
 });
 export interface DepositsQuery {
+  status: DepositStatus | 'all';
   page: number;
   limit: number;
 }

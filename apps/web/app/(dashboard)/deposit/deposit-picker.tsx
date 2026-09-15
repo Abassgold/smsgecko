@@ -5,20 +5,25 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { KORAPAY_CURRENCIES, KORAPAY_COUNTRY_LABEL } from '@smsgecko/shared';
-import type { DepositMethod, DepositView, KorapayCurrency } from '@smsgecko/shared';
+import type { DepositMethod, KorapayCurrency } from '@smsgecko/shared';
 import { Card } from '@/components/ui/card';
+import { SectionTitle } from '@/components/ui/section-title';
 import { Button } from '@/components/ui/button';
-import { Field, TextInput } from '@/components/ui/field';
-import { CopyButton } from '@/components/ui/copy-button';
-import { cn } from '@/lib/cn';
-import { formatBalanceUsd, formatUsd, usdToMicro } from '@/lib/format';
+import { formatBalanceUsd, usdToMicro } from '@/lib/format';
 import { ApiError } from '@/lib/api';
 import { useConfirmDeposit, useCreateDeposit, useWallet } from '@/lib/hooks';
-import { DEPOSIT_METHOD_INFO, GROUP_LABEL, depositMethodInfo, type DepositMethodInfo } from './methods';
+import { DEPOSIT_METHOD_INFO, depositMethodInfo } from './methods';
 import { DepositHistory } from './deposit-history';
 
-const GROUPS: DepositMethodInfo['group'][] = ['fiat', 'crypto', 'dev'];
 const QUICK = [5, 10, 25, 50, 100];
+
+// Sized to match smscode.gg/deposit's actual computed styles (read live from
+// its DOM: 51px-tall inputs with 14px/16px padding, 13.6px semibold normal-
+// case labels, 12.5px/29px-tall quick-amount pills) rather than eyeballed
+// from a screenshot.
+const FIELD_LABEL = 'text-[13px] font-semibold tracking-[0.02em] text-faint';
+const FIELD_INPUT =
+  'w-full rounded-xl border border-border bg-surface-2 px-4 py-3.5 text-[15px] outline-none placeholder:text-faint focus:border-border-strong';
 
 /** Returning from a hosted checkout (Stripe / Korapay / NowPayments /
  * Cryptomus): the balance update itself lands via webhook, possibly a few
@@ -52,216 +57,180 @@ export function DepositPicker() {
   const confirmDeposit = useConfirmDeposit();
 
   const [amount, setAmount] = useState('10');
-  const [method, setMethod] = useState<DepositMethod>('card');
+  const [method, setMethod] = useState<DepositMethod | ''>('');
   const [korapayCurrency, setKorapayCurrency] = useState<KorapayCurrency>('NGN');
-  const [pending, setPending] = useState<DepositView | null>(null);
   const [done, setDone] = useState(false);
-
-  const info = depositMethodInfo(method)!;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setDone(false);
+    if (!method) return;
     const amountMicro = usdToMicro(Number(amount));
     createDeposit.mutate(
       { method, amountMicro, ...(method === 'korapay' ? { korapayCurrency } : {}) },
       {
         onSuccess: (dep) => {
-          if (method === 'mock' || method === 'qris') {
+          if (method === 'mock') {
+            // The one instant, no-checkout option — everything else always
+            // goes to a checkout page, same as every real gateway here
+            // (Stripe/Korapay/NowPayments/Cryptomus) and matching what
+            // smscode.gg itself does (a real "Pay Now" redirect for e-wallet
+            // methods, e.g. OVO → their PSP's hosted page).
             confirmDeposit.mutate(dep.id, { onSuccess: () => setDone(true) });
-          } else if (dep.payUrl && /^https?:\/\//.test(dep.payUrl)) {
-            // Real hosted checkout (Stripe / Korapay / NowPayments /
-            // Cryptomus) — leave the app; it redirects back here.
+          } else if (dep.payUrl) {
+            // Real provider → an external https:// checkout; unconfigured
+            // fallback → our own same-origin /deposit/checkout/:id page.
+            // Either way, always leave this form and go there.
             window.location.href = dep.payUrl;
-          } else {
-            setPending(dep);
           }
         },
       },
     );
   };
 
-  const simulatePaid = () => {
-    if (!pending) return;
-    confirmDeposit.mutate(pending.id, {
-      onSuccess: () => {
-        setPending(null);
-        setDone(true);
-      },
-    });
-  };
-
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-6 lg:flex-row lg:items-start">
-      <div className="flex min-w-0 flex-1 flex-col gap-6">
-        <div className="flex items-center justify-between">
-          <h1 className="font-display text-2xl font-bold">Deposit</h1>
-          <Link href="/dashboard" className="text-sm text-accent">
-            ← Dashboard
-          </Link>
+    <div className="mx-auto flex max-w-2xl flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <h1 className="font-display text-2xl font-bold">Deposit</h1>
+        <Link href="/dashboard" className="text-sm text-accent">
+          ← Dashboard
+        </Link>
+      </div>
+
+      <Card className="flex items-center justify-between rounded-[14px] border-[rgba(70,177,123,0.25)] px-6 py-4">
+        <span className="text-xs uppercase tracking-widest text-faint">Available balance</span>
+        <span className="font-mono text-lg text-success">
+          ≈ {formatBalanceUsd(wallet.data?.balanceMicro ?? 0)}
+        </span>
+      </Card>
+
+      {outcome === 'success' ? (
+        <div className="rounded-xl border border-[rgba(70,177,123,0.3)] bg-[rgba(70,177,123,0.1)] p-4 text-sm text-success">
+          Payment received{provider ? ` via ${provider}` : ''} — your balance updates as soon as
+          it&apos;s confirmed.
         </div>
+      ) : outcome === 'cancel' ? (
+        <div className="rounded-xl border border-border bg-surface-2 p-4 text-sm text-muted">
+          Checkout was canceled — no charge was made.
+        </div>
+      ) : null}
 
-        <Card className="flex items-center justify-between border-[rgba(70,177,123,0.25)] p-5">
-          <span className="text-xs uppercase tracking-widest text-faint">Available balance</span>
-          <span className="font-mono text-lg text-success">
-            {formatBalanceUsd(wallet.data?.balanceMicro ?? 0)}
-          </span>
-        </Card>
+      <Card className="p-7">
+        <SectionTitle>New Deposit</SectionTitle>
 
-        {outcome === 'success' ? (
-          <div className="rounded-xl border border-[rgba(70,177,123,0.3)] bg-[rgba(70,177,123,0.1)] p-4 text-sm text-success">
-            Payment received{provider ? ` via ${provider}` : ''} — your balance updates as soon as
-            it&apos;s confirmed.
+        <form className="mt-4 flex flex-col gap-5" onSubmit={submit}>
+          <div className="flex flex-col gap-1.5">
+            <label className={FIELD_LABEL}>Payment Method</label>
+            <select
+              required
+              value={method}
+              onChange={(e) => setMethod(e.target.value as DepositMethod)}
+              className={FIELD_INPUT}
+            >
+              <option value="" disabled>
+                Select a payment method
+              </option>
+              {DEPOSIT_METHOD_INFO.map((m) => (
+                <option key={m.method} value={m.method}>
+                  {m.label} — {m.fee} fee
+                </option>
+              ))}
+            </select>
           </div>
-        ) : outcome === 'cancel' ? (
-          <div className="rounded-xl border border-border bg-surface-2 p-4 text-sm text-muted">
-            Checkout was canceled — no charge was made.
+
+          {method === 'korapay' ? (
+            <div className="flex flex-col gap-1.5">
+              <label className={FIELD_LABEL}>Country</label>
+              <select
+                value={korapayCurrency}
+                onChange={(e) => setKorapayCurrency(e.target.value as KorapayCurrency)}
+                className={FIELD_INPUT}
+              >
+                {KORAPAY_CURRENCIES.map((c) => (
+                  <option key={c} value={c}>
+                    {KORAPAY_COUNTRY_LABEL[c]} ({c})
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-1.5">
+            <label className={FIELD_LABEL}>Amount (USD)</label>
+            <input
+              type="number"
+              min="0.5"
+              step="0.5"
+              required
+              placeholder="Enter amount in USD"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className={FIELD_INPUT}
+            />
+            <span className="text-xs text-faint">
+              {method === 'korapay'
+                ? `Minimum $0.50. Charged in ${korapayCurrency} at the current rate.`
+                : 'Minimum $0.50.'}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {QUICK.map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setAmount(String(v))}
+                className="rounded-lg border border-border bg-surface-2 px-3.5 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
+              >
+                ${v}
+              </button>
+            ))}
+          </div>
+
+          {createDeposit.isError ? (
+            <p className="text-sm text-danger">
+              {createDeposit.error instanceof ApiError
+                ? createDeposit.error.message
+                : 'Could not create the deposit'}
+            </p>
+          ) : null}
+
+          <Button
+            type="submit"
+            className="self-start"
+            disabled={createDeposit.isPending || confirmDeposit.isPending}
+          >
+            {createDeposit.isPending || confirmDeposit.isPending ? 'Processing…' : 'Create Deposit'}
+          </Button>
+        </form>
+
+        {done ? (
+          <div className="mt-5 rounded-xl border border-[rgba(70,177,123,0.3)] bg-[rgba(70,177,123,0.1)] p-4 text-sm text-success">
+            Deposit confirmed — balance updated.
           </div>
         ) : null}
+      </Card>
 
-        <Card className="p-6">
-          <form className="flex flex-col gap-6" onSubmit={submit}>
-            <Field
-              label="Amount (USD)"
-              hint={
-                method === 'korapay'
-                  ? `Minimum $0.50. Charged in ${korapayCurrency} at the current rate.`
-                  : 'Minimum $0.50.'
-              }
-            >
-              <TextInput
-                type="number"
-                min="0.5"
-                step="0.5"
-                required
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-            </Field>
+      <button
+        type="button"
+        onClick={() => setMethod('crypto_usdt')}
+        className="flex items-center gap-4 rounded-2xl border border-border bg-surface p-5 text-left transition hover:border-[var(--accent-ring)]"
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+          ₿
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-display text-sm font-semibold">
+            {depositMethodInfo('crypto_usdt')?.label ?? 'Pay with crypto'} (USDT)
+          </span>
+          <span className="block text-xs text-muted">
+            Select it above, then send USDT via a hosted crypto checkout.
+          </span>
+        </span>
+        <span className="text-accent">→</span>
+      </button>
 
-            <div className="flex flex-wrap gap-2">
-              {QUICK.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setAmount(String(v))}
-                  className="rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-sm text-muted hover:text-text"
-                >
-                  ${v}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex flex-col gap-4">
-              <h3 className="text-xs font-semibold uppercase tracking-widest text-faint">
-                Payment method
-              </h3>
-              {GROUPS.map((group) => {
-                const methods = DEPOSIT_METHOD_INFO.filter((m) => m.group === group);
-                if (methods.length === 0) return null;
-                return (
-                  <div key={group} className="flex flex-col gap-2">
-                    <h4 className="text-[11px] font-medium uppercase tracking-widest text-faint/80">
-                      {GROUP_LABEL[group]}
-                    </h4>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {methods.map((m) => (
-                        <button
-                          key={m.method}
-                          type="button"
-                          onClick={() => setMethod(m.method)}
-                          className={cn(
-                            'flex flex-col gap-1 rounded-2xl border p-4 text-left transition',
-                            method === m.method
-                              ? 'border-[var(--accent-ring)] bg-accent-soft/40 ring-1 ring-[var(--accent-ring)]'
-                              : 'border-border bg-surface-2 hover:border-[var(--accent-ring)] hover:bg-accent-soft/20',
-                          )}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-display text-sm font-semibold">{m.label}</span>
-                            <span className="shrink-0 font-mono text-[11px] text-faint">{m.fee}</span>
-                          </div>
-                          <span className="text-xs text-muted">{m.blurb}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {method === 'korapay' ? (
-              <Field label="Country">
-                <select
-                  value={korapayCurrency}
-                  onChange={(e) => setKorapayCurrency(e.target.value as KorapayCurrency)}
-                  className="w-full rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-sm outline-none focus:border-border-strong"
-                >
-                  {KORAPAY_CURRENCIES.map((c) => (
-                    <option key={c} value={c}>
-                      {KORAPAY_COUNTRY_LABEL[c]} ({c})
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            ) : null}
-
-            {createDeposit.isError ? (
-              <p className="text-sm text-danger">
-                {createDeposit.error instanceof ApiError
-                  ? createDeposit.error.message
-                  : 'Could not create the deposit'}
-              </p>
-            ) : null}
-
-            <Button
-              type="submit"
-              className="self-start"
-              disabled={createDeposit.isPending || confirmDeposit.isPending}
-            >
-              {createDeposit.isPending || confirmDeposit.isPending
-                ? 'Processing…'
-                : `Deposit via ${info.label}`}
-            </Button>
-          </form>
-
-          {done ? (
-            <div className="mt-5 rounded-xl border border-[rgba(70,177,123,0.3)] bg-[rgba(70,177,123,0.1)] p-4 text-sm text-success">
-              Deposit confirmed — balance updated.
-            </div>
-          ) : null}
-
-          {pending ? (
-            <div className="mt-5 rounded-xl border border-border bg-surface-2 p-4">
-              <div className="text-sm font-medium">
-                Pay {formatUsd(pending.amountMicro)}
-                {pending.payAddress ? ' in USDT' : ''}
-              </div>
-              {pending.payAddress ? (
-                <div className="mt-2 flex items-center gap-2">
-                  <code className="truncate rounded-lg bg-bg px-2 py-1 font-mono text-xs">
-                    {pending.payAddress}
-                  </code>
-                  <CopyButton value={pending.payAddress} />
-                </div>
-              ) : null}
-              <Button
-                variant="secondary"
-                size="sm"
-                className="mt-3"
-                onClick={simulatePaid}
-                disabled={confirmDeposit.isPending}
-              >
-                I&apos;ve sent it (simulate)
-              </Button>
-            </div>
-          ) : null}
-        </Card>
-      </div>
-
-      <div className="w-full lg:sticky lg:top-6 lg:w-80 lg:shrink-0">
-        <DepositHistory />
-      </div>
+      <DepositHistory />
     </div>
   );
 }
