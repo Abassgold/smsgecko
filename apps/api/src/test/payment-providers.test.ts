@@ -96,6 +96,14 @@ describe('nowpayments IPN verification', () => {
     const event = parseNowPaymentsEvent({ invoice_id: 'inv_1', payment_status: 'waiting' });
     expect(event).toEqual({ providerRef: 'inv_1', paid: false });
   });
+
+  it('does not treat "confirmed" as paid — funds haven\'t reached our wallet yet', () => {
+    // Per NOWPayments' own status docs: confirmed = enough blockchain
+    // confirmations, but the payout to us is still "sending". Only
+    // "finished" means the funds actually arrived.
+    const event = parseNowPaymentsEvent({ invoice_id: 'inv_1', payment_status: 'confirmed' });
+    expect(event).toEqual({ providerRef: 'inv_1', paid: false });
+  });
 });
 
 const KORAPAY_SECRET = 'kora_sk_test_secret';

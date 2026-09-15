@@ -34,8 +34,8 @@ export class NowPaymentsProvider implements PaymentProvider {
         price_currency: 'usd',
         pay_currency: 'usdttrc20',
         ipn_callback_url: `${env.API_PUBLIC_URL}/api/v1/webhooks/payments/nowpayments`,
-        success_url: `${env.APP_URL}/deposit?nowpayments=success`,
-        cancel_url: `${env.APP_URL}/deposit?nowpayments=cancel`,
+        success_url: `${env.APP_URL}/deposit?checkout=success&provider=nowpayments`,
+        cancel_url: `${env.APP_URL}/deposit?checkout=cancel&provider=nowpayments`,
       }),
       signal: AbortSignal.timeout(10_000),
     });
@@ -82,7 +82,11 @@ export interface NowPaymentsChargeEvent {
   paid: boolean;
 }
 
-const PAID_STATUSES = new Set(['finished', 'confirmed']);
+// Per NOWPayments' own status definitions: "confirmed" only means the
+// blockchain confirmations have accumulated — funds haven't reached our
+// wallet yet (that's "sending", then "finished"). Crediting on "confirmed"
+// would settle the deposit before the money has actually arrived.
+const PAID_STATUSES = new Set(['finished']);
 
 /** Pulls the invoice id + paid state out of an IPN payload. */
 export function parseNowPaymentsEvent(body: unknown): NowPaymentsChargeEvent | null {
