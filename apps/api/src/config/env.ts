@@ -3,9 +3,16 @@ import { z } from 'zod';
 
 // Load a local .env (api package root) when present. Node >=20.12 ships
 // process.loadEnvFile(); this is a no-op on deploy targets that inject env vars.
+//
+// Test runs load `.env.test` instead of `.env` when present — never the
+// real one. Provider singletons (Stripe/Korapay/NowPayments/Cryptomus) are
+// built once at module load from these values, so a real key sitting in
+// `.env` would otherwise make `npm test` place actual API calls against a
+// live payment account on every run.
+const envFile = process.env.NODE_ENV === 'test' && existsSync('.env.test') ? '.env.test' : '.env';
 try {
-  if (typeof process.loadEnvFile === 'function' && existsSync('.env')) {
-    process.loadEnvFile();
+  if (typeof process.loadEnvFile === 'function' && existsSync(envFile)) {
+    process.loadEnvFile(envFile);
   }
 } catch {
   // ignore — fall back to real process.env
