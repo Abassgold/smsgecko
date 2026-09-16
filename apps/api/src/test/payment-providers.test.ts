@@ -8,7 +8,7 @@ import {
   verifyNowPaymentsSignature,
   parseNowPaymentsEvent,
 } from '../providers/payment/nowpayments.js';
-import { verifyKorapaySignature, parseKorapayEvent } from '../providers/payment/korapay.js';
+import { verifyBachsSignature, parseBachsEvent } from '../providers/payment/bachs.js';
 import { verifyAndParseCryptomusEvent } from '../providers/payment/cryptomus.js';
 
 const SECRET = 'whsec_test_secret';
@@ -106,43 +106,87 @@ describe('nowpayments IPN verification', () => {
   });
 });
 
-const KORAPAY_SECRET = 'kora_sk_test_secret';
+const BACHS_SECRET = 'bachs_whsec_test_secret';
 
-function signKorapay(data: unknown, secret: string): string {
-  return createHmac('sha256', secret).update(JSON.stringify(data)).digest('hex');
+function signBachs(
+  rawBody: string,
+  secret: string,
+  timestamp = Math.floor(Date.now() / 1000),
+): string {
+  const signature = createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');
+  return `t=${timestamp},v1=${signature}`;
 }
 
-describe('korapay webhook verification', () => {
-  it('accepts a correctly signed data object', () => {
-    const data = { reference: 'dep_1', status: 'success', amount: 1000 };
-    const header = signKorapay(data, KORAPAY_SECRET);
-    expect(verifyKorapaySignature(data, header, KORAPAY_SECRET)).toBe(true);
+describe('bachs webhook verification', () => {
+  it('accepts a correctly signed payload', () => {
+    const body = JSON.stringify({ type: 'collection.succeeded' });
+    const header = signBachs(body, BACHS_SECRET);
+    expect(verifyBachsSignature(Buffer.from(body), header, BACHS_SECRET)).toBe(true);
   });
 
   it('rejects a payload signed with the wrong secret', () => {
-    const data = { reference: 'dep_1', status: 'success' };
-    const header = signKorapay(data, 'wrong-secret');
-    expect(verifyKorapaySignature(data, header, KORAPAY_SECRET)).toBe(false);
+    const body = JSON.stringify({ type: 'collection.succeeded' });
+    const header = signBachs(body, 'wrong-secret');
+    expect(verifyBachsSignature(Buffer.from(body), header, BACHS_SECRET)).toBe(false);
+  });
+
+  it('rejects a tampered body', () => {
+    const body = JSON.stringify({ type: 'collection.succeeded', amount: '10.00' });
+    const header = signBachs(body, BACHS_SECRET);
+    const tampered = JSON.stringify({ type: 'collection.succeeded', amount: '999999.00' });
+    expect(verifyBachsSignature(Buffer.from(tampered), header, BACHS_SECRET)).toBe(false);
+  });
+
+  it('rejects a stale timestamp (replay)', () => {
+    const body = JSON.stringify({ type: 'collection.succeeded' });
+    const oldTimestamp = Math.floor(Date.now() / 1000) - 3600;
+    const header = signBachs(body, BACHS_SECRET, oldTimestamp);
+    expect(verifyBachsSignature(Buffer.from(body), header, BACHS_SECRET)).toBe(false);
   });
 
   it('rejects a missing header', () => {
-    expect(verifyKorapaySignature({}, undefined, KORAPAY_SECRET)).toBe(false);
+    expect(verifyBachsSignature(Buffer.from('{}'), undefined, BACHS_SECRET)).toBe(false);
   });
 
-  it('parses a successful charge event', () => {
-    const event = parseKorapayEvent({
-      event: 'charge.success',
-      data: { reference: 'dep_1', status: 'success' },
-    });
-    expect(event).toEqual({ providerRef: 'dep_1', paid: true });
+  it('accepts a match against any v1= entry during a secret rotation', () => {
+    // X-Bachs-Signature-V2 can carry more than one v1= while a secret
+    // rotation is in its 24h overlap window — only one needs to match.
+    const body = JSON.stringify({ type: 'collection.succeeded' });
+    const timestamp = Math.floor(Date.now() / 1000);
+    const oldSig = createHmac('sha256', 'previous-secret')
+      .update(`${timestamp}.${body}`)
+      .digest('hex');
+    const newSig = createHmac('sha256', BACHS_SECRET).update(`${timestamp}.${body}`).digest('hex');
+    const header = `t=${timestamp},v1=${oldSig},v1=${newSig}`;
+    expect(verifyBachsSignature(Buffer.from(body), header, BACHS_SECRET)).toBe(true);
   });
 
-  it('treats a failed charge as not paid', () => {
-    const event = parseKorapayEvent({
-      event: 'charge.failed',
-      data: { reference: 'dep_1', status: 'failed' },
+  it('parses a collection.succeeded event as paid', () => {
+    const event = parseBachsEvent({
+      type: 'collection.succeeded',
+      data: { checkout_id: 'chk_1', status: 'succeeded' },
     });
-    expect(event).toEqual({ providerRef: 'dep_1', paid: false });
+    expect(event).toEqual({ providerRef: 'chk_1', paid: true });
+  });
+
+  it('treats collection.failed as not paid', () => {
+    const event = parseBachsEvent({
+      type: 'collection.failed',
+      data: { checkout_id: 'chk_1', status: 'failed' },
+    });
+    expect(event).toEqual({ providerRef: 'chk_1', paid: false });
+  });
+
+  it('treats collection.underpaid as not paid', () => {
+    const event = parseBachsEvent({
+      type: 'collection.underpaid',
+      data: { checkout_id: 'chk_1' },
+    });
+    expect(event).toEqual({ providerRef: 'chk_1', paid: false });
+  });
+
+  it('ignores unrelated event types', () => {
+    expect(parseBachsEvent({ type: 'checkout.completed', data: { checkout_id: 'chk_1' } })).toBeNull();
   });
 });
 

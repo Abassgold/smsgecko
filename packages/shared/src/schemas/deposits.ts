@@ -1,10 +1,8 @@
-import type { DepositMethod, DepositStatus, KorapayCurrency } from '../constants';
+import type { DepositMethod, DepositStatus } from '../constants';
 
 export interface CreateDepositBody {
   method: DepositMethod;
   amountMicro: number;
-  /** Required when method is `korapay` — which African corridor/currency to bill in. */
-  korapayCurrency?: KorapayCurrency;
 }
 
 export interface DepositView {

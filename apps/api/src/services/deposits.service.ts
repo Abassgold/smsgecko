@@ -5,7 +5,7 @@ import type { UserDoc } from '../models/User.js';
 import { getPaymentProvider, getPaymentProviderByName } from '../providers/payment/index.js';
 import { verifyStripeSignature, parseStripeEvent } from '../providers/payment/stripe.js';
 import { verifyNowPaymentsSignature, parseNowPaymentsEvent } from '../providers/payment/nowpayments.js';
-import { verifyKorapaySignature, parseKorapayEvent } from '../providers/payment/korapay.js';
+import { verifyBachsSignature, parseBachsEvent } from '../providers/payment/bachs.js';
 import { verifyAndParseCryptomusEvent } from '../providers/payment/cryptomus.js';
 import { notify } from '../models/Notification.js';
 import { credit } from '../lib/ledger.js';
@@ -37,7 +37,6 @@ export async function createDeposit(user: UserDoc, body: CreateDepositBody): Pro
     amountMicro: body.amountMicro,
     method: body.method,
     userEmail: user.email,
-    korapayCurrency: body.korapayCurrency,
   });
   return Deposit.create({
     userId: user._id,
@@ -184,16 +183,15 @@ export async function handleWebhook(providerName: string, req: WebhookRequest): 
     return { ok: true };
   }
 
-  if (providerName === 'korapay') {
-    if (!env.KORAPAY_SECRET_KEY) throw badRequest('Korapay webhooks are not configured');
-    const body = req.body as { data?: unknown };
-    const signature = req.header('x-korapay-signature');
-    if (!verifyKorapaySignature(body?.data, signature, env.KORAPAY_SECRET_KEY)) {
-      throw badRequest('Invalid Korapay signature');
+  if (providerName === 'bachs') {
+    if (!env.BACHS_WEBHOOK_SECRET) throw badRequest('Bachs webhooks are not configured');
+    const signature = req.header('x-bachs-signature-v2');
+    if (!req.rawBody || !verifyBachsSignature(req.rawBody, signature, env.BACHS_WEBHOOK_SECRET)) {
+      throw badRequest('Invalid Bachs signature');
     }
-    const event = parseKorapayEvent(req.body);
+    const event = parseBachsEvent(req.body);
     if (!event || !event.paid) return { ok: true };
-    await confirmByProviderRef('korapay', event.providerRef);
+    await confirmByProviderRef('bachs', event.providerRef);
     return { ok: true };
   }
 

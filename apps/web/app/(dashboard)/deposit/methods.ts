@@ -22,11 +22,11 @@ export const DEPOSIT_METHOD_INFO: DepositMethodInfo[] = [
     fee: '2.9% + $0.30',
   },
   {
-    method: 'korapay',
-    label: 'Korapay',
-    blurb: 'African cards, bank transfer & USSD — Nigeria, Ghana, Kenya & South Africa.',
+    method: 'bachs',
+    label: 'Bachs',
+    blurb: 'African bank transfer & mobile money — Nigeria, Ghana, Kenya, Uganda & more.',
     group: 'fiat',
-    fee: '~1.5%',
+    fee: '1.5%–3%',
   },
   {
     method: 'crypto_usdt',

@@ -4,8 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { KORAPAY_CURRENCIES, KORAPAY_COUNTRY_LABEL } from '@smsgecko/shared';
-import type { DepositMethod, KorapayCurrency } from '@smsgecko/shared';
+import type { DepositMethod } from '@smsgecko/shared';
 import { Card } from '@/components/ui/card';
 import { SectionTitle } from '@/components/ui/section-title';
 import { Button } from '@/components/ui/button';
@@ -48,14 +47,13 @@ export function DepositPicker() {
 
   const [amount, setAmount] = useState('10');
   const [method, setMethod] = useState<DepositMethod | ''>('');
-  const [korapayCurrency, setKorapayCurrency] = useState<KorapayCurrency>('NGN');
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!method) return;
     const amountMicro = usdToMicro(Number(amount));
     createDeposit.mutate(
-      { method, amountMicro, ...(method === 'korapay' ? { korapayCurrency } : {}) },
+      { method, amountMicro },
       {
         // Every gateway hands back its own hosted checkout URL — the
         // deposit form always ends by sending the customer there to
@@ -117,23 +115,6 @@ export function DepositPicker() {
             </select>
           </div>
 
-          {method === 'korapay' ? (
-            <div className="flex flex-col gap-1.5">
-              <label className={FIELD_LABEL}>Country</label>
-              <select
-                value={korapayCurrency}
-                onChange={(e) => setKorapayCurrency(e.target.value as KorapayCurrency)}
-                className={FIELD_INPUT}
-              >
-                {KORAPAY_CURRENCIES.map((c) => (
-                  <option key={c} value={c}>
-                    {KORAPAY_COUNTRY_LABEL[c]} ({c})
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-
           <div className="flex flex-col gap-1.5">
             <label className={FIELD_LABEL}>Amount (USD)</label>
             <input
@@ -146,11 +127,7 @@ export function DepositPicker() {
               onChange={(e) => setAmount(e.target.value)}
               className={FIELD_INPUT}
             />
-            <span className="text-xs text-faint">
-              {method === 'korapay'
-                ? `Minimum $0.50. Charged in ${korapayCurrency} at the current rate.`
-                : 'Minimum $0.50.'}
-            </span>
+            <span className="text-xs text-faint">Minimum $0.50.</span>
           </div>
 
           <div className="flex flex-wrap gap-2">

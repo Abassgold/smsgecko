@@ -1,10 +1,4 @@
-import type {
-  OrderSource,
-  OrderStatus,
-  TransactionType,
-  DepositStatus,
-  KorapayCurrency,
-} from '../constants';
+import type { OrderSource, OrderStatus, TransactionType, DepositStatus } from '../constants';
 
 /* ---------------- providers ---------------- */
 
@@ -192,8 +186,6 @@ export interface SettingsView {
   minDepositMicro: number;
   numberMarkupPercent: number;
   numberMarkupFlatMicro: number;
-  /** USD→local-currency rates for Korapay's African corridors. Admin-editable, no live FX feed. */
-  korapayFxRates: Record<KorapayCurrency, number>;
   signupsEnabled: boolean;
   maintenanceMode: boolean;
 }

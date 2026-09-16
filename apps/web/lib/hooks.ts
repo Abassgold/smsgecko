@@ -282,7 +282,7 @@ export function useReactivateOrder() {
 export function useCreateDeposit() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { method: string; amountMicro: number; korapayCurrency?: string }) =>
+    mutationFn: (body: { method: string; amountMicro: number }) =>
       apiFetch<DepositView>('/v1/deposits', { method: 'POST', body }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['wallet'] });

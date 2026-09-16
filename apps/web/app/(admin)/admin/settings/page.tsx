@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { KORAPAY_CURRENCIES, KORAPAY_COUNTRY_LABEL } from '@smsgecko/shared';
 import type { SettingsView } from '@smsgecko/shared';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -107,35 +106,6 @@ export default function AdminSettingsPage() {
             </span>{' '}
             to the customer.
           </p>
-        </Card>
-
-        <Card className="flex flex-col gap-4 p-6">
-          <div>
-            <h3 className="font-display text-sm font-semibold">Payments — Korapay FX rates</h3>
-            <p className="mt-1 text-xs text-muted">
-              Korapay never settles in USD — each African corridor bills in its own local
-              currency. Deposits are quoted to the customer in USD, then converted at these rates
-              before the charge is created. No live feed; update by hand as rates move.
-            </p>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {KORAPAY_CURRENCIES.map((currency) => (
-              <Field key={currency} label={`USD → ${currency}`} hint={KORAPAY_COUNTRY_LABEL[currency]}>
-                <TextInput
-                  type="number"
-                  step="0.01"
-                  min="1"
-                  value={form.korapayFxRates[currency]}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      korapayFxRates: { ...form.korapayFxRates, [currency]: Number(e.target.value) },
-                    })
-                  }
-                />
-              </Field>
-            ))}
-          </div>
         </Card>
 
         <Card className="flex flex-col gap-4 p-6">

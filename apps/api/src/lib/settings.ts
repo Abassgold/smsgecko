@@ -1,5 +1,4 @@
 import { AFFILIATE_RATE, MIN_DEPOSIT_MICRO } from '@smsgecko/shared';
-import type { KorapayCurrency } from '@smsgecko/shared';
 import { env } from '../config/env.js';
 import { Setting } from '../models/Setting.js';
 
@@ -11,8 +10,6 @@ export interface ResolvedSettings {
   /** Customer markup over the provider's raw number price. */
   numberMarkupPercent: number;
   numberMarkupFlatMicro: number;
-  /** USD→local-currency rates for Korapay's African corridors. No live feed — admin sets them by hand. */
-  korapayFxRates: Record<KorapayCurrency, number>;
   signupsEnabled: boolean;
   maintenanceMode: boolean;
 }
@@ -24,7 +21,6 @@ export const SETTINGS_DEFAULTS: ResolvedSettings = {
   minDepositMicro: MIN_DEPOSIT_MICRO,
   numberMarkupPercent: 0,
   numberMarkupFlatMicro: 0,
-  korapayFxRates: { NGN: 1600, GHS: 12, KES: 129, ZAR: 16 },
   signupsEnabled: true,
   maintenanceMode: false,
 };

@@ -5,7 +5,7 @@ import { z } from 'zod';
 // process.loadEnvFile(); this is a no-op on deploy targets that inject env vars.
 //
 // Test runs load `.env.test` instead of `.env` when present — never the
-// real one. Provider singletons (Stripe/Korapay/NowPayments/Cryptomus) are
+// real one. Provider singletons (Stripe/Bachs/NowPayments/Cryptomus) are
 // built once at module load from these values, so a real key sitting in
 // `.env` would otherwise make `npm test` place actual API calls against a
 // live payment account on every run.
@@ -57,8 +57,12 @@ const envSchema = z.object({
   NOWPAYMENTS_IPN_SECRET: z.string().optional(),
   /** Use NowPayments' sandbox API host instead of the production one. */
   NOWPAYMENTS_SANDBOX: bool.default(true),
-  /** Korapay secret key (test or live). Also used to verify webhook signatures. When unset, korapay deposits are unavailable. */
-  KORAPAY_SECRET_KEY: z.string().optional(),
+  /** Bachs API key (sk_sandbox_... or sk_live_...). When unset, bachs deposits are unavailable. */
+  BACHS_API_KEY: z.string().optional(),
+  /** Signing secret for the Bachs webhook endpoint, from the Bachs developer portal. */
+  BACHS_WEBHOOK_SECRET: z.string().optional(),
+  /** Use Bachs' sandbox API host instead of the production one. */
+  BACHS_SANDBOX: bool.default(true),
   /** Cryptomus merchant UUID. When unset (or the API key below is), cryptomus deposits are unavailable. */
   CRYPTOMUS_MERCHANT_ID: z.string().optional(),
   /** Cryptomus payment API key — signs outgoing requests and verifies inbound webhooks. */

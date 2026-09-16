@@ -8,9 +8,8 @@ import { User } from '../models/User.js';
 import { Transaction } from '../models/Transaction.js';
 import { Deposit } from '../models/Deposit.js';
 
-// Matches the dummy KORAPAY_SECRET_KEY in .env.test — Korapay signs and
-// authenticates with the same key, so webhook tests sign with it directly.
-const KORAPAY_SECRET = 'kora_sk_dummy_not_real';
+// Matches the dummy BACHS_WEBHOOK_SECRET in .env.test.
+const BACHS_SECRET = 'bachs_whsec_dummy_not_real';
 
 let app: Application;
 let inject: ReturnType<typeof makeInject>;
@@ -34,10 +33,11 @@ function stubGatewayFetch() {
         url: `https://checkout.stripe.com/pay/cs_test_${n}`,
       });
     }
-    if (url.includes('korapay.com')) {
+    if (url.includes('bachs.io')) {
       return jsonResponse({
-        status: true,
-        data: { checkout_url: `https://checkout.korapay.com/pay/${n}` },
+        checkout_id: `chk_${n}`,
+        checkout_url: `https://checkout.bachs.io/c/${n}`,
+        expires_at: new Date(Date.now() + 30 * 60_000).toISOString(),
       });
     }
     if (url.includes('nowpayments.io')) {
@@ -51,8 +51,22 @@ function jsonResponse(body: unknown): Response {
   return { ok: true, status: 200, json: async () => body } as Response;
 }
 
-function signKorapay(data: unknown): string {
-  return createHmac('sha256', KORAPAY_SECRET).update(JSON.stringify(data)).digest('hex');
+/** Signs a Bachs webhook body the same way `verifyBachsSignature` expects:
+ * HMAC-SHA256("{timestamp}.{raw_body}"), as the X-Bachs-Signature-V2 header
+ * `t=<timestamp>,v1=<signature>`. */
+function signBachs(rawBody: string, timestamp = Math.floor(Date.now() / 1000)): string {
+  const signature = createHmac('sha256', BACHS_SECRET).update(`${timestamp}.${rawBody}`).digest('hex');
+  return `t=${timestamp},v1=${signature}`;
+}
+
+function bachsCollectionEvent(checkoutId: string, type = 'collection.succeeded') {
+  return {
+    id: 'evt_test_1',
+    type,
+    created_at: new Date().toISOString(),
+    organization_id: 'acct_test',
+    data: { charge_id: 'ch_test_1', checkout_id: checkoutId, status: 'succeeded', amount: '10.00', currency: 'USD' },
+  };
 }
 
 beforeAll(async () => {
@@ -79,18 +93,19 @@ describe('deposits', () => {
       method: 'POST',
       url: '/api/v1/deposits',
       headers: { cookie },
-      payload: { method: 'korapay', amountMicro: 10_000_000, korapayCurrency: 'NGN' },
+      payload: { method: 'bachs', amountMicro: 10_000_000 },
     });
     expect(create.statusCode).toBe(201);
     expect(create.json().status).toBe('pending');
     const deposit = await Deposit.findById(create.json().id);
 
-    const data = { reference: deposit!.providerRef, status: 'success' };
+    const body = bachsCollectionEvent(deposit!.providerRef);
+    const raw = JSON.stringify(body);
     const hook = await inject({
       method: 'POST',
-      url: '/api/v1/webhooks/payments/korapay',
-      headers: { 'x-korapay-signature': signKorapay(data) },
-      payload: { event: 'charge.success', data },
+      url: '/api/v1/webhooks/payments/bachs',
+      headers: { 'x-bachs-signature-v2': signBachs(raw) },
+      payload: body,
     });
     expect(hook.statusCode).toBe(200);
 
@@ -102,9 +117,9 @@ describe('deposits', () => {
     // A second delivery of the same webhook is a silent no-op — no double credit.
     const again = await inject({
       method: 'POST',
-      url: '/api/v1/webhooks/payments/korapay',
-      headers: { 'x-korapay-signature': signKorapay(data) },
-      payload: { event: 'charge.success', data },
+      url: '/api/v1/webhooks/payments/bachs',
+      headers: { 'x-bachs-signature-v2': signBachs(raw) },
+      payload: body,
     });
     expect(again.statusCode).toBe(200);
     expect((await User.findById(userId))!.balanceMicro).toBe(10_000_000);
@@ -136,6 +151,20 @@ describe('deposits', () => {
     expect(create.json().payUrl).toMatch(/^https:\/\/nowpayments\.io\/payment\//);
     const deposit = await Deposit.findById(create.json().id);
     expect(deposit!.provider).toBe('nowpayments');
+  });
+
+  it('bachs deposits get Bachs\' own hosted checkout URL', async () => {
+    const { cookie } = await makeUser(app);
+    const create = await inject({
+      method: 'POST',
+      url: '/api/v1/deposits',
+      headers: { cookie },
+      payload: { method: 'bachs', amountMicro: 5_000_000 },
+    });
+    expect(create.statusCode).toBe(201);
+    expect(create.json().payUrl).toMatch(/^https:\/\/checkout\.bachs\.io\//);
+    const deposit = await Deposit.findById(create.json().id);
+    expect(deposit!.provider).toBe('bachs');
   });
 
   it('lists a user\'s own deposits, newest first, paginated', async () => {
@@ -186,15 +215,16 @@ describe('deposits', () => {
       method: 'POST',
       url: '/api/v1/deposits',
       headers: { cookie },
-      payload: { method: 'korapay', amountMicro: 1_000_000, korapayCurrency: 'NGN' },
+      payload: { method: 'bachs', amountMicro: 1_000_000 },
     });
     const confirmedDeposit = await Deposit.findById(confirmed.json().id);
-    const data = { reference: confirmedDeposit!.providerRef, status: 'success' };
+    const body = bachsCollectionEvent(confirmedDeposit!.providerRef);
+    const raw = JSON.stringify(body);
     await inject({
       method: 'POST',
-      url: '/api/v1/webhooks/payments/korapay',
-      headers: { 'x-korapay-signature': signKorapay(data) },
-      payload: { event: 'charge.success', data },
+      url: '/api/v1/webhooks/payments/bachs',
+      headers: { 'x-bachs-signature-v2': signBachs(raw) },
+      payload: body,
     });
     await inject({
       method: 'POST',
@@ -261,28 +291,6 @@ describe('deposits', () => {
     expect(await Deposit.countDocuments({ userId })).toBe(0);
   });
 
-  it('requires a korapayCurrency for the korapay method', async () => {
-    const { cookie } = await makeUser(app);
-    const res = await inject({
-      method: 'POST',
-      url: '/api/v1/deposits',
-      headers: { cookie },
-      payload: { method: 'korapay', amountMicro: 5_000_000 },
-    });
-    expect(res.statusCode).toBe(400);
-  });
-
-  it('rejects an unsupported korapayCurrency', async () => {
-    const { cookie } = await makeUser(app);
-    const res = await inject({
-      method: 'POST',
-      url: '/api/v1/deposits',
-      headers: { cookie },
-      payload: { method: 'korapay', amountMicro: 5_000_000, korapayCurrency: 'EUR' },
-    });
-    expect(res.statusCode).toBe(400);
-  });
-
   it('rejects a webhook for an unknown provider', async () => {
     const res = await inject({
       method: 'POST',
@@ -298,6 +306,16 @@ describe('deposits', () => {
       url: '/api/v1/webhooks/payments/stripe',
       headers: { 'stripe-signature': `t=${Math.floor(Date.now() / 1000)},v1=${'0'.repeat(64)}` },
       payload: { type: 'checkout.session.completed', data: { object: { id: 'cs_test', payment_status: 'paid' } } },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects a bachs webhook with an invalid signature', async () => {
+    const res = await inject({
+      method: 'POST',
+      url: '/api/v1/webhooks/payments/bachs',
+      headers: { 'x-bachs-signature-v2': `t=${Math.floor(Date.now() / 1000)},v1=${'0'.repeat(64)}` },
+      payload: bachsCollectionEvent('chk_whatever'),
     });
     expect(res.statusCode).toBe(400);
   });
