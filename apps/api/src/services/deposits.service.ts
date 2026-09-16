@@ -39,7 +39,7 @@ export async function createDeposit(user: UserDoc, body: CreateDepositBody): Pro
     userEmail: user.email,
     korapayCurrency: body.korapayCurrency,
   });
-  const doc = await Deposit.create({
+  return Deposit.create({
     userId: user._id,
     method: body.method,
     amountMicro: body.amountMicro,
@@ -50,16 +50,6 @@ export async function createDeposit(user: UserDoc, body: CreateDepositBody): Pro
     payUrl: charge.payUrl,
     expiresAt: charge.expiresAt,
   });
-
-  // MockPaymentProvider's payUrl is a placeholder same-origin path — it
-  // can't know the deposit's real id yet, since this document didn't exist
-  // when it built the URL. Point it at the real one now.
-  if (doc.payUrl?.startsWith('/deposit/checkout/')) {
-    doc.payUrl = `/deposit/checkout/${doc.id}`;
-    await doc.save();
-  }
-
-  return doc;
 }
 
 export interface ListDepositsParams {
@@ -113,8 +103,9 @@ export async function getDeposit(user: UserDoc, id: string): Promise<DepositDoc>
 }
 
 /**
- * Confirm a pending deposit and credit the wallet. Guarded so it can only ever
- * settle once. Used by the dev mock-confirm endpoint and the payment webhook.
+ * Confirm a pending deposit and credit the wallet. Guarded so it can only
+ * ever settle once. Called from the payment webhook once a provider
+ * confirms funds actually landed.
  */
 export async function confirmDeposit(deposit: DepositDoc): Promise<DepositDoc> {
   const claimed = await Deposit.findOneAndUpdate(
@@ -142,11 +133,6 @@ export async function confirmDeposit(deposit: DepositDoc): Promise<DepositDoc> {
   return claimed;
 }
 
-export async function mockConfirm(user: UserDoc, id: string): Promise<DepositDoc> {
-  const deposit = await getDeposit(user, id);
-  return confirmDeposit(deposit);
-}
-
 async function confirmByProviderRef(providerName: string, providerRef: string): Promise<void> {
   const deposit = await Deposit.findOne({ providerRef, provider: providerName });
   if (!deposit) throw notFound('Deposit not found');
@@ -171,14 +157,6 @@ export interface WebhookRequest {
  * raw body itself instead.
  */
 export async function handleWebhook(providerName: string, req: WebhookRequest): Promise<{ ok: true }> {
-  if (providerName === 'mock') {
-    const payload = req.body as { providerRef?: string; status?: string };
-    if (!payload?.providerRef) throw badRequest('Missing providerRef');
-    if (payload.status !== 'confirmed') return { ok: true };
-    await confirmByProviderRef('mock', payload.providerRef);
-    return { ok: true };
-  }
-
   const provider = getPaymentProviderByName(providerName);
   if (!provider) throw badRequest('Unknown payment provider');
 

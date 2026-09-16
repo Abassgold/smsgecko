@@ -4,7 +4,7 @@ export interface DepositMethodInfo {
   method: DepositMethod;
   label: string;
   blurb: string;
-  group: 'fiat' | 'crypto' | 'dev';
+  group: 'fiat' | 'crypto';
   /** Processor's own cut, shown inline next to the method — same
    * transparency trick as most SMS-verification sites' deposit pickers. */
   fee: string;
@@ -42,13 +42,6 @@ export const DEPOSIT_METHOD_INFO: DepositMethodInfo[] = [
     group: 'crypto',
     fee: 'from 0.4%',
   },
-  {
-    method: 'mock',
-    label: 'Mock wallet',
-    blurb: 'Instant, no real money — for demos.',
-    group: 'dev',
-    fee: '0%',
-  },
 ];
 
 export function depositMethodInfo(method: string): DepositMethodInfo | undefined {
@@ -58,5 +51,4 @@ export function depositMethodInfo(method: string): DepositMethodInfo | undefined
 export const GROUP_LABEL: Record<DepositMethodInfo['group'], string> = {
   fiat: 'Card & bank',
   crypto: 'Crypto',
-  dev: 'Other',
 };

@@ -1,6 +1,6 @@
-import { randomBytes, randomUUID } from 'node:crypto';
 import type { DepositMethod, KorapayCurrency } from '@smsgecko/shared';
 import { env } from '../../config/env.js';
+import { badRequest } from '../../lib/errors.js';
 import { StripeProvider } from './stripe.js';
 import { NowPaymentsProvider } from './nowpayments.js';
 import { KorapayProvider } from './korapay.js';
@@ -9,9 +9,7 @@ import { CryptomusProvider } from './cryptomus.js';
 export interface CreateChargeInput {
   amountMicro: number;
   method: DepositMethod;
-  /** Needed by gateways that require a customer identity up front (Korapay). Unused by the rest. */
   userEmail: string;
-  /** Which of Korapay's African corridors to bill in (NGN/GHS/KES/ZAR). Ignored by every other provider. */
   korapayCurrency?: KorapayCurrency;
 }
 
@@ -27,44 +25,10 @@ export interface PaymentProvider {
   createCharge(input: CreateChargeInput): Promise<Charge>;
 }
 
-const CHARGE_TTL_MS = 30 * 60 * 1000;
-
-/**
- * Simulated PSP — always available, used in tests and as the fallback for
- * every real method (`card`/`korapay`/`crypto_usdt`/`cryptomus`) when that
- * provider's credentials aren't configured. See `StripeProvider` and the
- * other provider files for the real integrations.
- *
- * Every real gateway here sends the customer to a hosted checkout page —
- * Stripe Checkout, Korapay's charge page, NowPayments'/Cryptomus' invoice
- * page. The mock fallback matches that: it always returns a `payUrl`
- * (a same-origin `/deposit/checkout/:id` page, not an external one) instead
- * of surfacing pay details inline on the deposit form, so the flow looks and
- * behaves the same regardless of whether real credentials are configured.
- */
-export class MockPaymentProvider implements PaymentProvider {
-  readonly name = 'mock';
-
-  async createCharge(input: CreateChargeInput): Promise<Charge> {
-    const providerRef = `pay_${Date.now().toString(36)}_${randomUUID().slice(0, 8)}`;
-    const expiresAt = new Date(Date.now() + CHARGE_TTL_MS);
-    const payAddress =
-      input.method === 'crypto_usdt' ? `T${randomBytes(16).toString('hex').slice(0, 33)}` : null;
-
-    // The real deposit id doesn't exist yet at this point (the Deposit
-    // document is created right after this call returns) — createDeposit()
-    // rewrites this placeholder path to the real `/deposit/checkout/<id>`
-    // once it does.
-    return { providerRef, payAddress, payUrl: `/deposit/checkout/${providerRef}`, expiresAt };
-  }
-}
-
-// Real integrations (Stripe for cards, NowPayments for crypto) are selected
-// by method and only used when their API key is configured — same
-// unset-means-fall-back-to-a-safe-default pattern as RESEND_API_KEY for
-// email. Imported lazily-ish (at module load, not per-call) so a missing key
-// simply means these stay null, never a thrown error at startup.
-const mockProvider = new MockPaymentProvider();
+// Each real gateway is only instantiated when its own credentials are set —
+// same unset-means-disabled pattern as RESEND_API_KEY for email. Built once
+// at module load, not per-request, so a missing key simply means the
+// provider stays null here rather than throwing at startup.
 const stripeProvider = env.STRIPE_SECRET_KEY ? new StripeProvider(env.STRIPE_SECRET_KEY) : null;
 const nowPaymentsProvider = env.NOWPAYMENTS_API_KEY
   ? new NowPaymentsProvider(env.NOWPAYMENTS_API_KEY)
@@ -75,20 +39,30 @@ const cryptomusProvider =
     ? new CryptomusProvider(env.CRYPTOMUS_MERCHANT_ID, env.CRYPTOMUS_API_KEY)
     : null;
 
-/** Selects the provider for a new charge, by deposit method. */
+const PROVIDER_BY_METHOD: Partial<Record<DepositMethod, PaymentProvider | null>> = {
+  card: stripeProvider,
+  crypto_usdt: nowPaymentsProvider,
+  korapay: korapayProvider,
+  cryptomus: cryptomusProvider,
+};
+
+/**
+ * Selects the provider for a new charge, by deposit method. Throws rather
+ * than degrading to a fake payment when the method's gateway isn't
+ * configured — there is no mock/fallback path here. A deposit only ever
+ * exists once a real (or sandbox) provider has actually issued a charge and
+ * handed back its own hosted checkout URL.
+ */
 export function getPaymentProvider(method: DepositMethod): PaymentProvider {
-  if (method === 'card') return stripeProvider ?? mockProvider;
-  if (method === 'crypto_usdt') return nowPaymentsProvider ?? mockProvider;
-  if (method === 'korapay') return korapayProvider ?? mockProvider;
-  if (method === 'cryptomus') return cryptomusProvider ?? mockProvider;
-  return mockProvider;
+  const provider = PROVIDER_BY_METHOD[method];
+  if (!provider) throw badRequest(`${method} deposits are not available right now`);
+  return provider;
 }
 
 /** Selects a provider for inbound webhook dispatch, by the provider name in
  * the URL (`/webhooks/payments/:provider`) — not the same key as the deposit
  * method above, since one provider can back more than one method. */
 export function getPaymentProviderByName(name: string): PaymentProvider | null {
-  if (name === 'mock') return mockProvider;
   if (name === 'stripe') return stripeProvider;
   if (name === 'nowpayments') return nowPaymentsProvider;
   if (name === 'korapay') return korapayProvider;

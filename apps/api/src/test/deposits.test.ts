@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createHmac } from 'node:crypto';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Application } from 'express';
 import { makeInject } from './inject.js';
 import { buildApp } from '../app.js';
@@ -7,8 +8,53 @@ import { User } from '../models/User.js';
 import { Transaction } from '../models/Transaction.js';
 import { Deposit } from '../models/Deposit.js';
 
+// Matches the dummy KORAPAY_SECRET_KEY in .env.test — Korapay signs and
+// authenticates with the same key, so webhook tests sign with it directly.
+const KORAPAY_SECRET = 'kora_sk_dummy_not_real';
+
 let app: Application;
 let inject: ReturnType<typeof makeInject>;
+
+/**
+ * Fakes the real gateways' HTTP responses. The whole point of these tests is
+ * to exercise the real createCharge()/webhook code paths end to end —
+ * there's no mock provider to fall back to any more — without ever placing
+ * an actual network call. Each fake id is unique per call (Deposit.providerRef
+ * has a unique index — a real gateway would never hand back the same
+ * reference twice either).
+ */
+function stubGatewayFetch() {
+  let n = 0;
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = typeof input === 'string' ? input : String((input as Request).url ?? input);
+    n += 1;
+    if (url.includes('api.stripe.com')) {
+      return jsonResponse({
+        id: `cs_test_${n}`,
+        url: `https://checkout.stripe.com/pay/cs_test_${n}`,
+      });
+    }
+    if (url.includes('korapay.com')) {
+      return jsonResponse({
+        status: true,
+        data: { checkout_url: `https://checkout.korapay.com/pay/${n}` },
+      });
+    }
+    if (url.includes('nowpayments.io')) {
+      return jsonResponse({ id: `inv_${n}`, invoice_url: `https://nowpayments.io/payment/inv_${n}` });
+    }
+    throw new Error(`unexpected fetch() in test: ${url}`);
+  });
+}
+
+function jsonResponse(body: unknown): Response {
+  return { ok: true, status: 200, json: async () => body } as Response;
+}
+
+function signKorapay(data: unknown): string {
+  return createHmac('sha256', KORAPAY_SECRET).update(JSON.stringify(data)).digest('hex');
+}
+
 beforeAll(async () => {
   app = await buildApp({ logger: false });
   inject = makeInject(app);
@@ -18,7 +64,14 @@ afterAll(async () => {
 });
 
 describe('deposits', () => {
-  it('creates a pending deposit, confirms once, and credits the wallet', async () => {
+  beforeEach(() => {
+    stubGatewayFetch();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('creates a pending deposit, confirms once via the real webhook, and credits the wallet', async () => {
     const { cookie, userId } = await makeUser(app);
     expect((await User.findById(userId))!.balanceMicro).toBe(0);
 
@@ -26,33 +79,63 @@ describe('deposits', () => {
       method: 'POST',
       url: '/api/v1/deposits',
       headers: { cookie },
-      payload: { method: 'mock', amountMicro: 10_000_000 },
+      payload: { method: 'korapay', amountMicro: 10_000_000, korapayCurrency: 'NGN' },
     });
     expect(create.statusCode).toBe(201);
     expect(create.json().status).toBe('pending');
-    const depositId = create.json().id as string;
+    const deposit = await Deposit.findById(create.json().id);
 
-    const confirm = await inject({
+    const data = { reference: deposit!.providerRef, status: 'success' };
+    const hook = await inject({
       method: 'POST',
-      url: `/api/v1/deposits/${depositId}/mock-confirm`,
-      headers: { cookie },
+      url: '/api/v1/webhooks/payments/korapay',
+      headers: { 'x-korapay-signature': signKorapay(data) },
+      payload: { event: 'charge.success', data },
     });
-    expect(confirm.statusCode).toBe(200);
-    expect(confirm.json().status).toBe('confirmed');
+    expect(hook.statusCode).toBe(200);
 
     expect((await User.findById(userId))!.balanceMicro).toBe(10_000_000);
     const tx = await Transaction.findOne({ userId, type: 'deposit' });
     expect(tx!.amountMicro).toBe(10_000_000);
     expect(tx!.balanceAfterMicro).toBe(10_000_000);
 
-    // second confirm is a no-op conflict, balance unchanged
+    // A second delivery of the same webhook is a silent no-op — no double credit.
     const again = await inject({
       method: 'POST',
-      url: `/api/v1/deposits/${depositId}/mock-confirm`,
-      headers: { cookie },
+      url: '/api/v1/webhooks/payments/korapay',
+      headers: { 'x-korapay-signature': signKorapay(data) },
+      payload: { event: 'charge.success', data },
     });
-    expect(again.statusCode).toBe(409);
+    expect(again.statusCode).toBe(200);
     expect((await User.findById(userId))!.balanceMicro).toBe(10_000_000);
+  });
+
+  it('card deposits get Stripe\'s own hosted checkout URL — never an internal placeholder', async () => {
+    const { cookie } = await makeUser(app);
+    const create = await inject({
+      method: 'POST',
+      url: '/api/v1/deposits',
+      headers: { cookie },
+      payload: { method: 'card', amountMicro: 5_000_000 },
+    });
+    expect(create.statusCode).toBe(201);
+    expect(create.json().payUrl).toMatch(/^https:\/\/checkout\.stripe\.com\//);
+    const deposit = await Deposit.findById(create.json().id);
+    expect(deposit!.provider).toBe('stripe');
+  });
+
+  it('crypto_usdt deposits get NowPayments\' own hosted invoice URL', async () => {
+    const { cookie } = await makeUser(app);
+    const create = await inject({
+      method: 'POST',
+      url: '/api/v1/deposits',
+      headers: { cookie },
+      payload: { method: 'crypto_usdt', amountMicro: 5_000_000 },
+    });
+    expect(create.statusCode).toBe(201);
+    expect(create.json().payUrl).toMatch(/^https:\/\/nowpayments\.io\/payment\//);
+    const deposit = await Deposit.findById(create.json().id);
+    expect(deposit!.provider).toBe('nowpayments');
   });
 
   it('lists a user\'s own deposits, newest first, paginated', async () => {
@@ -64,7 +147,7 @@ describe('deposits', () => {
         method: 'POST',
         url: '/api/v1/deposits',
         headers: { cookie },
-        payload: { method: 'mock', amountMicro },
+        payload: { method: 'card', amountMicro },
       });
     }
     // Another user's deposit must not leak into this list.
@@ -72,7 +155,7 @@ describe('deposits', () => {
       method: 'POST',
       url: '/api/v1/deposits',
       headers: { cookie: other.cookie },
-      payload: { method: 'mock', amountMicro: 9_000_000 },
+      payload: { method: 'card', amountMicro: 9_000_000 },
     });
 
     const page1 = await inject({
@@ -103,18 +186,21 @@ describe('deposits', () => {
       method: 'POST',
       url: '/api/v1/deposits',
       headers: { cookie },
-      payload: { method: 'mock', amountMicro: 1_000_000 },
+      payload: { method: 'korapay', amountMicro: 1_000_000, korapayCurrency: 'NGN' },
     });
+    const confirmedDeposit = await Deposit.findById(confirmed.json().id);
+    const data = { reference: confirmedDeposit!.providerRef, status: 'success' };
     await inject({
       method: 'POST',
-      url: `/api/v1/deposits/${confirmed.json().id}/mock-confirm`,
-      headers: { cookie },
+      url: '/api/v1/webhooks/payments/korapay',
+      headers: { 'x-korapay-signature': signKorapay(data) },
+      payload: { event: 'charge.success', data },
     });
     await inject({
       method: 'POST',
       url: '/api/v1/deposits',
       headers: { cookie },
-      payload: { method: 'mock', amountMicro: 2_000_000 },
+      payload: { method: 'card', amountMicro: 2_000_000 },
     });
 
     const all = await inject({ method: 'GET', url: '/api/v1/deposits', headers: { cookie } });
@@ -149,94 +235,30 @@ describe('deposits', () => {
       method: 'POST',
       url: '/api/v1/deposits',
       headers: { cookie },
-      payload: { method: 'mock', amountMicro: 1000 },
+      payload: { method: 'card', amountMicro: 1000 },
     });
     expect(res.statusCode).toBe(400);
-  });
-
-  it('confirms via the payment webhook', async () => {
-    const { cookie, userId } = await makeUser(app);
-    const create = await inject({
-      method: 'POST',
-      url: '/api/v1/deposits',
-      headers: { cookie },
-      payload: { method: 'crypto_usdt', amountMicro: 5_000_000 },
-    });
-    const deposit = await Deposit.findById(create.json().id);
-    expect(deposit!.payAddress).toBeTruthy();
-
-    const hook = await inject({
-      method: 'POST',
-      url: '/api/v1/webhooks/payments/mock',
-      payload: { providerRef: deposit!.providerRef, status: 'confirmed' },
-    });
-    expect(hook.statusCode).toBe(200);
-    expect((await User.findById(userId))!.balanceMicro).toBe(5_000_000);
   });
 
   it('requires auth to create a deposit', async () => {
     const res = await inject({
       method: 'POST',
       url: '/api/v1/deposits',
-      payload: { method: 'mock', amountMicro: 10_000_000 },
+      payload: { method: 'card', amountMicro: 10_000_000 },
     });
     expect(res.statusCode).toBe(401);
   });
 
-  it('falls back to the mock provider for card deposits when Stripe is unconfigured', async () => {
-    const { cookie } = await makeUser(app);
-    const create = await inject({
+  it('returns a clear error — no deposit created — when the gateway is not configured', async () => {
+    const { cookie, userId } = await makeUser(app);
+    const res = await inject({
       method: 'POST',
       url: '/api/v1/deposits',
       headers: { cookie },
-      payload: { method: 'card', amountMicro: 5_000_000 },
+      payload: { method: 'cryptomus', amountMicro: 5_000_000 },
     });
-    expect(create.statusCode).toBe(201);
-    const deposit = await Deposit.findById(create.json().id);
-    expect(deposit!.provider).toBe('mock');
-    expect(deposit!.payUrl).toBeTruthy();
-  });
-
-  it('mock-fallback deposits always point to our own checkout page, keyed by the real deposit id', async () => {
-    const { cookie } = await makeUser(app);
-    const create = await inject({
-      method: 'POST',
-      url: '/api/v1/deposits',
-      headers: { cookie },
-      payload: { method: 'card', amountMicro: 5_000_000 },
-    });
-    const id = create.json().id as string;
-    // The response itself already carries the rewritten URL...
-    expect(create.json().payUrl).toBe(`/deposit/checkout/${id}`);
-    // ...and it's what's actually persisted, not the provider's placeholder ref.
-    const deposit = await Deposit.findById(id);
-    expect(deposit!.payUrl).toBe(`/deposit/checkout/${id}`);
-  });
-
-  it('mock-fallback crypto deposits get both a pay address AND a checkout page', async () => {
-    const { cookie } = await makeUser(app);
-    const create = await inject({
-      method: 'POST',
-      url: '/api/v1/deposits',
-      headers: { cookie },
-      payload: { method: 'crypto_usdt', amountMicro: 5_000_000 },
-    });
-    const id = create.json().id as string;
-    expect(create.json().payAddress).toBeTruthy();
-    expect(create.json().payUrl).toBe(`/deposit/checkout/${id}`);
-  });
-
-  it('falls back to the mock provider for korapay deposits when Korapay is unconfigured', async () => {
-    const { cookie } = await makeUser(app);
-    const create = await inject({
-      method: 'POST',
-      url: '/api/v1/deposits',
-      headers: { cookie },
-      payload: { method: 'korapay', amountMicro: 5_000_000, korapayCurrency: 'GHS' },
-    });
-    expect(create.statusCode).toBe(201);
-    const deposit = await Deposit.findById(create.json().id);
-    expect(deposit!.provider).toBe('mock');
+    expect(res.statusCode).toBe(400);
+    expect(await Deposit.countDocuments({ userId })).toBe(0);
   });
 
   it('requires a korapayCurrency for the korapay method', async () => {
@@ -261,19 +283,6 @@ describe('deposits', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('falls back to the mock provider for cryptomus deposits when Cryptomus is unconfigured', async () => {
-    const { cookie } = await makeUser(app);
-    const create = await inject({
-      method: 'POST',
-      url: '/api/v1/deposits',
-      headers: { cookie },
-      payload: { method: 'cryptomus', amountMicro: 5_000_000 },
-    });
-    expect(create.statusCode).toBe(201);
-    const deposit = await Deposit.findById(create.json().id);
-    expect(deposit!.provider).toBe('mock');
-  });
-
   it('rejects a webhook for an unknown provider', async () => {
     const res = await inject({
       method: 'POST',
@@ -283,29 +292,12 @@ describe('deposits', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('rejects a stripe webhook when Stripe is unconfigured', async () => {
+  it('rejects a card (stripe) webhook with an invalid signature', async () => {
     const res = await inject({
       method: 'POST',
       url: '/api/v1/webhooks/payments/stripe',
+      headers: { 'stripe-signature': `t=${Math.floor(Date.now() / 1000)},v1=${'0'.repeat(64)}` },
       payload: { type: 'checkout.session.completed', data: { object: { id: 'cs_test', payment_status: 'paid' } } },
-    });
-    expect(res.statusCode).toBe(400);
-  });
-
-  it('rejects a nowpayments webhook when NowPayments is unconfigured', async () => {
-    const res = await inject({
-      method: 'POST',
-      url: '/api/v1/webhooks/payments/nowpayments',
-      payload: { invoice_id: 'inv_1', payment_status: 'finished' },
-    });
-    expect(res.statusCode).toBe(400);
-  });
-
-  it('rejects a korapay webhook when Korapay is unconfigured', async () => {
-    const res = await inject({
-      method: 'POST',
-      url: '/api/v1/webhooks/payments/korapay',
-      payload: { event: 'charge.success', data: { reference: 'dep_1', status: 'success' } },
     });
     expect(res.statusCode).toBe(400);
   });

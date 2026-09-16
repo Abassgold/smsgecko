@@ -11,24 +11,15 @@ import { SectionTitle } from '@/components/ui/section-title';
 import { Button } from '@/components/ui/button';
 import { formatBalanceUsd, usdToMicro } from '@/lib/format';
 import { ApiError } from '@/lib/api';
-import { useConfirmDeposit, useCreateDeposit, useWallet } from '@/lib/hooks';
+import { useCreateDeposit, useWallet } from '@/lib/hooks';
 import { DEPOSIT_METHOD_INFO, depositMethodInfo } from './methods';
 import { DepositHistory } from './deposit-history';
 
 const QUICK = [5, 10, 25, 50, 100];
 
-// Sized to match smscode.gg/deposit's actual computed styles (read live from
-// its DOM: 51px-tall inputs with 14px/16px padding, 13.6px semibold normal-
-// case labels, 12.5px/29px-tall quick-amount pills) rather than eyeballed
-// from a screenshot.
 const FIELD_LABEL = 'text-[13px] font-semibold tracking-[0.02em] text-faint';
 const FIELD_INPUT =
   'w-full rounded-xl border border-border bg-surface-2 px-4 py-3.5 text-[15px] outline-none placeholder:text-faint focus:border-border-strong';
-
-/** Returning from a hosted checkout (Stripe / Korapay / NowPayments /
- * Cryptomus): the balance update itself lands via webhook, possibly a few
- * seconds after the redirect, so poll the wallet briefly instead of
- * expecting it to already be updated on the first render back. */
 function useReturnFromCheckout() {
   const params = useSearchParams();
   const qc = useQueryClient();
@@ -54,35 +45,23 @@ export function DepositPicker() {
   const wallet = useWallet();
   const { outcome, provider } = useReturnFromCheckout();
   const createDeposit = useCreateDeposit();
-  const confirmDeposit = useConfirmDeposit();
 
   const [amount, setAmount] = useState('10');
   const [method, setMethod] = useState<DepositMethod | ''>('');
   const [korapayCurrency, setKorapayCurrency] = useState<KorapayCurrency>('NGN');
-  const [done, setDone] = useState(false);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    setDone(false);
     if (!method) return;
     const amountMicro = usdToMicro(Number(amount));
     createDeposit.mutate(
       { method, amountMicro, ...(method === 'korapay' ? { korapayCurrency } : {}) },
       {
+        // Every gateway hands back its own hosted checkout URL — the
+        // deposit form always ends by sending the customer there to
+        // actually pay.
         onSuccess: (dep) => {
-          if (method === 'mock') {
-            // The one instant, no-checkout option — everything else always
-            // goes to a checkout page, same as every real gateway here
-            // (Stripe/Korapay/NowPayments/Cryptomus) and matching what
-            // smscode.gg itself does (a real "Pay Now" redirect for e-wallet
-            // methods, e.g. OVO → their PSP's hosted page).
-            confirmDeposit.mutate(dep.id, { onSuccess: () => setDone(true) });
-          } else if (dep.payUrl) {
-            // Real provider → an external https:// checkout; unconfigured
-            // fallback → our own same-origin /deposit/checkout/:id page.
-            // Either way, always leave this form and go there.
-            window.location.href = dep.payUrl;
-          }
+          if (dep.payUrl) window.location.href = dep.payUrl;
         },
       },
     );
@@ -195,20 +174,10 @@ export function DepositPicker() {
             </p>
           ) : null}
 
-          <Button
-            type="submit"
-            className="self-start"
-            disabled={createDeposit.isPending || confirmDeposit.isPending}
-          >
-            {createDeposit.isPending || confirmDeposit.isPending ? 'Processing…' : 'Create Deposit'}
+          <Button type="submit" className="self-start" disabled={createDeposit.isPending}>
+            {createDeposit.isPending ? 'Processing…' : 'Create Deposit'}
           </Button>
         </form>
-
-        {done ? (
-          <div className="mt-5 rounded-xl border border-[rgba(70,177,123,0.3)] bg-[rgba(70,177,123,0.1)] p-4 text-sm text-success">
-            Deposit confirmed — balance updated.
-          </div>
-        ) : null}
       </Card>
 
       <button

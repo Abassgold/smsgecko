@@ -45,22 +45,21 @@ const envSchema = z.object({
   /** AES-256-GCM key (base64) for encrypting provider credentials at rest. */
   SETTINGS_ENC_KEY: z.string().min(8).default('dev-settings-enc-key-change-me'),
 
-  PAYMENTS_MOCK: bool.default(true),
   ORDER_TTL_SECONDS: z.coerce.number().int().positive().default(1200),
 
-  /** Stripe secret key (test or live). When unset, card deposits fall back to the mock provider. */
+  /** Stripe secret key (test or live). When unset, card deposits are unavailable. */
   STRIPE_SECRET_KEY: z.string().optional(),
   /** Signing secret for the Stripe webhook endpoint (`whsec_...`), from the Stripe dashboard/CLI. */
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
-  /** NowPayments API key. When unset, crypto deposits fall back to the mock provider. */
+  /** NowPayments API key. When unset, USDT deposits are unavailable. */
   NOWPAYMENTS_API_KEY: z.string().optional(),
   /** Secret used to verify the `x-nowpayments-sig` header on IPN callbacks. */
   NOWPAYMENTS_IPN_SECRET: z.string().optional(),
   /** Use NowPayments' sandbox API host instead of the production one. */
   NOWPAYMENTS_SANDBOX: bool.default(true),
-  /** Korapay secret key (test or live). Also used to verify webhook signatures. When unset, korapay deposits fall back to the mock provider. */
+  /** Korapay secret key (test or live). Also used to verify webhook signatures. When unset, korapay deposits are unavailable. */
   KORAPAY_SECRET_KEY: z.string().optional(),
-  /** Cryptomus merchant UUID. When unset (or the API key below is), cryptomus deposits fall back to the mock provider. */
+  /** Cryptomus merchant UUID. When unset (or the API key below is), cryptomus deposits are unavailable. */
   CRYPTOMUS_MERCHANT_ID: z.string().optional(),
   /** Cryptomus payment API key — signs outgoing requests and verifies inbound webhooks. */
   CRYPTOMUS_API_KEY: z.string().optional(),

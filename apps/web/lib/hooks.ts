@@ -291,20 +291,6 @@ export function useCreateDeposit() {
   });
 }
 
-export function useConfirmDeposit() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) =>
-      apiFetch<DepositView>(`/v1/deposits/${id}/mock-confirm`, { method: 'POST' }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['wallet'] });
-      qc.invalidateQueries({ queryKey: ['transactions'] });
-      qc.invalidateQueries({ queryKey: ['deposits'] });
-      qc.invalidateQueries({ queryKey: ['me'] });
-    },
-  });
-}
-
 export interface DepositCounts {
   all: number;
   pending: number;
@@ -320,16 +306,6 @@ export function useDeposits(status: string, page: number) {
       apiFetch<Paginated<DepositView> & { counts: DepositCounts }>(
         `/v1/deposits?status=${status}&page=${page}&limit=8`,
       ),
-  });
-}
-
-/** A single deposit — the mock checkout page's "poll while pending" view. */
-export function useDeposit(id: string, poll: boolean) {
-  return useQuery({
-    queryKey: ['deposit', id],
-    queryFn: () => apiFetch<DepositView>(`/v1/deposits/${id}`),
-    enabled: Boolean(id),
-    refetchInterval: poll ? 2500 : false,
   });
 }
 

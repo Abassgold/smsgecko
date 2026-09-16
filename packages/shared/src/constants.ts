@@ -17,7 +17,6 @@ export const TRANSACTION_TYPES = [
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 
 export const DEPOSIT_METHODS = [
-  'mock',
   'card',
   'crypto_usdt',
   'korapay',

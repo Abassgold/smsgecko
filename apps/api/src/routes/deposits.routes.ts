@@ -24,10 +24,5 @@ router.use('/deposits', requireVerified);
 router.post('/deposits', validate(createDepositBody), deposits.create);
 router.get('/deposits', validate(depositsQuery, 'query'), deposits.list);
 router.get('/deposits/:id', validate(idParams, 'params'), deposits.getOne);
-router.post(
-  '/deposits/:id/mock-confirm',
-  validate(idParams, 'params'),
-  deposits.mockConfirmHandler,
-);
 
 export default router;

@@ -8,7 +8,7 @@ const depositSchema = new Schema(
     amountMicro: { type: Number, required: true, min: 0 },
     status: { type: String, enum: DEPOSIT_STATUSES, default: 'pending', index: true },
 
-    provider: { type: String, default: 'mock' },
+    provider: { type: String, required: true },
     providerRef: { type: String, required: true, unique: true },
     /** Payment instructions surfaced to the user (crypto address / hosted URL). */
     payAddress: { type: String, default: null },
