@@ -29,7 +29,11 @@ export interface BuildAppOptions {
 export async function buildApp(opts: BuildAppOptions = {}): Promise<Application> {
   const app = express();
 
-  app.set('trust proxy', true);
+  // Trust exactly one hop (the reverse proxy in front of this API — nginx,
+  // Render, Fly, etc.), not `true`, which would trust a client-supplied
+  // X-Forwarded-For header unconditionally and let anyone spoof their way
+  // past every IP-based rate limiter in the app.
+  app.set('trust proxy', 1);
   app.set('query parser', 'simple');
   app.disable('x-powered-by');
 
