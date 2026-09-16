@@ -76,14 +76,14 @@ export function RegisterForm() {
             placeholder="your_handle"
             required
             minLength={3}
-            maxLength={10}
+            maxLength={15}
             pattern="[a-zA-Z0-9_.\-]+"
             autoComplete="username"
             disabled={register.isPending}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
-          <span className="field-hint">3–10 characters. Letters, numbers, . _ - only.</span>
+          <span className="field-hint">3–15 characters. Letters, numbers, . _ - only.</span>
         </div>
 
         <div className="field">
