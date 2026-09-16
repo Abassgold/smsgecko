@@ -12,12 +12,6 @@ function apiBase(): string {
   return env.NOWPAYMENTS_SANDBOX ? 'https://api-sandbox.nowpayments.io' : 'https://api.nowpayments.io';
 }
 
-/**
- * Real (sandbox by default) NowPayments integration via hand-rolled REST
- * calls — no SDK dependency. Uses the hosted Invoice flow (`payUrl` to a
- * NowPayments-hosted checkout page) rather than generating a pay address
- * ourselves, so we don't have to track exchange rates or coin selection.
- */
 export class NowPaymentsProvider implements PaymentProvider {
   readonly name = 'nowpayments';
 
@@ -49,10 +43,6 @@ export class NowPaymentsProvider implements PaymentProvider {
   }
 }
 
-/** Recursively re-stringifies a value with object keys sorted — NowPayments
- * signs the IPN body over the JSON string with keys in sorted order, which
- * does not match the arbitrary key order `JSON.stringify` would otherwise
- * produce on the parsed-then-reserialized body. */
 function sortedStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(sortedStringify).join(',')}]`;
   if (value && typeof value === 'object') {

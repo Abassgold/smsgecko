@@ -11,13 +11,6 @@ function store(req: Request): ValidStore {
   const holder = req as unknown as Record<symbol, ValidStore | undefined>;
   return (holder[STORE] ??= {});
 }
-
-/**
- * Validate one part of the request against a yup schema. The coerced result is
- * kept for the controller to read via `valid()`; for `body` it is also written
- * back to `req.body` (so a controller may read the body from either). A yup
- * `ValidationError` becomes a `bad_request`.
- */
 export function validate(schema: Schema, part: RequestPart = 'body'): RequestHandler {
   return async (req, _res, next) => {
     try {
@@ -34,10 +27,6 @@ export function validate(schema: Schema, part: RequestPart = 'body'): RequestHan
   };
 }
 
-/**
- * Read a request part previously checked by `validate()`. Throws if the route is
- * missing the matching `validate(schema, part)` middleware.
- */
 export function valid<T>(req: Request, part: RequestPart = 'body'): T {
   const value = store(req)[part];
   if (value === undefined) {

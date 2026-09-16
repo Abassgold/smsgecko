@@ -105,7 +105,7 @@ export default function LandingPage() {
       </Section>
 
       {/* What it does */}
-      <Section className="pt-0">
+      <Section className="pt-0 ">
         <Container size="wide">
           <SectionHeading>What SMSGecko Does</SectionHeading>
           <div className="mt-10 grid gap-4 sm:grid-cols-3">

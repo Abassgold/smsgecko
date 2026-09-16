@@ -50,7 +50,6 @@ export const login = asyncHandler(async (req, res) => {
   const { identifier, password } = req.body as LoginBody;
   const user = await authenticate(identifier, password);
   if (user.twoFactorEnabled) {
-    // Password checked out, but the session waits on a code — no cookies yet.
     res.json({ twoFactorRequired: true as const, pendingToken: signTwoFactorPendingToken(user.id as string) });
     return;
   }
