@@ -46,7 +46,10 @@ export function DepositPicker() {
   const createDeposit = useCreateDeposit();
 
   const [amount, setAmount] = useState('10');
-  const [method, setMethod] = useState<DepositMethod | ''>('');
+  // Payment Method picker is commented out below — every deposit goes
+  // straight to Bachs for now. Kept in place (not deleted) for when we want
+  // to bring method choice back.
+  const method: DepositMethod | '' = 'bachs';
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,7 +99,10 @@ export function DepositPicker() {
         <SectionTitle>New Deposit</SectionTitle>
 
         <form className="mt-4 flex flex-col gap-5" onSubmit={submit}>
-          <div className="flex flex-col gap-1.5">
+          {/* Payment Method picker — commented out while every deposit routes
+              straight to Bachs. Bring back by uncommenting this block and
+              reverting `method` above to useState. */}
+          {/* <div className="flex flex-col gap-1.5">
             <label className={FIELD_LABEL}>Payment Method</label>
             <select
               required
@@ -113,7 +119,7 @@ export function DepositPicker() {
                 </option>
               ))}
             </select>
-          </div>
+          </div> */}
 
           <div className="flex flex-col gap-1.5">
             <label className={FIELD_LABEL}>Amount (USD)</label>
@@ -157,7 +163,9 @@ export function DepositPicker() {
         </form>
       </Card>
 
-      <button
+      {/* Crypto quick-link — depended on the Payment Method picker above
+          (setMethod), commented out alongside it. */}
+      {/* <button
         type="button"
         onClick={() => setMethod('crypto_usdt')}
         className="flex items-center gap-4 rounded-2xl border border-border bg-surface p-5 text-left transition hover:border-[var(--accent-ring)]"
@@ -174,7 +182,7 @@ export function DepositPicker() {
           </span>
         </span>
         <span className="text-accent">→</span>
-      </button>
+      </button> */}
 
       <DepositHistory />
     </div>
