@@ -72,8 +72,11 @@ export class BachsProvider implements PaymentProvider {
       message?: string;
     };
     if (!res.ok || !data.checkout_id || !data.checkout_url) {
+      // Logged for us; the customer gets a clean, generic message —
+      // Bachs' own text can reference internal details that aren't ours to
+      // show.
       logger.warn({ status: res.status, message: data.message }, 'bachs checkout session create failed');
-      throw badRequest(data.message ?? 'Could not start a Bachs payment');
+      throw badRequest('Could not start a Bachs payment. Please try again.');
     }
 
     return {

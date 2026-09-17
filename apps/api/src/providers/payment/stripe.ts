@@ -47,8 +47,11 @@ export class StripeProvider implements PaymentProvider {
     });
     const data = (await res.json()) as { id?: string; url?: string; error?: { message?: string } };
     if (!res.ok || !data.id || !data.url) {
+      // The full error is logged for us; the customer only ever gets a
+      // clean, generic message — Stripe's own text can reference internal
+      // details (account config, raw API params) that aren't ours to show.
       logger.warn({ status: res.status, error: data.error }, 'stripe checkout session create failed');
-      throw badRequest(data.error?.message ?? 'Could not start a card payment');
+      throw badRequest('Could not start a card payment. Please try again.');
     }
 
     return { providerRef: data.id, payAddress: null, payUrl: data.url, expiresAt };

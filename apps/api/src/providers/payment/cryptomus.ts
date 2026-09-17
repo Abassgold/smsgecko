@@ -60,8 +60,11 @@ export class CryptomusProvider implements PaymentProvider {
     });
     const body = (await res.json()) as { result?: { url?: string }; message?: string };
     if (!res.ok || !body.result?.url) {
+      // Logged for us; the customer gets a clean, generic message —
+      // Cryptomus' own text can reference internal details that aren't
+      // ours to show.
       logger.warn({ status: res.status, message: body.message }, 'cryptomus payment create failed');
-      throw badRequest(body.message ?? 'Could not start a Cryptomus payment');
+      throw badRequest('Could not start a Cryptomus payment. Please try again.');
     }
 
     return { providerRef: orderId, payAddress: null, payUrl: body.result.url, expiresAt };

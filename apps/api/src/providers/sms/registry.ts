@@ -1,6 +1,7 @@
 import { conflict, providerError } from '../../lib/errors.js';
 import { bustCatalogCache } from '../../lib/catalog.js';
 import { decryptJson } from '../../lib/secretbox.js';
+import { logger } from '../../lib/logger.js';
 import { ProviderConfig, type ProviderConfigDoc } from '../../models/ProviderConfig.js';
 import type { OrderDoc } from '../../models/Order.js';
 import { CustomHttpProvider, type CustomHttpConfig } from './adapters/customHttp.js';
@@ -216,7 +217,17 @@ export async function rentWithFallback(input: RentInput): Promise<RentWithFallba
       errors.push(`${cfg.label}: ${msg}`);
     }
   }
-  throw providerError(`No provider could supply a number — ${errors.join('; ')}`, { attempts });
+  // The full per-provider detail (`errors`) is a reseller's own raw error
+  // text — pool names, internal price thresholds, HTML markup, whatever
+  // that upstream API felt like returning. Useful for us, meaningless (or
+  // actively confusing) to a customer, so it's logged for debugging but
+  // never put in the response body. The customer just gets a clean,
+  // generic message; `details.attempts` (provider label + outcome only)
+  // is the most a client ever sees of what went wrong.
+  logger.warn({ errors, attempts }, 'no provider could supply a number');
+  throw providerError('No numbers are available for this service right now — please try again shortly.', {
+    attempts,
+  });
 }
 
 export async function recordOtpReceived(order: OrderDoc): Promise<void> {

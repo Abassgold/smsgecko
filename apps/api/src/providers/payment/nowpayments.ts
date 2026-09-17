@@ -35,8 +35,11 @@ export class NowPaymentsProvider implements PaymentProvider {
     });
     const data = (await res.json()) as { id?: string; invoice_url?: string; message?: string };
     if (!res.ok || !data.id || !data.invoice_url) {
+      // Logged for us; the customer gets a clean, generic message —
+      // NowPayments' own text can reference internal details that aren't
+      // ours to show.
       logger.warn({ status: res.status, message: data.message }, 'nowpayments invoice create failed');
-      throw badRequest(data.message ?? 'Could not start a crypto payment');
+      throw badRequest('Could not start a crypto payment. Please try again.');
     }
 
     return { providerRef: data.id, payAddress: null, payUrl: data.invoice_url, expiresAt };
