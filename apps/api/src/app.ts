@@ -20,6 +20,7 @@ import webhookConfigRoutes from './routes/webhook.routes.js';
 import affiliateRoutes from './routes/affiliate.routes.js';
 import notificationRoutes from './routes/notifications.routes.js';
 import adminRoutes from './routes/admin/index.js';
+import unsubscribeRoutes from './routes/unsubscribe.routes.js';
 
 export interface BuildAppOptions {
   /** Disable HTTP request logging (used by tests). */
@@ -78,6 +79,9 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<Application>
   });
 
   app.use('/api/v1/auth', authRoutes);
+  // Public, no auth — a one-click unsubscribe link clicked from an email
+  // client, never a logged-in dashboard request.
+  app.use('/api/v1/unsubscribe', unsubscribeRoutes);
   // Before depositRoutes — that router has an unpathed requireVerified that would
   // otherwise 401 any /api/v1/* path falling through it.
   app.use('/api/v1/webhooks', webhookRoutes);

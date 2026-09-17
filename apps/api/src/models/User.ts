@@ -32,6 +32,11 @@ const userSchema = new Schema(
     twoFactorPendingSecretEnc: { type: String, default: null },
     /** sha256 of each unused recovery code; consumed (spliced out) on use. */
     twoFactorRecoveryHashes: { type: [String], default: [] },
+
+    /** Opted out of admin broadcast emails via the one-click unsubscribe
+     * link. Transactional email (verification, password reset, etc.) is
+     * unaffected — this only gates the broadcast worker's audience query. */
+    unsubscribedFromBroadcasts: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

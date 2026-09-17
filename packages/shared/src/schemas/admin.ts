@@ -177,6 +177,32 @@ export interface AdminActionRow {
   createdAt: string;
 }
 
+/* ---------------- broadcasts ---------------- */
+
+export type BroadcastAudience = 'all' | 'verified';
+export type BroadcastStatus = 'pending' | 'sending' | 'completed' | 'failed';
+
+export interface BroadcastRow {
+  id: string;
+  subject: string;
+  body: string;
+  audience: BroadcastAudience;
+  createdBy: { id: string; email: string };
+  status: BroadcastStatus;
+  totalRecipients: number;
+  sentCount: number;
+  failedCount: number;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+export interface CreateBroadcastBody {
+  subject: string;
+  body: string;
+  audience: BroadcastAudience;
+}
+
 /* ---------------- settings ---------------- */
 
 export interface SettingsView {
