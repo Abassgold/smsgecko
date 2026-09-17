@@ -8,6 +8,8 @@ import type {
   AdminOrderRow,
   AdminTransactionRow,
   AdminUserView,
+  BroadcastRow,
+  CreateBroadcastBody,
   ProviderConfigView,
   SettingsView,
 } from '@smsgecko/shared';
@@ -206,5 +208,30 @@ export function useAdminLogs(params: Record<string, string | number | undefined>
     queryKey: ['admin', 'logs', params],
     queryFn: () =>
       apiFetch<Paginated<AdminActionRow>>(`/v1/admin/logs/?${qs({ ...params, limit: 25 })}`),
+  });
+}
+
+/* ---------- broadcasts ---------- */
+export function useAdminBroadcasts(page: number) {
+  return useQuery({
+    queryKey: ['admin', 'broadcasts', page],
+    queryFn: () =>
+      apiFetch<Paginated<BroadcastRow>>(`/v1/admin/broadcasts/?${qs({ page, limit: 20 })}`),
+    // A send-in-progress job's counts move every worker tick — keep the
+    // list fresh without the admin having to manually refresh.
+    refetchInterval: (query) => {
+      const data = query.state.data as Paginated<BroadcastRow> | undefined;
+      const hasActive = data?.items.some((b) => b.status === 'pending' || b.status === 'sending');
+      return hasActive ? 3000 : false;
+    },
+  });
+}
+
+export function useCreateBroadcast() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateBroadcastBody) =>
+      apiFetch<BroadcastRow>('/v1/admin/broadcasts/', { method: 'POST', body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'broadcasts'] }),
   });
 }
