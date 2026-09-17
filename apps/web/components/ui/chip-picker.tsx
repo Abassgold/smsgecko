@@ -57,9 +57,9 @@ export function ChipPicker({
               type="button"
               onClick={() => onChange(item.id)}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
+                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
                 selected
-                  ? 'border-[var(--accent-ring)] bg-accent-soft text-text'
+                  ? 'border-accent bg-accent text-accent-contrast shadow-[0_4px_16px_-6px_var(--accent-ring)]'
                   : 'border-border bg-surface/60 text-muted hover:text-text',
               )}
             >
