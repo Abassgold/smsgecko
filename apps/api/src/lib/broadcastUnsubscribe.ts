@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { hmacSha256Hex } from './crypto.js';
 import { env } from '../config/env.js';
 
@@ -20,6 +21,17 @@ export function verifyUnsubscribeToken(token: string): string | null {
   if (dot < 0) return null;
   const userId = token.slice(0, dot);
   const sig = token.slice(dot + 1);
-  if (!userId || sig !== hmacSha256Hex(env.JWT_ACCESS_SECRET, userId)) return null;
+  if (!userId) return null;
+
+  // Constant-time comparison — same reasoning as the webhook signature
+  // checks in providers/payment/*.ts: a plain `!==` leaks timing
+  // information an attacker could use to forge a valid signature byte by
+  // byte. `Buffer.from(sig, 'hex')` never throws — malformed hex just
+  // decodes short — so the length check below is what actually rejects a
+  // bad token; it also guards timingSafeEqual, which throws on unequal
+  // buffer lengths.
+  const expected = Buffer.from(hmacSha256Hex(env.JWT_ACCESS_SECRET, userId), 'hex');
+  const given = Buffer.from(sig, 'hex');
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
   return userId;
 }

@@ -30,6 +30,12 @@ const broadcastSchema = new Schema(
     /** Last processed recipient's _id — resumable paging across worker
      * ticks, same idea as Order.lastPolledAt driving the polling worker. */
     cursor: { type: Schema.Types.ObjectId, default: null },
+    /** Short lease held while a worker is actively mid-batch on this job —
+     * lets runBroadcasts() claim a `sending` job atomically (not just a
+     * `pending` one), so two worker processes can never both be sending
+     * the same broadcast at once. Cleared after each batch; a stale lease
+     * (holder crashed mid-batch) is free for anyone's next tick to take. */
+    lockedUntil: { type: Date, default: null },
 
     startedAt: { type: Date, default: null },
     completedAt: { type: Date, default: null },

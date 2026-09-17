@@ -90,7 +90,7 @@ describe('admin broadcasts', () => {
     expect(job?.status).toBe('completed');
     // Admin + the one subscribed user — the unsubscribed one is excluded.
     expect(job?.totalRecipients).toBe(2);
-    expect(job?.sentCount + (job?.failedCount ?? 0)).toBe(2);
+    expect((job?.sentCount ?? 0) + (job?.failedCount ?? 0)).toBe(2);
     expect(job?.completedAt).not.toBeNull();
   });
 

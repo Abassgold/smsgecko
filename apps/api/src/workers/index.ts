@@ -11,6 +11,9 @@ const POLL_INTERVAL_MS = 4_000;
 const EXPIRY_INTERVAL_MS = 8_000;
 const BROADCAST_INTERVAL_MS = 5_000;
 const BATCH = 50;
+/** How long a worker may hold a `sending` broadcast's lease before another
+ * tick is free to reclaim it — see runBroadcasts() below. */
+const BROADCAST_LEASE_MS = 30_000;
 
 let timers: NodeJS.Timeout[] = [];
 
@@ -95,14 +98,27 @@ async function runExpiry(log: Logger): Promise<void> {
  * this resumable: each tick picks up exactly where the last one left off.
  */
 export async function runBroadcasts(log: Logger): Promise<void> {
-  // Claim a freshly-queued job (snapshot its audience size once, up front)
-  // if there is one; otherwise continue whichever job is already in flight.
+  const now = new Date();
+  // Claim a freshly-queued job (oldest first), snapshotting its audience
+  // size once, up front — or, if none is pending, atomically claim
+  // whichever job is already in flight, via a short lease. That lease is
+  // what stops two worker processes (e.g. horizontally-scaled API
+  // instances) from ever both being mid-batch on the same broadcast at
+  // once — a plain `findOne` here would find the same 'sending' job on
+  // every process and let them all send the same batch. The lease is
+  // released after every batch (below), so on a single process this never
+  // waits — it's only ever contended across processes.
   let job =
     (await Broadcast.findOneAndUpdate(
       { status: 'pending' },
-      { $set: { status: 'sending', startedAt: new Date() } },
+      { $set: { status: 'sending', startedAt: now, lockedUntil: new Date(now.getTime() + BROADCAST_LEASE_MS) } },
+      { sort: { createdAt: 1 }, returnDocument: 'after' },
+    )) ??
+    (await Broadcast.findOneAndUpdate(
+      { status: 'sending', $or: [{ lockedUntil: null }, { lockedUntil: { $lt: now } }] },
+      { $set: { lockedUntil: new Date(now.getTime() + BROADCAST_LEASE_MS) } },
       { returnDocument: 'after' },
-    )) ?? (await Broadcast.findOne({ status: 'sending' }));
+    ));
   if (!job) return;
 
   const audienceFilter: Record<string, unknown> = { unsubscribedFromBroadcasts: false };
@@ -142,7 +158,10 @@ export async function runBroadcasts(log: Logger): Promise<void> {
       { _id: job._id },
       {
         $inc: { sentCount: sent, failedCount: failed },
-        $set: { cursor: recipients[recipients.length - 1]!._id },
+        // Release the lease immediately so the very next tick (same
+        // process or another) can pick this job straight back up instead
+        // of waiting out BROADCAST_LEASE_MS.
+        $set: { cursor: recipients[recipients.length - 1]!._id, lockedUntil: null },
       },
     );
   } catch (err) {
