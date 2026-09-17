@@ -51,6 +51,12 @@ const orderSchema = new Schema(
     canceledAt: { type: Date, default: null },
     /** Set when a v2 client calls /finish on a completed order. */
     finishedAt: { type: Date, default: null },
+    /** Internal lock, never surfaced to clients. Set for the duration of a
+     * reactivate() call so a concurrent second call can't also pass the
+     * `status: 'completed'` check and trigger a second real provider
+     * purchase + wallet debit on the same order. Cleared whether the
+     * attempt succeeds or fails. */
+    reactivatingAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

@@ -373,50 +373,74 @@ export async function resendOrder(user: UserDoc, orderId: string): Promise<Order
  * history. Only providers that implement `reactivate` support this.
  */
 export async function reactivateOrder(user: UserDoc, orderId: string): Promise<OrderDoc> {
-  const order = await Order.findOne({ _id: orderId, userId: user._id });
-  if (!order) throw notFound('Order not found');
-  if (order.status !== 'completed') {
+  // Atomically claim the order before doing anything real — this is what
+  // actually closes the race a rapid double-click (or a naive client
+  // retry) could otherwise hit: two concurrent calls both reading
+  // status: 'completed' before either has written back, both going on to
+  // buy a second reactivation from the provider and debit the wallet
+  // twice. Only one call can win this update; the loser gets a clear
+  // conflict instead of a duplicate charge.
+  const order = await Order.findOneAndUpdate(
+    { _id: orderId, userId: user._id, status: 'completed', reactivatingAt: null },
+    { $set: { reactivatingAt: new Date() } },
+    { returnDocument: 'after' },
+  );
+  if (!order) {
+    const existing = await Order.findOne({ _id: orderId, userId: user._id });
+    if (!existing) throw notFound('Order not found');
+    if (existing.reactivatingAt) {
+      throw conflict('A reactivation for this order is already in progress');
+    }
     throw conflict('Only a completed order can be reactivated');
   }
 
-  const provider = await getProviderForOrder(order);
-  if (!provider.reactivate) throw conflict('This number cannot be reactivated');
+  try {
+    const provider = await getProviderForOrder(order);
+    if (!provider.reactivate) throw conflict('This number cannot be reactivated');
 
-  const settings = await getSettings();
-  const cat = await resolveForOrder(order.serviceId, order.countryId, settings);
-  if (!cat) throw noOfferAvailable();
-  if (cat.priceMicro > user.balanceMicro) throw paymentRequired();
+    const settings = await getSettings();
+    const cat = await resolveForOrder(order.serviceId, order.countryId, settings);
+    if (!cat) throw noOfferAvailable();
+    if (cat.priceMicro > user.balanceMicro) throw paymentRequired();
 
-  const result = await provider.reactivate(order.providerRef).catch(() => null);
-  if (!result) throw conflict('The provider could not reactivate this number');
+    const result = await provider.reactivate(order.providerRef).catch(() => null);
+    if (!result) throw conflict('The provider could not reactivate this number');
 
-  await debit(user._id, cat.priceMicro, {
-    type: 'order_payment',
-    description: 'Number reactivation',
-    orderId: order._id,
-    // Distinct from the original creation charge's reference — reactivation is
-    // a second, separate payment on the same order.
-    reference: `${order._id}_reactivate`,
-  });
+    await debit(user._id, cat.priceMicro, {
+      type: 'order_payment',
+      description: 'Number reactivation',
+      orderId: order._id,
+      // Distinct from the original creation charge's reference — reactivation is
+      // a second, separate payment on the same order.
+      reference: `${order._id}_reactivate`,
+    });
 
-  const expiresAt = new Date(
-    Date.now() + Math.max(settings.orderTtlSeconds, minHoldSecondsFor(order.provider)) * 1000,
-  );
-  await Order.updateOne(
-    { _id: order._id },
-    {
-      $set: {
-        status: 'waiting',
-        otpCode: null,
-        completedAt: null,
-        finishedAt: null,
-        deliverAt: null,
-        lastPolledAt: null,
-        providerRef: result.providerRef,
-        providerCostMicro: (order.providerCostMicro ?? 0) + cat.rawPriceMicro,
-        expiresAt,
+    const expiresAt = new Date(
+      Date.now() + Math.max(settings.orderTtlSeconds, minHoldSecondsFor(order.provider)) * 1000,
+    );
+    await Order.updateOne(
+      { _id: order._id },
+      {
+        $set: {
+          status: 'waiting',
+          otpCode: null,
+          completedAt: null,
+          finishedAt: null,
+          deliverAt: null,
+          lastPolledAt: null,
+          providerRef: result.providerRef,
+          providerCostMicro: (order.providerCostMicro ?? 0) + cat.rawPriceMicro,
+          expiresAt,
+          reactivatingAt: null,
+        },
       },
-    },
-  );
-  return (await Order.findById(order._id))!;
+    );
+    return (await Order.findById(order._id))!;
+  } catch (err) {
+    // Release the lock on any failure — a failed attempt (no offer, no
+    // balance, provider declined) must not permanently strand the order in
+    // a "reactivating forever" state the user can't retry.
+    await Order.updateOne({ _id: order._id }, { $set: { reactivatingAt: null } });
+    throw err;
+  }
 }

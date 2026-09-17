@@ -1,6 +1,7 @@
 import { Router, type ErrorRequestHandler, type RequestHandler } from 'express';
 import { requireApiKey } from '../middleware/bearerAuth.js';
 import { validate } from '../middleware/validation.js';
+import { throttle } from '../middleware/throttle.js';
 import { productsQuery, v2CreateOrderBody, v2IdParams, v2PatchWebhookBody } from '../lib/validation/v2.schema.js';
 import { classifyError } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
@@ -30,7 +31,10 @@ router.get('/orders/:id', validate(v2IdParams, 'params'), getOrder);
 router.post('/orders/:id/finish', validate(v2IdParams, 'params'), finishOrderHandler);
 router.post('/orders/:id/cancel', validate(v2IdParams, 'params'), cancelOrderHandler);
 router.post('/orders/:id/resend', validate(v2IdParams, 'params'), resendOrderHandler);
-router.post('/orders/:id/reactivate', validate(v2IdParams, 'params'), reactivateOrderHandler);
+// A real second purchase from the provider + a real second wallet debit on
+// a rapid double-call — throttled on top of the atomic lock in
+// reactivateOrder() itself (see orders.service.ts), not instead of it.
+router.post('/orders/:id/reactivate', throttle(3000), validate(v2IdParams, 'params'), reactivateOrderHandler);
 router.get('/webhook', getWebhook);
 router.patch('/webhook', validate(v2PatchWebhookBody), patchWebhook);
 router.post('/webhook/test', testWebhookHandler);

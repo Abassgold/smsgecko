@@ -59,6 +59,14 @@ function signBachs(rawBody: string, timestamp = Math.floor(Date.now() / 1000)): 
   return `t=${timestamp},v1=${signature}`;
 }
 
+/** Deposit creation is throttled (1.5s) to guard against a double-click
+ * opening two checkout sessions — tests that legitimately create several
+ * deposits for one user (simulating deposits made at different times, not
+ * a rapid double-click) need to actually wait past that window. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function bachsCollectionEvent(checkoutId: string, type = 'collection.succeeded') {
   return {
     id: 'evt_test_1',
@@ -178,6 +186,7 @@ describe('deposits', () => {
         headers: { cookie },
         payload: { method: 'card', amountMicro },
       });
+      await sleep(1600); // clear the per-user throttle before the next one
     }
     // Another user's deposit must not leak into this list.
     await inject({
@@ -226,6 +235,7 @@ describe('deposits', () => {
       headers: { 'x-bachs-signature-v2': signBachs(raw) },
       payload: body,
     });
+    await sleep(1600); // clear the per-user throttle before the second deposit
     await inject({
       method: 'POST',
       url: '/api/v1/deposits',
@@ -277,6 +287,29 @@ describe('deposits', () => {
       payload: { method: 'card', amountMicro: 10_000_000 },
     });
     expect(res.statusCode).toBe(401);
+  });
+
+  it('throttles a rapid second deposit-creation call from the same user', async () => {
+    // No idempotency-key protection on this endpoint (unlike order
+    // creation), so a double-click would otherwise open two separate
+    // checkout sessions at the real gateway — this is the guard against that.
+    const { cookie } = await makeUser(app);
+    const first = await inject({
+      method: 'POST',
+      url: '/api/v1/deposits',
+      headers: { cookie },
+      payload: { method: 'card', amountMicro: 5_000_000 },
+    });
+    expect(first.statusCode).toBe(201);
+
+    const second = await inject({
+      method: 'POST',
+      url: '/api/v1/deposits',
+      headers: { cookie },
+      payload: { method: 'card', amountMicro: 5_000_000 },
+    });
+    expect(second.statusCode).toBe(429);
+    expect(second.json().error.code).toBe('RATE_LIMITED');
   });
 
   it('returns a clear error — no deposit created — when the gateway is not configured', async () => {

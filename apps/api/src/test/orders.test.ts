@@ -7,6 +7,7 @@ import { Order } from '../models/Order.js';
 import { Transaction } from '../models/Transaction.js';
 import { User } from '../models/User.js';
 import { refundWaitingOrder } from '../lib/orderLifecycle.js';
+import { reactivateOrder } from '../services/orders.service.js';
 import { updateSettings } from '../lib/settings.js';
 
 let app: Application;
@@ -302,6 +303,59 @@ describe('orders', () => {
     expect(refund!.reference).toBe(`${order.id}_reactivate_R`);
     // Not the original creation charge's reference.
     expect(refund!.reference).not.toBe(`${order.id}_R`);
+  });
+
+  it('two concurrent reactivate calls only charge once — the race the atomic lock closes', async () => {
+    // Drives reactivateOrder() directly (not through HTTP) so this isolates
+    // the atomic DB-level guard in orders.service.ts from the HTTP-layer
+    // throttle in front of it — a real deployment gets both, but this test
+    // is specifically about the guard that still holds even across
+    // multiple server processes, which an in-memory throttle can't.
+    const { service, country } = await makeCatalog({ priceMicro: 300_000, stock: 5 });
+    const { cookie, userId } = await makeUser(app, { balanceMicro: 2_000_000 });
+    const order = (await buy(cookie, { serviceId: service.id, countryId: country.id })).json();
+    await simulateOtp(order.id);
+
+    const user = (await User.findById(userId))!;
+    const results = await Promise.allSettled([
+      reactivateOrder(user, order.id),
+      reactivateOrder(user, order.id),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    // Charged for the reactivation exactly once, not twice.
+    expect((await User.findById(userId))!.balanceMicro).toBe(2_000_000 - 300_000 - 300_000);
+    expect(await Transaction.countDocuments({ userId, reference: `${order.id}_reactivate` })).toBe(1);
+
+    // The lock is released either way — a later reactivate isn't stuck forever.
+    expect((await Order.findById(order.id))!.reactivatingAt).toBeNull();
+  });
+
+  it('throttles a rapid second reactivate call from the same user', async () => {
+    const { service, country } = await makeCatalog({ priceMicro: 200_000, stock: 5 });
+    const { cookie } = await makeUser(app, { balanceMicro: 2_000_000 });
+    const order = (await buy(cookie, { serviceId: service.id, countryId: country.id })).json();
+    await simulateOtp(order.id);
+
+    const first = await inject({
+      method: 'POST',
+      url: `/api/v1/orders/${order.id}/reactivate`,
+      headers: { cookie },
+    });
+    expect(first.statusCode).toBe(200);
+
+    // Immediately again — same user, well inside the throttle window.
+    const second = await inject({
+      method: 'POST',
+      url: `/api/v1/orders/${order.id}/reactivate`,
+      headers: { cookie },
+    });
+    expect(second.statusCode).toBe(429);
+    expect(second.json().error.code).toBe('RATE_LIMITED');
   });
 
   it('completes an order via the inbound SMS webhook', async () => {
