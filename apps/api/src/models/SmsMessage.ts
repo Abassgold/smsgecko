@@ -7,7 +7,6 @@ const smsMessageSchema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     sender: { type: String, required: true },
     text: { type: String, required: true },
-    /** Extracted verification code, if one was found. */
     parsedOtp: { type: String, default: null },
     receivedAt: { type: Date, required: true, default: () => new Date() },
   },

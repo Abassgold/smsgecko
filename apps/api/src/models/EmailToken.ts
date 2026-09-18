@@ -1,11 +1,5 @@
 import { Schema, model, type InferSchemaType, type HydratedDocument } from 'mongoose';
 
-/**
- * One row per issued email link (address verification, password reset). The
- * raw token travels in the email; we persist only its sha256 so a DB leak
- * can't be used to verify accounts or reset passwords. Rows self-delete a day
- * after they expire.
- */
 const emailTokenSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },

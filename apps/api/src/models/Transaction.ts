@@ -1,12 +1,6 @@
 import { Schema, model, type InferSchemaType, type HydratedDocument } from 'mongoose';
 import { TRANSACTION_TYPES } from '@smsgecko/shared';
 
-/**
- * Append-only wallet ledger. Written only by lib/ledger.ts, always paired with
- * the balance mutation it explains. `amountMicro` is signed (credits +, debits -);
- * `balanceBeforeMicro` / `balanceAfterMicro` bracket the user's balance across
- * this entry (`before + amount === after`).
- */
 const transactionSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
@@ -17,9 +11,6 @@ const transactionSchema = new Schema(
     description: { type: String, required: true },
     orderId: { type: Schema.Types.ObjectId, ref: 'Order', default: null },
     depositId: { type: Schema.Types.ObjectId, ref: 'Deposit', default: null },
-    /** Human-visible pairing key, e.g. an order's own id for its charge, and
-     *  `<id>_R` for the refund that reverses it — lets a reader spot the pair
-     *  without following the orderId foreign key. */
     reference: { type: String, default: null, index: true },
   },
   { timestamps: { createdAt: true, updatedAt: false } },

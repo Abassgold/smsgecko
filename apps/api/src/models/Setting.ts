@@ -1,10 +1,5 @@
 import { Schema, model, type InferSchemaType, type HydratedDocument } from 'mongoose';
 
-/**
- * Runtime configuration, editable from the admin panel. A single document with
- * `_id: 'global'`. Seeded from env defaults on first boot; env stays the
- * fallback if Mongo is unreachable.
- */
 const settingSchema = new Schema(
   {
     _id: { type: String, default: 'global' },
