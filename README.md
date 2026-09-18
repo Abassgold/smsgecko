@@ -5,7 +5,9 @@ Deposit a balance, pick a service (WhatsApp, Telegram, …) and country, get a n
 for the OTP within a time window; if no SMS arrives the order auto-expires and refunds.
 
 A full-stack build (flows modeled on [smscode.gg](https://smscode.gg)). SMS delivery and
-payments are **simulated** behind provider interfaces — no external accounts required. See
+payments run behind provider interfaces — real adapters are wired in (Stripe, NowPayments,
+Bachs, Cryptomus for payments; HeroSMS, DaisySMS, SMS Bower, SMS Code, SMS Pool for SMS)
+alongside mock adapters, so you can run everything locally with no external accounts. See
 [`docs/architecture.md`](docs/architecture.md) for the design.
 
 ## Stack
@@ -86,14 +88,25 @@ lives in **Settings** in the admin panel — no restart needed. To see refunds q
       `docs/architecture.md`
 - [x] **Multi-provider SMS + admin panel** — a `ProviderConfig` registry with an ordered
       **fallback chain** (rent from provider #1, fall through to #2 on no-stock/error),
-      poll-based `SmsProvider` interface, mock + generic `custom_http` adapters, encrypted
+      poll-based `SmsProvider` interface, mock + real reseller adapters (HeroSMS, DaisySMS,
+      SMS Bower, SMS Code, SMS Pool, ActivateProtocol) + generic `custom_http`, encrypted
       credentials. Admin panel (`/admin`, sidebar shell, `requireAdmin`): Overview KPIs,
       **Providers** (enable / reorder / test / edit — the switch), Users (search /
       balance-adjust / role / suspend), Orders (global + force-cancel + re-poll), Catalog
       CRUD + bulk pricing, Finance (ledger + deposit confirm/fail), DB-backed Settings.
+- [x] **Real payment integration** — Stripe (cards), NowPayments (crypto, sandbox), Bachs
+      (African bank transfer / mobile money), Cryptomus (a second crypto processor); each
+      gateway verifies its own signed webhook at `webhooks/payments/:provider`, and there's
+      no mock/fallback path once a gateway is configured.
+- [x] **Account security & webhooks** — TOTP two-factor auth, forgot/reset-password flow,
+      single-active-API-key enforcement, session-authenticated webhook config (secret
+      regeneration + dashboard UI), and an admin audit trail covering every admin-panel
+      mutation.
+- [x] **Admin broadcast email** — compose and send to the user base, with an unsubscribe
+      flow and atomic in-flight job claiming.
+- [x] **SDKs** — `@smsgecko/sdk` (JS/TS) and `smsgecko` (Python) client packages.
 
-Not built (would be next): a support/tickets system, real payment integration, a
-Playwright end-to-end suite.
+Not built (would be next): a support/tickets system and a Playwright end-to-end suite.
 
 ## API at a glance
 
