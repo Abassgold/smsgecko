@@ -19,11 +19,13 @@ import {
   verifyRefreshToken,
   verifyTwoFactorPendingToken,
 } from '../lib/tokens.js';
-import { badRequest, conflict, forbidden, unauthorized } from '../lib/errors.js';
+import { badRequest, conflict, forbidden, tooManyRequests, unauthorized } from '../lib/errors.js';
 import { getSettings } from '../lib/settings.js';
 import { env } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { sendPasswordResetEmail, sendVerificationEmail } from '../lib/email.js';
+import { assertDeliverableEmail } from '../lib/emailValidation.js';
+import { isSuppressed } from '../lib/emailSuppression.js';
 import { decryptJson, encryptJson } from '../lib/secretbox.js';
 import { generateTotpSecret, totpUri, verifyTotp } from '../lib/totp.js';
 
@@ -68,6 +70,14 @@ export async function registerUser(body: RegisterBody): Promise<UserDoc> {
   if (await User.exists({ email })) {
     throw conflict('An account with that email already exists');
   }
+  // Every signup triggers an email to whatever address was typed in, so refuse
+  // ones that can't or shouldn't receive it — bounces and spam complaints from
+  // typos and abuse are what damage our sending reputation. (No DNS lookups in
+  // tests: their addresses are fake domains.)
+  await assertDeliverableEmail(email, { checkDns: env.NODE_ENV !== 'test' });
+  if (await isSuppressed(email, 'transactional')) {
+    throw badRequest("We couldn't deliver email to that address. Please use a different one");
+  }
 
   let referredBy: UserDoc | null = null;
   if (body.referralCode) {
@@ -91,6 +101,24 @@ export async function registerUser(body: RegisterBody): Promise<UserDoc> {
   await issueEmailVerification(user);
 
   return user;
+}
+
+/** Minimum gap between two emails of the same kind to one account. */
+const EMAIL_COOLDOWN_MS = 60_000;
+
+async function emailedRecently(userId: UserDoc['_id'], purpose: 'verify_email' | 'reset_password'): Promise<boolean> {
+  return Boolean(
+    await EmailToken.exists({ userId, purpose, createdAt: { $gt: new Date(Date.now() - EMAIL_COOLDOWN_MS) } }),
+  );
+}
+
+/** The "resend" button: like issueEmailVerification, but throttled per account. */
+export async function resendVerificationEmail(user: UserDoc): Promise<void> {
+  if (user.isVerified) return;
+  if (await emailedRecently(user._id, 'verify_email')) {
+    throw tooManyRequests('A verification email was just sent. Please wait a minute before requesting another');
+  }
+  await issueEmailVerification(user);
 }
 
 /**
@@ -147,6 +175,8 @@ export async function verifyEmail(rawToken: string): Promise<UserDoc> {
 export async function issuePasswordReset(email: string): Promise<void> {
   const user = await User.findOne({ email: email.toLowerCase().trim() });
   if (!user) return;
+  // Throttled silently, so the response is identical whether or not we sent.
+  if (await emailedRecently(user._id, 'reset_password')) return;
 
   const rawToken = randomToken(32);
   await EmailToken.deleteMany({ userId: user._id, purpose: 'reset_password', consumedAt: null });

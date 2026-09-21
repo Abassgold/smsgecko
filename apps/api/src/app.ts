@@ -21,6 +21,7 @@ import affiliateRoutes from './routes/affiliate.routes.js';
 import notificationRoutes from './routes/notifications.routes.js';
 import adminRoutes from './routes/admin/index.js';
 import unsubscribeRoutes from './routes/unsubscribe.routes.js';
+import sesNotificationRoutes from './routes/sesNotifications.routes.js';
 
 export interface BuildAppOptions {
   /** Disable HTTP request logging (used by tests). */
@@ -82,6 +83,9 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<Application>
   // Public, no auth — a one-click unsubscribe link clicked from an email
   // client, never a logged-in dashboard request.
   app.use('/api/v1/unsubscribe', unsubscribeRoutes);
+  // Public, no auth — Amazon SNS posting SES bounce/complaint notifications,
+  // authenticated by message signature instead of a session.
+  app.use('/api/v1/ses/notifications', sesNotificationRoutes);
   // Before depositRoutes — that router has an unpathed requireVerified that would
   // otherwise 401 any /api/v1/* path falling through it.
   app.use('/api/v1/webhooks', webhookRoutes);

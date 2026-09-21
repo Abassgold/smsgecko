@@ -23,7 +23,6 @@ const STATUS_TONE: Record<BroadcastStatus, 'muted' | 'accent' | 'success' | 'dan
 
 export default function AdminBroadcastsPage() {
   const [subject, setSubject] = useState('');
-  const [audience, setAudience] = useState<'all' | 'verified'>('all');
   const [body, setBody] = useState('');
   const [page, setPage] = useState(1);
 
@@ -34,12 +33,11 @@ export default function AdminBroadcastsPage() {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     create.mutate(
-      { subject, body, audience },
+      { subject, body, audience: 'verified' },
       {
         onSuccess: () => {
           setSubject('');
           setBody('');
-          setAudience('all');
         },
       },
     );
@@ -50,9 +48,10 @@ export default function AdminBroadcastsPage() {
       <div>
         <h1 className="font-display text-2xl font-bold">Broadcast email</h1>
         <p className="mt-1 text-sm text-muted">
-          Send one email to every user (or every verified one). Sending happens in the
-          background in batches — this page updates live while one is in flight. Every email
-          carries a real one-click unsubscribe link; unsubscribed users are skipped automatically.
+          Send one email to every verified user. Sending happens in the background in batches —
+          this page updates live while one is in flight. Every email carries a real one-click
+          unsubscribe link; unsubscribed users, and addresses that bounced or reported spam, are
+          skipped automatically.
         </p>
       </div>
 
@@ -66,17 +65,6 @@ export default function AdminBroadcastsPage() {
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
             />
-          </Field>
-
-          <Field label="Audience">
-            <select
-              value={audience}
-              onChange={(e) => setAudience(e.target.value as 'all' | 'verified')}
-              className={inputClass}
-            >
-              <option value="all">All users</option>
-              <option value="verified">Verified users only</option>
-            </select>
           </Field>
 
           <Field label="Message" hint="Plain text — line breaks are preserved. No HTML.">

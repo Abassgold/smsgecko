@@ -37,16 +37,22 @@ services:
         value: 'true'
       - key: SETTINGS_ENC_KEY
         sync: false # base64, 32 bytes — node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-      - key: PAYMENTS_MOCK
-        value: 'true' # flip to false once a real PSP is wired
       - key: ORDER_TTL_SECONDS
         value: '1200'
       - key: WORKERS_ENABLED
         value: 'true'
-      - key: RESEND_API_KEY
+      - key: SES_SMTP_HOST
+        sync: false # e.g. email-smtp.eu-north-1.amazonaws.com
+      - key: SES_SMTP_PORT
+        value: '587'
+      - key: SES_SMTP_USER
         sync: false
+      - key: SES_SMTP_PASS
+        sync: false
+      - key: SES_SNS_TOPIC_ARN
+        sync: false # SNS topic SES posts bounces/complaints to
       - key: EMAIL_FROM
-        sync: false # e.g. SMSGecko <noreply@yourverifieddomain>
+        sync: false # e.g. SMSGecko <support@smsgecko.com>
       - key: APP_URL
         sync: false # https://<your-vercel-domain>
       - key: EMAIL_VERIFICATION_TTL_MINUTES

@@ -77,8 +77,13 @@ const envSchema = z.object({
   /** IAM SMTP credentials scoped to ses:SendRawEmail only — see SMTP settings > Create SMTP credentials in the SES console. */
   SES_SMTP_USER: z.string().optional(),
   SES_SMTP_PASS: z.string().optional(),
-  /** From address for transactional email. Must be a verified SES identity/domain in production. */
-  EMAIL_FROM: z.string().default('SMSGecko <onboarding@resend.dev>'),
+  /** ARN of the SNS topic SES publishes bounce/complaint notifications to. The
+   *  /api/v1/ses/notifications webhook rejects anything from a different topic,
+   *  and returns 503 until this is set. */
+  SES_SNS_TOPIC_ARN: z.string().optional(),
+  /** From address for transactional email. Must be a verified SES identity/domain in production,
+   *  and a real monitored inbox — not a no-reply address. */
+  EMAIL_FROM: z.string().default('SMSGecko <support@smsgecko.com>'),
   /** Public base URL of the web app, used to build links in emails. */
   APP_URL: z.string().default('http://localhost:3000'),
   /** Public base URL of this API itself, used to build the NowPayments IPN callback URL. */

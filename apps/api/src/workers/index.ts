@@ -121,8 +121,10 @@ export async function runBroadcasts(log: Logger): Promise<void> {
     ));
   if (!job) return;
 
-  const audienceFilter: Record<string, unknown> = { unsubscribedFromBroadcasts: false };
-  if (job.audience === 'verified') audienceFilter.isVerified = true;
+  // Only ever mail addresses that clicked their verification link (double opt-in),
+  // whichever audience the admin picked — unverified addresses are where typos,
+  // spam traps and hard bounces live.
+  const audienceFilter: Record<string, unknown> = { unsubscribedFromBroadcasts: false, isVerified: true };
 
   if (job.totalRecipients === 0 && job.sentCount === 0 && job.failedCount === 0) {
     job.totalRecipients = await User.countDocuments(audienceFilter);
@@ -146,8 +148,8 @@ export async function runBroadcasts(log: Logger): Promise<void> {
     let failed = 0;
     for (const user of recipients) {
       try {
-        await sendBroadcastEmail(user.email, String(user._id), job.subject, job.body);
-        sent += 1;
+        // `false` = on the suppression list; skipped, so counted as neither sent nor failed.
+        if (await sendBroadcastEmail(user.email, String(user._id), job.subject, job.body)) sent += 1;
       } catch (err) {
         failed += 1;
         log.error({ err, userId: user.id, broadcastId: job.id }, 'broadcast send failed');

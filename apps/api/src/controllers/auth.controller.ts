@@ -18,7 +18,7 @@ import {
   changePassword as changePasswordService,
   disableTwoFactor,
   enableTwoFactor,
-  issueEmailVerification,
+  resendVerificationEmail,
   issuePasswordReset,
   issueSession,
   registerUser,
@@ -90,7 +90,7 @@ export const verifyEmail = asyncHandler(async (req, res) => {
 
 export const resendVerification = asyncHandler(async (req, res) => {
   const user = req.authUser!;
-  if (!user.isVerified) await issueEmailVerification(user);
+  await resendVerificationEmail(user);
   res.json({ ok: true as const });
 });
 
