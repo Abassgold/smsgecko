@@ -70,9 +70,14 @@ const envSchema = z.object({
 
   WORKERS_ENABLED: bool.default(true),
 
-  /** Resend API key for transactional email. When unset, emails are logged to the console instead of sent. */
-  RESEND_API_KEY: z.string().optional(),
-  /** From address for transactional email. Must be a verified Resend sender/domain in production. */
+  /** Amazon SES SMTP endpoint for transactional email, e.g. email-smtp.eu-north-1.amazonaws.com.
+   *  When unset, emails are logged to the console instead of sent. */
+  SES_SMTP_HOST: z.string().optional(),
+  SES_SMTP_PORT: z.coerce.number().int().positive().default(587),
+  /** IAM SMTP credentials scoped to ses:SendRawEmail only — see SMTP settings > Create SMTP credentials in the SES console. */
+  SES_SMTP_USER: z.string().optional(),
+  SES_SMTP_PASS: z.string().optional(),
+  /** From address for transactional email. Must be a verified SES identity/domain in production. */
   EMAIL_FROM: z.string().default('SMSGecko <onboarding@resend.dev>'),
   /** Public base URL of the web app, used to build links in emails. */
   APP_URL: z.string().default('http://localhost:3000'),

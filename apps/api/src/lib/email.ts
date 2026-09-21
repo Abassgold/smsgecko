@@ -1,4 +1,4 @@
-import { Resend } from 'resend';
+import nodemailer, { type Transporter } from 'nodemailer';
 import { env } from '../config/env.js';
 import { logger } from './logger.js';
 import { signUnsubscribeToken } from './broadcastUnsubscribe.js';
@@ -11,24 +11,31 @@ interface SendArgs {
   headers?: Record<string, string>;
 }
 
-let client: Resend | null = null;
-function resend(): Resend {
-  if (!client) client = new Resend(env.RESEND_API_KEY);
+let client: Transporter | null = null;
+function transporter(): Transporter {
+  if (!client) {
+    client = nodemailer.createTransport({
+      host: env.SES_SMTP_HOST,
+      port: env.SES_SMTP_PORT,
+      secure: env.SES_SMTP_PORT === 465,
+      auth: { user: env.SES_SMTP_USER, pass: env.SES_SMTP_PASS },
+    });
+  }
   return client;
 }
 
 export async function sendEmail({ to, subject, html, text, headers }: SendArgs): Promise<void> {
-  if (!env.RESEND_API_KEY) {
-    logger.warn({ to, subject }, '[email] RESEND_API_KEY unset — logging instead of sending');
+  if (!env.SES_SMTP_HOST || !env.SES_SMTP_USER || !env.SES_SMTP_PASS) {
+    logger.warn({ to, subject }, '[email] SES SMTP unset — logging instead of sending');
     logger.info({ to, subject, text }, '[email] (not sent)');
     return;
   }
 
-  const { error } = await resend().emails.send({ from: env.EMAIL_FROM, to, subject, html, text, headers });
-
-  if (error) {
-    logger.error({ error }, '[email] Resend send failed');
-    throw new Error(`Resend send failed: ${error.message}`);
+  try {
+    await transporter().sendMail({ from: env.EMAIL_FROM, to, subject, html, text, headers });
+  } catch (error) {
+    logger.error({ error }, '[email] SES send failed');
+    throw new Error(`SES send failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -73,16 +80,6 @@ function escapeHtml(raw: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/**
- * Admin broadcast — `bodyText` is plain text an admin typed in, never raw
- * HTML, so there's no admin-authored-markup-in-email risk; it's escaped and
- * wrapped in the same styled template as every other email here, with line
- * breaks preserved. Carries a real one-click unsubscribe: both a visible
- * link in the body and the `List-Unsubscribe` / `List-Unsubscribe-Post`
- * headers mail clients use to offer their own one-click unsubscribe button
- * — required by CAN-SPAM/GDPR/CASL for anything that isn't purely
- * transactional, which this isn't.
- */
 export async function sendBroadcastEmail(to: string, userId: string, subject: string, bodyText: string): Promise<void> {
   const unsubscribeUrl = `${env.API_PUBLIC_URL}/api/v1/unsubscribe?token=${signUnsubscribeToken(userId)}`;
   const escapedBody = escapeHtml(bodyText).replace(/\n/g, '<br>');
