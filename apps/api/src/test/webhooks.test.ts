@@ -221,7 +221,7 @@ describe('v2 webhooks: delivery', () => {
     await sink.close();
   });
 
-  it('fires order.created then order.completed with a valid signature on each', async () => {
+  it('fires order.otp_received with a valid signature', async () => {
     const sink = createSink();
     const url = await sink.listen();
     const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 200_000, stock: 5 });
@@ -238,15 +238,12 @@ describe('v2 webhooks: delivery', () => {
     });
     const orderId = created.json().data.id as string;
 
-    const createdReq = await sink.waitForNth(0);
-    expect(received(createdReq, secret).event).toBe('order.created');
-    expect(received(createdReq, secret).data.order_id).toBe(orderId);
-
     await simulateOtp(orderId);
 
-    const completedReq = await sink.waitForNth(1);
-    expect(received(completedReq, secret).event).toBe('order.completed');
-    expect(received(completedReq, secret).data.otp_code).toBeTruthy();
+    const otpReq = await sink.waitForNth(0);
+    expect(received(otpReq, secret).event).toBe('order.otp_received');
+    expect(received(otpReq, secret).data.order_id).toBe(orderId);
+    expect(received(otpReq, secret).data.otp_code).toBeTruthy();
 
     await sink.close();
 
@@ -254,38 +251,6 @@ describe('v2 webhooks: delivery', () => {
       expect(r.headers['x-smsgecko-signature']).toBe(sign(expectedSecret, r.body));
       return JSON.parse(r.body) as { event: string; data: { order_id: string; otp_code: string | null } };
     }
-  });
-
-  it('fires order.canceled on cancel', async () => {
-    const sink = createSink();
-    const url = await sink.listen();
-    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 300_000, stock: 5 });
-    const { userId } = await makeUser(app, { balanceMicro: 1_000_000 });
-    const secret = 'd'.repeat(20);
-    await User.updateOne({ _id: userId }, { $set: { webhookUrl: url, webhookSecret: secret } });
-    const key = await keyFor(userId);
-
-    const created = await inject({
-      method: 'POST',
-      url: '/api/v2/orders',
-      headers: { authorization: `Bearer ${key}` },
-      payload: { catalog_product_id: `${serviceCode}::${countryCode}` },
-    });
-    const orderId = created.json().data.id as string;
-    await sink.waitForNth(0); // order.created
-
-    await inject({
-      method: 'POST',
-      url: `/api/v2/orders/${orderId}/cancel`,
-      headers: { authorization: `Bearer ${key}` },
-    });
-
-    const canceledReq = await sink.waitForNth(1);
-    const body = JSON.parse(canceledReq.body) as { event: string; data: { status: string } };
-    expect(body.event).toBe('order.canceled');
-    expect(body.data.status).toBe('canceled');
-
-    await sink.close();
   });
 
   it('never configures an unsafe delivery target even directly on the model (defense in depth check)', async () => {

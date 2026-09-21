@@ -38,7 +38,10 @@ export async function applyOtpToOrder(
 
   const fallbackText = otp ? `Your code is ${otp}` : null;
   const rows = (
-    messages.length ? messages : fallbackText ? [{ sender: updated.providerLabel ?? 'SMS', text: fallbackText }] : []
+    // `providerLabel` names our upstream reseller connection (e.g. "DaisySMS
+    // Pool 1") — an admin-facing detail, never shown to customers. Fall back
+    // to the service name instead so a synthesized message doesn't leak it.
+    messages.length ? messages : fallbackText ? [{ sender: updated.serviceName, text: fallbackText }] : []
   ).map((m) => ({
     orderId: updated._id,
     userId: updated.userId,
@@ -50,14 +53,16 @@ export async function applyOtpToOrder(
   if (rows.length) await SmsMessage.insertMany(rows);
 
   await recordOtpReceived(updated);
-  await notify(
-    updated.userId,
-    'otp_received',
-    `${updated.serviceName} code received`,
-    otp ? `Your code is ${otp}.` : 'A message arrived for your number.',
-    updated._id,
-  );
-  fireWebhook(updated, 'order.completed', primary?.text ?? fallbackText);
+  if (updated.source !== 'api') {
+    await notify(
+      updated.userId,
+      'otp_received',
+      `${updated.serviceName} code received`,
+      otp ? `Your code is ${otp}.` : 'A message arrived for your number.',
+      updated._id,
+    );
+  }
+  fireWebhook(updated, 'order.otp_received', primary?.text ?? fallbackText);
 
   return updated;
 }
@@ -105,7 +110,7 @@ export async function refundWaitingOrder(
     /* best-effort */
   }
 
-  if (to === 'expired') {
+  if (to === 'expired' && order.source !== 'api') {
     await notify(
       order.userId,
       'order_expired',
@@ -114,7 +119,8 @@ export async function refundWaitingOrder(
       order._id,
     );
   }
-  fireWebhook(order, to === 'expired' ? 'order.expired' : 'order.canceled');
+  // order.expired / order.canceled webhooks are switched off for now.
+  // fireWebhook(order, to === 'expired' ? 'order.expired' : 'order.canceled');
 
   return order;
 }

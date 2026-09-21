@@ -16,7 +16,7 @@ import { parseOfferId } from '../lib/catalog.js';
 import { sha256 } from '../lib/crypto.js';
 import { debit } from '../lib/ledger.js';
 import { applyOtpToOrder, refundWaitingOrder } from '../lib/orderLifecycle.js';
-import { dispatchWebhook } from '../lib/webhooks.js';
+// import { dispatchWebhook } from '../lib/webhooks.js';
 import { holdRemainingSeconds, minHoldSecondsFor } from '../lib/providerPolicy.js';
 import {
   badRequest,
@@ -175,7 +175,8 @@ export async function createOrder(
           created = doc;
         });
         if (!created) throw new Error('order creation returned no document');
-        void dispatchWebhook(user, 'order.created', created);
+        // order.created webhooks are switched off for now.
+        // void dispatchWebhook(user, 'order.created', created);
         return { order: created, reused: false };
       } catch (err) {
         // Order never persisted — hand the rented number back to the provider.
@@ -223,7 +224,8 @@ export async function createOrder(
       throw err;
     }
 
-    void dispatchWebhook(user, 'order.created', doc);
+    // order.created webhooks are switched off for now.
+    // void dispatchWebhook(user, 'order.created', doc);
     return { order: doc, reused: false };
   } finally {
     if (body.idempotencyKey) {
@@ -335,9 +337,9 @@ export async function deliverOtpByProviderRef(
     return { matched: true, applied: false, status: order.status };
   }
 
-  const messages = text
-    ? [{ sender: order.providerLabel ?? 'SMS', text, receivedAt: new Date() }]
-    : [];
+  // `providerLabel` names our upstream reseller connection — never shown to
+  // customers. Fall back to the service name instead of leaking it.
+  const messages = text ? [{ sender: order.serviceName, text, receivedAt: new Date() }] : [];
   const updated = await applyOtpToOrder(order, code, messages);
   if (!updated) {
     const fresh = await Order.findById(order._id);

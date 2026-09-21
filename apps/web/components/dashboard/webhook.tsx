@@ -41,8 +41,8 @@ export function Webhook() {
     <Card className="p-6">
       <SectionTitle>Webhook</SectionTitle>
       <p className="mt-1 text-sm text-muted">
-        Receive real-time push notifications when order events occur (created, completed,
-        expired, canceled) instead of polling.
+        Receive a real-time push notification when an OTP arrives (order.otp_received) instead
+        of polling.
       </p>
 
       <form

@@ -5,7 +5,7 @@ import type { UserDoc } from '../models/User.js';
 import type { OrderDoc } from '../models/Order.js';
 import { usdString } from '../services/v2.mapper.js';
 
-export type WebhookEvent = 'order.created' | 'order.completed' | 'order.expired' | 'order.canceled';
+export type WebhookEvent = 'order.created' | 'order.otp_received' | 'order.expired' | 'order.canceled';
 
 const SIGNATURE_HEADER = 'X-SMSGecko-Signature';
 const DELIVERY_TIMEOUT_MS = 5000;

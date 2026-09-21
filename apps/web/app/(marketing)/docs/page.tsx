@@ -225,7 +225,7 @@ export default function DocsPage() {
 
       <div className="mt-12 grid gap-12 lg:grid-cols-[220px_minmax(0,1fr)]">
         <aside className="hidden lg:block">
-          <div className="sticky top-24">
+          <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto">
             <Sidebar />
           </div>
         </aside>
@@ -872,10 +872,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
             <Params
               headers={['Event', 'Trigger']}
               rows={[
-                ['order.created', 'A new order was placed.'],
-                ['order.completed', 'An OTP arrived — same moment `otp_code` is set.'],
-                ['order.expired', 'No code arrived before `expires_at` — refunded.'],
-                ['order.canceled', 'You (or the API) canceled a waiting order — refunded.'],
+                ['order.otp_received', 'An OTP arrived — same moment `otp_code` is set.'],
               ]}
             />
             <CodeLabel>Payload</CodeLabel>
@@ -888,7 +885,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
             <CodeBlock
               title="Webhook POST Body"
               tabs={[curl('JSON', `{
-  "event": "order.completed",
+  "event": "order.otp_received",
   "timestamp": "2026-09-10T14:03:12.000Z",
   "data": {
     "order_id": "665f2a1b9c4d8e0012ab34cd",
