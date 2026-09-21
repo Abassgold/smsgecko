@@ -58,8 +58,7 @@ export function SiteFooter() {
           ))}
         </div>
         <div className="mt-12 border-t border-border pt-6 text-xs text-faint">
-          © {new Date().getFullYear()} SMSGecko. A learning project — not a real service, and no
-          real SMS or payments happen here.
+          © {new Date().getFullYear()} SMSGecko. All rights reserved.
         </div>
       </Container>
     </footer>

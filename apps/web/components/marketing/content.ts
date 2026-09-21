@@ -135,8 +135,14 @@ export const FAQ: QA[] = [
     a: 'Click “Get Started Free”, enter an email and password, and you are in. No credit card is required to sign up.',
   },
   {
-    q: 'What payment methods do you accept?',
-    a: 'This replica uses a mock payment provider plus a simulated crypto (USDT) flow. Deposits confirm instantly in development.',
+    q: 'How do I add money?',
+    a: `Navigate to Deposit in your dashboard, then:
+
+1. Choose a payment method (bank transfer or crypto)
+2. Enter the amount you'd like to deposit
+3. Complete the payment through the provider
+
+Funds are credited automatically once the payment is confirmed. Minimum deposit starts from $0.50.`,
   },
   {
     q: "What happens if I don't receive an OTP?",

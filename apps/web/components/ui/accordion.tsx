@@ -42,7 +42,7 @@ export function Accordion({ items }: { items: QA[] }) {
                 isOpen ? 'grid-rows-[1fr] pb-5' : 'grid-rows-[0fr]',
               )}
             >
-              <div className="min-h-0 leading-relaxed">{item.a}</div>
+              <div className="min-h-0 whitespace-pre-line leading-relaxed">{item.a}</div>
             </div>
           </div>
         );

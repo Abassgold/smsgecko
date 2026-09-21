@@ -147,9 +147,9 @@ export default function PricingPage() {
           <SectionHeading>Payment Methods</SectionHeading>
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
             {[
-              ['Mock wallet', 'Instant confirm in development — no real charge.'],
-              ['QRIS', 'Scan-and-pay simulation for the deposit flow.'],
-              ['Cryptocurrency', 'Simulated USDT address with a webhook confirm.'],
+              ['Bank transfer', 'Direct bank transfer — funds confirm automatically once payment clears.'],
+              ['Mobile money', 'MTN, Airtel, and other mobile wallets across dozens of countries.'],
+              ['Priced in USD', 'Your deposit converts automatically to the local currency at checkout — no manual FX.'],
             ].map(([title, body]) => (
               <Card key={title} className="p-6">
                 <div className="font-display text-base font-semibold">{title}</div>
