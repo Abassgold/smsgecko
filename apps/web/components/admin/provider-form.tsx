@@ -12,13 +12,14 @@ type Mode = { kind: 'create' } | { kind: 'edit'; provider: ProviderConfigView };
 type ProviderKey = ProviderConfigView['key'];
 
 /** Adapters ported from FloZap — each takes a plain JSON config blob. */
-const RESELLER_KEYS = ['hero_sms', 'daisy_sms', 'sms_bower', 'sms_code', 'sms_pool'] as const;
+const RESELLER_KEYS = ['hero_sms', 'daisy_sms', 'sms_bower', 'sms_code', 'sms_pool', 'hstockplus'] as const;
 const RESELLER_LABELS: Record<(typeof RESELLER_KEYS)[number], string> = {
   hero_sms: 'hero-sms',
   daisy_sms: 'daisySMS',
   sms_bower: 'smsbower',
   sms_code: 'smscode',
   sms_pool: 'smspool',
+  hstockplus: 'HstockPlus',
 };
 
 export function ProviderForm({ mode, onDone }: { mode: Mode; onDone: () => void }) {

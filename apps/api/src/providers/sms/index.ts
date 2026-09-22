@@ -17,4 +17,5 @@ export { DaisySmsProvider, type DaisySmsConfig } from './adapters/daisySms.js';
 export { SmsBowerProvider, type SmsBowerConfig } from './adapters/smsBower.js';
 export { SmsCodeProvider, type SmsCodeConfig } from './adapters/smsCode.js';
 export { SmsPoolProvider, type SmsPoolConfig } from './adapters/smsPool.js';
+export { HstockPlusProvider, type HstockPlusConfig } from './adapters/hstockPlus.js';
 export type { ActivateConfig } from './adapters/activateProtocol.js';
