@@ -29,26 +29,33 @@ async function active(): Promise<{ id: string; provider: SmsProvider } | null> {
   return cat ? { id: String(cat.cfg._id), provider: cat.provider } : null;
 }
 
+// The catch has to sit OUTSIDE catalogCached, not inside its loader: catalogCached
+// only sees whatever the loader resolves with, so if the loader itself swallowed
+// the error and resolved to `[]`, that `[]` looks exactly like a genuinely empty
+// catalog and gets memoized for the full TTL — one transient provider hiccup then
+// leaves the storefront looking empty for minutes after the provider recovers.
+// Letting the rejection propagate through catalogCached means a failure is never
+// cached; only a real, successful (possibly empty) result is.
 async function services(): Promise<CatalogService[]> {
   const a = await active();
   if (!a) return [];
-  return catalogCached(`${a.id}:services`, () =>
-    a.provider.listServices().catch((err) => {
-      logger.warn({ err }, '[catalog] listServices failed');
-      return [];
-    }),
-  );
+  try {
+    return await catalogCached(`${a.id}:services`, () => a.provider.listServices());
+  } catch (err) {
+    logger.warn({ err }, '[catalog] listServices failed');
+    return [];
+  }
 }
 
 async function countries(): Promise<CatalogCountry[]> {
   const a = await active();
   if (!a) return [];
-  return catalogCached(`${a.id}:countries`, () =>
-    a.provider.listCountries().catch((err) => {
-      logger.warn({ err }, '[catalog] listCountries failed');
-      return [];
-    }),
-  );
+  try {
+    return await catalogCached(`${a.id}:countries`, () => a.provider.listCountries());
+  } catch (err) {
+    logger.warn({ err }, '[catalog] listCountries failed');
+    return [];
+  }
 }
 
 /** Uncached — prices move. Returns [] on any provider/network error. */
