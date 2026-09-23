@@ -125,9 +125,27 @@ export class HstockPlusProvider implements SmsProvider {
     if (!order?.order || !order?.phone) {
       throw new NoStockError(`hstockplus: ${res?.error ?? 'order create returned no number'}`);
     }
+    // hstockplus's `phone` is just the bare national number, not a full
+    // E.164 string — confirmed live 2026-09-23 (a real US order came back
+    // "4055123415", not "+14055123415" as the docs example implies; same
+    // "docs example doesn't match live behavior" pattern already hit once
+    // with sms_countries' country_code being a dial code, not ISO-2).
+    // normalizePhone() alone (strip non-digits, prepend "+") was built for
+    // the SMS-Activate-family adapters, whose numbers genuinely do already
+    // include the country code — reusing it here for hstockplus silently
+    // produced wrong numbers for every successful rent, just never caught
+    // since no real purchase had gone through it until now. input.dialCode
+    // is smsgecko's own canonical dial code for the country actually
+    // ordered, so no separate lookup table is needed here unlike FloZap/
+    // NexuzMarket's HstockPlus wiring, which doesn't have one handy.
+    const rawPhone = String(order.phone).replace(/^\+/, '');
+    const dialCode = input.dialCode?.replace(/^\+/, '');
+    const phoneNumber = dialCode && !rawPhone.startsWith(dialCode)
+      ? `+${dialCode}${rawPhone}`
+      : normalizePhone(rawPhone);
     return {
       providerRef: String(order.order),
-      phoneNumber: normalizePhone(String(order.phone)),
+      phoneNumber,
       costMicro: usdToMicro(Number(pick.price)),
     };
   }
