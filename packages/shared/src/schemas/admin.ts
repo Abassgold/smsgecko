@@ -9,7 +9,6 @@ export const PROVIDER_KEYS = [
   'sms_bower',
   'sms_code',
   'sms_pool',
-  'hstockplus',
 ] as const;
 export type ProviderKey = (typeof PROVIDER_KEYS)[number];
 
