@@ -12,6 +12,7 @@ import { LoadingRow } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ProviderForm } from '@/components/admin/provider-form';
 import { formatTimeAgo } from '@/lib/format';
+import { ApiError } from '@/lib/api';
 import {
   useAdminProviders,
   useDeleteProvider,
@@ -45,6 +46,12 @@ export default function AdminProvidersPage() {
         </Button>
       </div>
 
+      {update.error ? (
+        <p className="text-sm text-danger">
+          {update.error instanceof ApiError ? update.error.message : 'Could not update the provider'}
+        </p>
+      ) : null}
+
       {isLoading ? (
         <LoadingRow />
       ) : !providers || providers.length === 0 ? (
@@ -70,6 +77,9 @@ export default function AdminProvidersPage() {
                     <div className="text-xs text-faint">
                       {p.key === 'custom_http' ? 'generic HTTP' : `${p.key} adapter`}
                     </div>
+                    {p.key !== 'custom_http' && !p.config.apiKey ? (
+                      <div className="mt-1 text-xs text-warning">Needs an API key — click Edit</div>
+                    ) : null}
                     {p.stats.lastError ? (
                       <div className="mt-1 max-w-xs truncate text-xs text-danger" title={p.stats.lastError}>
                         {p.stats.lastError}

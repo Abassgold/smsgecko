@@ -6,7 +6,6 @@ import { ProviderConfig, type ProviderConfigDoc } from '../../models/ProviderCon
 import type { OrderDoc } from '../../models/Order.js';
 import { CustomHttpProvider, type CustomHttpConfig } from './adapters/customHttp.js';
 import { HeroSmsProvider, type HeroSmsConfig } from './adapters/heroSms.js';
-import { DaisySmsProvider, type DaisySmsConfig } from './adapters/daisySms.js';
 import { SmsBowerProvider, type SmsBowerConfig } from './adapters/smsBower.js';
 import { SmsCodeProvider, type SmsCodeConfig } from './adapters/smsCode.js';
 import { SmsPoolProvider, type SmsPoolConfig } from './adapters/smsPool.js';
@@ -27,7 +26,6 @@ export type AdapterFactory = (
 const ADAPTERS: Record<string, AdapterFactory> = {
   custom_http: (cfg, decrypted) => new CustomHttpProvider(decrypted as CustomHttpConfig, cfg.label),
   hero_sms: (cfg, decrypted) => new HeroSmsProvider(decrypted as HeroSmsConfig, cfg.label),
-  daisy_sms: (cfg, decrypted) => new DaisySmsProvider(decrypted as DaisySmsConfig, cfg.label),
   sms_bower: (cfg, decrypted) => new SmsBowerProvider(decrypted as SmsBowerConfig, cfg.label),
   sms_code: (cfg, decrypted) => new SmsCodeProvider(decrypted as SmsCodeConfig, cfg.label),
   sms_pool: (cfg, decrypted) => new SmsPoolProvider(decrypted as SmsPoolConfig, cfg.label),
@@ -188,7 +186,7 @@ export async function rentWithFallback(input: RentInput): Promise<RentWithFallba
   // adapters actually distinguish today (no stock vs. misconfigured/unreachable);
   // anything else falls into the generic 'provider_error' bucket rather than
   // guessing at a finer-grained cause we can't actually tell apart.
-  const attempts: Array<{ provider: string; outcome: string }> = [];
+  const attempts: Array<{ outcome: string }> = [];
   for (const { cfg, provider } of chain) {
     await bumpStat(cfg._id, { rentAttempts: 1 });
     try {
@@ -222,7 +220,7 @@ export async function rentWithFallback(input: RentInput): Promise<RentWithFallba
         lastError: msg,
         lastErrorAt: new Date(),
       });
-      attempts.push({ provider: cfg.label, outcome });
+      attempts.push({ outcome });
       errors.push(`${cfg.label}: ${msg}`);
     }
   }
@@ -231,9 +229,10 @@ export async function rentWithFallback(input: RentInput): Promise<RentWithFallba
   // that upstream API felt like returning. Useful for us, meaningless (or
   // actively confusing) to a customer, so it's logged for debugging but
   // never put in the response body. The customer just gets a clean,
-  // generic message; `details.attempts` (provider label + outcome only)
+  // generic message; `details.attempts` (one outcome per provider tried — no
+  // names: which reseller we use is never exposed)
   // is the most a client ever sees of what went wrong.
-  logger.warn({ errors, attempts }, 'no provider could supply a number');
+  logger.warn({ errors }, 'no provider could supply a number');
   throw providerError('No numbers are available for this service right now — please try again shortly.', {
     attempts,
   });

@@ -12,11 +12,14 @@ export const idempotencyHeader = yup.string().min(8).max(128).optional();
 
 export const productsQuery = yup.object({
   service: yup.string().optional(),
+  /** Without `service`: filter the service list by name/code (it can exceed `limit`). */
+  search: yup.string().trim().max(100).optional(),
   country: yup.string().optional(),
   limit: yup.number().integer().min(1).max(500).default(200),
 });
 export interface ProductsQuery {
   service?: string;
+  search?: string;
   country?: string;
   limit: number;
 }

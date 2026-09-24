@@ -37,15 +37,20 @@ export async function applyOtpToOrder(
   if (!updated) return null;
 
   const fallbackText = otp ? `Your code is ${otp}` : null;
+  // `providerLabel` / `provider` name our upstream reseller (e.g. "smspool") —
+  // admin-only. Adapters rarely know the real SMS sender, so anything empty,
+  // generic, or naming the reseller is shown as the service name instead.
+  const hidden = new Set(
+    [updated.providerLabel, updated.provider, 'sms'].filter(Boolean).map((v) => String(v).toLowerCase()),
+  );
+  const safeSender = (sender: string | undefined) =>
+    sender?.trim() && !hidden.has(sender.trim().toLowerCase()) ? sender.trim() : updated.serviceName;
   const rows = (
-    // `providerLabel` names our upstream reseller connection (e.g. "DaisySMS
-    // Pool 1") — an admin-facing detail, never shown to customers. Fall back
-    // to the service name instead so a synthesized message doesn't leak it.
     messages.length ? messages : fallbackText ? [{ sender: updated.serviceName, text: fallbackText }] : []
   ).map((m) => ({
     orderId: updated._id,
     userId: updated.userId,
-    sender: m.sender,
+    sender: safeSender(m.sender),
     text: m.text,
     parsedOtp: parseOtp(m.text) ?? otp,
     receivedAt: m.receivedAt ?? new Date(),

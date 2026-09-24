@@ -10,9 +10,9 @@ import type { OrderDoc } from '../models/Order.js';
  */
 const PROVIDER_MIN_HOLD_SECONDS: Record<string, number> = {
   mock: 0,
-  daisy_sms: 0,
   sms_pool: 0,
-  sms_code: 0,
+  // smscode refuses cancels for the first ~2 minutes (CANCEL_TOO_EARLY).
+  sms_code: 120,
   hero_sms: 180,
   sms_bower: 180,
 };

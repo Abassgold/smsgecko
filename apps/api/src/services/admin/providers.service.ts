@@ -73,6 +73,15 @@ export interface UpdateProviderInput {
   config?: Record<string, unknown>;
 }
 
+/** Adapters that cannot do anything until an `apiKey` has been pasted in. */
+const KEYED_ADAPTERS = new Set(['hero_sms', 'sms_bower', 'sms_code', 'sms_pool']);
+
+function assertCanEnable(key: string, config: Record<string, unknown>): void {
+  if (KEYED_ADAPTERS.has(key) && !config.apiKey) {
+    throw badRequest('Add an API key before turning this provider on');
+  }
+}
+
 async function sortedConfigs(): Promise<ProviderConfigDoc[]> {
   return ProviderConfig.find().sort({ priority: 1, createdAt: 1 });
 }
@@ -85,6 +94,7 @@ export async function createProvider(body: CreateProviderInput) {
   if (await ProviderConfig.exists({ label: body.label })) {
     throw conflict('A provider with that label already exists');
   }
+  if (body.enabled) assertCanEnable(body.key, body.config ?? {});
   const cfg = await ProviderConfig.create({
     key: body.key,
     label: body.label,
@@ -126,6 +136,7 @@ export async function updateProvider(id: string, body: UpdateProviderInput) {
   if (body.config !== undefined) {
     cfg.configEnc = encryptJson(mergeConfigPatch(cfg, body.config));
   }
+  if (cfg.enabled) assertCanEnable(cfg.key, decryptJson(cfg.configEnc));
   await cfg.save();
   if (cfg.enabled) await disableOthers(cfg._id);
   bustProviderCache();

@@ -4,7 +4,7 @@ import type { UserDoc } from '../models/User.js';
 import { badRequest } from '../lib/errors.js';
 import { getSettings } from '../lib/settings.js';
 import { createOrder, type CreateOrderResult } from './orders.service.js';
-import { priceTiers, searchCountries, searchServices } from './catalog.service.js';
+import { priceTiers, priceTiersByCountry, searchCountries, searchServices } from './catalog.service.js';
 import { usdString } from './v2.mapper.js';
 import type { ProductsQuery } from '../lib/validation/v2.schema.js';
 
@@ -15,7 +15,7 @@ import type { ProductsQuery } from '../lib/validation/v2.schema.js';
  */
 export async function listCatalogProducts(q: ProductsQuery): Promise<V2Product[]> {
   if (!q.service) {
-    const services = await searchServices(undefined, q.limit);
+    const services = await searchServices(q.search, q.limit);
     return services.map((s) => ({
       id: s.id,
       service: s.name,
@@ -35,9 +35,14 @@ export async function listCatalogProducts(q: ProductsQuery): Promise<V2Product[]
     : countries;
 
   const settings = await getSettings();
+  // All countries: one provider call for every country's prices. One country:
+  // ask for just that country.
+  const byCountry = q.country ? null : await priceTiersByCountry(serviceCode, settings);
   const out: V2Product[] = [];
   for (const c of wanted) {
-    const tiers = await priceTiers(serviceCode, c.code, settings);
+    const tiers = byCountry
+      ? (byCountry.get(c.code) ?? [])
+      : await priceTiers(serviceCode, c.code, settings);
     tiers.forEach((t, i) => {
       out.push({
         id: i === 0 ? `${serviceCode}::${c.code}` : `${serviceCode}::${c.code}::${i}`,

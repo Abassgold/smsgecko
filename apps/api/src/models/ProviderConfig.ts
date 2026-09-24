@@ -4,7 +4,6 @@ export const PROVIDER_ADAPTER_KEYS = [
   'mock',
   'custom_http',
   'hero_sms',
-  'daisy_sms',
   'sms_bower',
   'sms_code',
   'sms_pool',

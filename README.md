@@ -6,7 +6,7 @@ for the OTP within a time window; if no SMS arrives the order auto-expires and r
 
 A full-stack build (flows modeled on [smscode.gg](https://smscode.gg)). SMS delivery and
 payments run behind provider interfaces — real adapters are wired in (Stripe, NowPayments,
-Bachs, Cryptomus for payments; HeroSMS, DaisySMS, SMS Bower, SMS Code, SMS Pool for SMS)
+Bachs, Cryptomus for payments; HeroSMS, SMS Bower, SMS Code, SMS Pool for SMS)
 alongside mock adapters, so you can run everything locally with no external accounts. See
 [`docs/architecture.md`](docs/architecture.md) for the design.
 
@@ -88,7 +88,7 @@ lives in **Settings** in the admin panel — no restart needed. To see refunds q
       `docs/architecture.md`
 - [x] **Multi-provider SMS + admin panel** — a `ProviderConfig` registry with an ordered
       **fallback chain** (rent from provider #1, fall through to #2 on no-stock/error),
-      poll-based `SmsProvider` interface, mock + real reseller adapters (HeroSMS, DaisySMS,
+      poll-based `SmsProvider` interface, mock + real reseller adapters (HeroSMS,
       SMS Bower, SMS Code, SMS Pool, ActivateProtocol) + generic `custom_http`, encrypted
       credentials. Admin panel (`/admin`, sidebar shell, `requireAdmin`): Overview KPIs,
       **Providers** (enable / reorder / test / edit — the switch), Users (search /

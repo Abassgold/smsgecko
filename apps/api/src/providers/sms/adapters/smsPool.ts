@@ -110,7 +110,7 @@ export class SmsPoolProvider implements SmsProvider {
         status: 'received',
         code: code || null,
         messages: [
-          { sender: this.label, text: String(res.full_sms ?? res.sms ?? code), receivedAt: new Date() },
+          { sender: '', text: String(res.full_sms ?? res.sms ?? code), receivedAt: new Date() },
         ],
       };
     }
@@ -162,45 +162,50 @@ export class SmsPoolProvider implements SmsProvider {
     const j = await this.form('/country/retrieve_all', {});
     const rows: any[] = Array.isArray(j) ? j : [];
     return rows
-      .map((c) => ({
-        code: String(c.ID ?? c.id ?? ''),
-        name: String(c.name ?? c.ID ?? ''),
-        iso2: typeof c.short_name === 'string' ? c.short_name.toLowerCase() : undefined,
-      }))
+      .map((c) => {
+        // short_name is ISO-2, except virtual pools: "US_V", "AU_V" -> "us", "au".
+        const iso = typeof c.short_name === 'string' ? /^[a-z]{2}/i.exec(c.short_name)?.[0] : undefined;
+        const dial = c.cc != null ? String(c.cc).replace(/[^\d]/g, '') : '';
+        return {
+          code: String(c.ID ?? c.id ?? ''),
+          name: String(c.name ?? c.ID ?? ''),
+          iso2: iso?.toLowerCase(),
+          dialCode: dial || undefined,
+        };
+      })
       .filter((c) => c.code && c.name);
   }
 
   async listPrices(q: CatalogQuery): Promise<CatalogPrice[]> {
     const service = this.cfg.serviceMap?.[q.serviceCode] ?? q.serviceCode;
-    const out: CatalogPrice[] = [];
+    const country = q.countryCode ? (this.cfg.countryMap?.[q.countryCode] ?? q.countryCode) : undefined;
 
-    if (q.countryCode) {
-      const country = this.cfg.countryMap?.[q.countryCode] ?? q.countryCode;
-      const r = await this.form('/request/price', { service, country });
-      const stock = r?.pool_size != null ? Number(r.pool_size) : null;
-      for (const key of ['price', 'high_price'] as const) {
-        const n = Number(r?.[key]);
-        if (Number.isFinite(n) && n > 0 && !out.some((o) => o.priceMicro === Math.round(n * 1_000_000))) {
-          out.push({ serviceCode: service, countryCode: country, priceMicro: Math.round(n * 1_000_000), stock });
-        }
-      }
-      return out;
-    }
-
-    // No country: /request/success_rate returns a row per country with two tiers.
+    // /request/success_rate returns a row per country with both tiers AND stock,
+    // so it serves the single-country case too (/request/price carries no stock).
     const arr = await this.form('/request/success_rate', { service });
     const rows: any[] = Array.isArray(arr) ? arr : [];
+    const out: CatalogPrice[] = [];
     for (const c of rows) {
       const cc = String(c.country_id ?? c.ID ?? '');
-      if (!cc) continue;
+      if (!cc || (country && cc !== country)) continue;
       const stock = c.stock != null ? Number(c.stock) : null;
       const low = Number(c.low_price);
       const hi = Number(c.price);
       if (Number.isFinite(low) && low > 0) {
-        out.push({ serviceCode: service, countryCode: cc, priceMicro: Math.round(low * 1_000_000), stock });
+        out.push({ serviceCode: q.serviceCode, countryCode: cc, priceMicro: Math.round(low * 1_000_000), stock });
       }
       if (Number.isFinite(hi) && hi > 0 && hi !== low) {
-        out.push({ serviceCode: service, countryCode: cc, priceMicro: Math.round(hi * 1_000_000), stock });
+        out.push({ serviceCode: q.serviceCode, countryCode: cc, priceMicro: Math.round(hi * 1_000_000), stock });
+      }
+    }
+    if (out.length || !country) return out;
+
+    // Country missing from success_rate: fall back to /request/price (no stock).
+    const r = await this.form('/request/price', { service, country });
+    for (const key of ['price', 'high_price'] as const) {
+      const micro = Math.round(Number(r?.[key]) * 1_000_000);
+      if (micro > 0 && !out.some((o) => o.priceMicro === micro)) {
+        out.push({ serviceCode: q.serviceCode, countryCode: country, priceMicro: micro, stock: null });
       }
     }
     return out;

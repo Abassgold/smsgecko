@@ -115,14 +115,11 @@ export async function searchCountries(q?: string, limit?: number): Promise<Count
   return rows.map(toCountryView);
 }
 
-/** Markup-applied price tiers for a service×country, cheapest first. */
-export async function priceTiers(
-  serviceCode: string,
-  countryCode: string,
-  settings?: ResolvedSettings,
-): Promise<Array<{ rawPriceMicro: number; priceMicro: number; stock: number | null; operator: string | null }>> {
-  const s = settings ?? (await getSettings());
-  const tiers = (await prices(serviceCode, countryCode))
+type Tier = { rawPriceMicro: number; priceMicro: number; stock: number | null; operator: string | null };
+
+/** Raw provider rows -> markup-applied tiers, cheapest first, duplicates dropped. */
+function toTiers(rows: CatalogPrice[], s: ResolvedSettings): Tier[] {
+  const tiers = rows
     .filter((t) => t.priceMicro > 0)
     .map((t) => ({
       rawPriceMicro: t.priceMicro,
@@ -138,6 +135,35 @@ export async function priceTiers(
     seen.add(k);
     return true;
   });
+}
+
+/** Markup-applied price tiers for a service×country, cheapest first. */
+export async function priceTiers(
+  serviceCode: string,
+  countryCode: string,
+  settings?: ResolvedSettings,
+): Promise<Tier[]> {
+  const s = settings ?? (await getSettings());
+  return toTiers(await prices(serviceCode, countryCode), s);
+}
+
+/**
+ * Tiers for a service in every country, keyed by country code — ONE provider
+ * call (every adapter prices all countries when `countryCode` is omitted)
+ * instead of one per country, which took minutes on providers with ~200 countries.
+ */
+export async function priceTiersByCountry(
+  serviceCode: string,
+  settings?: ResolvedSettings,
+): Promise<Map<string, Tier[]>> {
+  const s = settings ?? (await getSettings());
+  const byCountry = new Map<string, CatalogPrice[]>();
+  for (const row of await prices(serviceCode)) {
+    const list = byCountry.get(row.countryCode) ?? [];
+    list.push(row);
+    byCountry.set(row.countryCode, list);
+  }
+  return new Map([...byCountry].map(([c, rows]) => [c, toTiers(rows, s)]));
 }
 
 type PriceTier = Awaited<ReturnType<typeof priceTiers>>[number];

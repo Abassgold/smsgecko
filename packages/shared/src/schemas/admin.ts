@@ -5,7 +5,6 @@ import type { OrderSource, OrderStatus, TransactionType, DepositStatus } from '.
 export const PROVIDER_KEYS = [
   'custom_http',
   'hero_sms',
-  'daisy_sms',
   'sms_bower',
   'sms_code',
   'sms_pool',

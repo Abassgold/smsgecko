@@ -157,7 +157,7 @@ export class CustomHttpProvider implements SmsProvider {
     if ((this.cfg.parseMode ?? 'text') === 'text') {
       if (map.textReceivedRegex) {
         const m = new RegExp(map.textReceivedRegex).exec(text);
-        if (m) return { status: 'received', code: (m[1] ?? '').trim(), messages: [{ sender: this.label, text: (m[1] ?? '').trim() }] };
+        if (m) return { status: 'received', code: (m[1] ?? '').trim(), messages: [{ sender: '', text: (m[1] ?? '').trim() }] };
       }
       if ((map.textCanceledValues ?? ['STATUS_CANCEL']).some((v) => text.toUpperCase().includes(v.toUpperCase()))) {
         return { status: 'canceled' };
@@ -168,7 +168,7 @@ export class CustomHttpProvider implements SmsProvider {
     const status = String(pick(json, map.statusPath) ?? '');
     if ((map.receivedValues ?? ['received', 'completed', 'success']).includes(status)) {
       const code = String(pick(json, map.codePath) ?? '');
-      return { status: 'received', code, messages: code ? [{ sender: this.label, text: code }] : [] };
+      return { status: 'received', code, messages: code ? [{ sender: '', text: code }] : [] };
     }
     if ((map.canceledValues ?? ['canceled', 'cancelled', 'timeout']).includes(status)) {
       return { status: 'canceled' };

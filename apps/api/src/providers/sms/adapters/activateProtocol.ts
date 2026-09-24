@@ -1,4 +1,5 @@
 import { microToUsd } from '@smsgecko/shared';
+import { dialCodeFor, lookupCountry } from '../../../lib/countryLookup.js';
 import {
   NoStockError,
   ProviderConfigError,
@@ -92,7 +93,7 @@ export function parseRentResponse(text: string): { providerRef: string; phoneNum
 }
 
 /** Parse a `getStatus` response into a PollResult. */
-export function parseStatusResponse(text: string, sender = 'SMS'): PollResult {
+export function parseStatusResponse(text: string, sender = ''): PollResult {
   const up = text.toUpperCase();
   if (up.startsWith('STATUS_OK')) {
     const code = text.slice(text.indexOf(':') + 1).trim();
@@ -149,18 +150,25 @@ export function parseActivateCountries(json: unknown): CatalogCountry[] {
       ? (Object.entries(json as Record<string, Record<string, unknown>>))
       : [];
   return entries
-    .map(([k, v]) => ({
-      code: String(v?.id ?? k),
-      name: String(v?.eng ?? v?.name ?? v?.rus ?? k).trim(),
-      iso2: typeof v?.iso === 'string' ? (v.iso as string).toLowerCase() : undefined,
-    }))
+    .map(([k, v]) => {
+      const name = String(v?.eng ?? v?.name ?? v?.rus ?? k).trim();
+      // Most clones send only names — derive the ISO-2 / dial code from the English one.
+      const found = lookupCountry(name);
+      const iso2 = typeof v?.iso === 'string' ? (v.iso as string).toLowerCase() : found.iso2;
+      return {
+        code: String(v?.id ?? k),
+        name,
+        iso2,
+        dialCode: iso2 === found.iso2 ? found.dialCode : dialCodeFor(iso2),
+      };
+    })
     .filter((c) => c.code && c.name && c.name !== c.code);
 }
 
 /**
  * Parse `getPrices` into flat rows. Handles both shapes seen in the wild:
  *   A: { "<countryId>": { "<service>": { cost, count } } }
- *   B: { "<service>": { cost, count } }         (daisySMS, US-only)
+ *   B: { "<service>": { cost, count } }         (single-country resellers)
  */
 export function parseActivatePrices(json: unknown): CatalogPrice[] {
   const out: CatalogPrice[] = [];

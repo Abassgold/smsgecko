@@ -61,7 +61,7 @@ export class HeroSmsProvider implements SmsProvider {
 
   async poll(ctx: PollContext): Promise<PollResult> {
     const text = await activateGet(this.cfg, { action: 'getStatus', id: ctx.providerRef });
-    return parseStatusResponse(text, this.label);
+    return parseStatusResponse(text);
   }
 
   async release(providerRef: string): Promise<void> {

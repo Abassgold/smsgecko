@@ -375,7 +375,7 @@ export default function DocsPage() {
                 [
                   'PROVIDER_ERROR',
                   '422',
-                  'Every provider in the fallback chain failed to rent a number. `error.details.attempts` lists each one tried: `{ provider, outcome }`, where `outcome` is `no_numbers`, `provider_unavailable`, or `provider_error`.',
+                  'No number could be rented. `error.details.attempts` has one `{ outcome }` per upstream tried, where `outcome` is `no_numbers`, `provider_unavailable`, or `provider_error`.',
                 ],
                 ['RATE_LIMITED', '429', 'Too many requests — check the `RateLimit-Reset` header (seconds) and back off.'],
                 ['INTERNAL_ERROR', '500', 'Unexpected server error — safe to retry once.'],
@@ -503,6 +503,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
               rows={[
                 ['service', 'string?', 'Provider service code (e.g. "wa"). Required for prices.'],
                 ['country', 'string?', 'Provider country code — narrows the results.'],
+                ['search', 'string?', 'Without service: filter the service list by name or code (e.g. "whatsapp").'],
                 ['limit', 'int?', '1–500, default 200.'],
               ]}
             />

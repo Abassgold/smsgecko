@@ -32,6 +32,12 @@ import { normalizePhone } from './activateProtocol.js';
  * poll     GET  /orders/active  -> { data: [{ id, otp_code, otp_message, status }] }
  * cancel   POST /orders/cancel  { id }
  */
+const PRODUCT_PAGE_SIZE = 1000;
+/** Slack over the product price sent as max_price (see rent()). */
+const MAX_PRICE_HEADROOM = 1.02;
+/** Hard stop so a misbehaving pager can't loop forever. */
+const PRODUCT_MAX_PAGES = 20;
+
 export interface SmsCodeConfig {
   /** e.g. "https://api.smscode.gg/v2". */
   baseUrl?: string;
@@ -86,6 +92,7 @@ export class SmsCodeProvider implements SmsProvider {
     // `orders/create` keys off `catalog_product_id` (the reusable slot), NOT the
     // concrete product `id`; passing the latter yields NO_OFFER_AVAILABLE.
     const affordable = products
+      .filter((p) => p?.active !== false && Number(p?.available ?? 1) > 0)
       .map((p) => ({
         slotId: p?.catalog_product_id,
         amount: Number(p?.price?.amount ?? p?.price ?? NaN),
@@ -105,7 +112,11 @@ export class SmsCodeProvider implements SmsProvider {
       method: 'POST',
       body: JSON.stringify({
         catalog_product_id: pick.slotId,
-        max_price: String(pick.amount),
+        // smscode converts max_price to IDR and rounds it, so the exact USD
+        // price can land 1 IDR under the product's own IDR price and match no
+        // offer (NO_OFFER_AVAILABLE, candidates_considered: 0). Give it a small
+        // headroom; the order is still billed at the product's price.
+        max_price: (pick.amount * MAX_PRICE_HEADROOM + 0.0001).toFixed(4),
         quantity: 1,
       }),
     });
@@ -140,7 +151,7 @@ export class SmsCodeProvider implements SmsProvider {
       return {
         status: 'received',
         code,
-        messages: [{ sender: this.label, text: String(row.otp_message ?? code), receivedAt: new Date() }],
+        messages: [{ sender: '', text: String(row.otp_message ?? code), receivedAt: new Date() }],
       };
     }
     if (String(row.status ?? '').toUpperCase() === 'CANCELED') return { status: 'canceled' };
@@ -189,58 +200,77 @@ export class SmsCodeProvider implements SmsProvider {
     }
   }
 
+  /**
+   * Every product matching `params`. /catalog/products is paged (`page`,
+   * `limit`) and a popular platform alone runs to thousands of rows, so a
+   * single page silently truncated the price list.
+   */
+  private async allProducts(params: URLSearchParams): Promise<any[]> {
+    const out: any[] = [];
+    const seen = new Set<string>();
+    for (let page = 1; page <= PRODUCT_MAX_PAGES; page++) {
+      params.set('limit', String(PRODUCT_PAGE_SIZE));
+      params.set('page', String(page));
+      const j = await this.api(`catalog/products?${params.toString()}`);
+      const rows: any[] = Array.isArray(j?.data) ? j.data : [];
+      let fresh = 0;
+      for (const r of rows) {
+        const id = String(r?.id);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        out.push(r);
+        fresh++;
+      }
+      if (rows.length < PRODUCT_PAGE_SIZE || fresh === 0) break;
+    }
+    return out;
+  }
+
   async listServices(): Promise<CatalogService[]> {
-    const j = await this.api('catalog/platforms').catch(() => null);
+    // /catalog/services -> { data: [{ id, code, name, active }] }; `id` is the
+    // `platform_id` products and orders key off.
+    const j = await this.api('catalog/services').catch(() => null);
     const rows: any[] = Array.isArray(j?.data) ? j.data : [];
-    if (rows.length) {
-      return rows
-        .map((p) => ({ code: String(p.id ?? p.slug ?? p.code ?? ''), name: String(p.name ?? p.title ?? p.id ?? '') }))
-        .filter((s) => s.code && s.name);
-    }
-    // Fallback: distinct platforms seen in the product catalog.
-    const prod = await this.api('catalog/products?limit=1000').catch(() => null);
-    const pr: any[] = Array.isArray(prod?.data) ? prod.data : [];
-    const seen = new Map<string, string>();
-    for (const p of pr) {
-      const code = String(p.platform_id ?? p.platform?.id ?? '');
-      if (code && !seen.has(code)) seen.set(code, String(p.platform?.name ?? p.platform_name ?? code));
-    }
-    return [...seen].map(([code, name]) => ({ code, name }));
+    return rows
+      .filter((p) => p?.active !== false)
+      .map((p) => ({ code: String(p.id ?? ''), name: String(p.name ?? p.code ?? '').trim() }))
+      .filter((s) => s.code && s.name);
   }
 
   async listCountries(): Promise<CatalogCountry[]> {
+    // /catalog/countries -> { data: [{ id, code: "ID", name, dial_code: "+62", active }] }
     const j = await this.api('catalog/countries').catch(() => null);
     const rows: any[] = Array.isArray(j?.data) ? j.data : [];
     return rows
-      .map((c) => ({
-        code: String(c.id ?? c.code ?? ''),
-        name: String(c.name ?? c.title ?? c.id ?? ''),
-        iso2:
-          typeof c.iso === 'string'
-            ? c.iso.toLowerCase()
-            : typeof c.code === 'string' && c.code.length === 2
-              ? c.code.toLowerCase()
-              : undefined,
-        dialCode: c.phone_code ? String(c.phone_code).replace(/^\+/, '') : undefined,
-      }))
+      .filter((c) => c?.active !== false)
+      .map((c) => {
+        const dial = c.dial_code ?? c.phone_code;
+        return {
+          code: String(c.id ?? ''),
+          name: String(c.name ?? c.id ?? '').trim(),
+          iso2:
+            typeof c.code === 'string' && /^[a-z]{2}$/i.test(c.code) ? c.code.toLowerCase() : undefined,
+          dialCode: dial ? String(dial).replace(/[^\d]/g, '') || undefined : undefined,
+        };
+      })
       .filter((c) => c.code && c.name);
   }
 
   async listPrices(q: CatalogQuery): Promise<CatalogPrice[]> {
     const platformId = this.cfg.serviceMap?.[q.serviceCode] ?? q.serviceCode;
-    const params = new URLSearchParams({ platform_id: platformId, limit: '1000' });
+    const params = new URLSearchParams({ platform_id: platformId });
     if (q.countryCode) {
       params.set('country_id', this.cfg.countryMap?.[q.countryCode] ?? q.countryCode);
     }
-    const j = await this.api(`catalog/products?${params.toString()}`);
-    const rows: any[] = Array.isArray(j?.data) ? j.data : [];
+    const rows = await this.allProducts(params);
     return rows
+      .filter((p) => p?.active !== false)
       .map((p) => ({
-        serviceCode: String(p.platform_id ?? platformId),
+        serviceCode: q.serviceCode,
         countryCode: String(p.country_id ?? q.countryCode ?? ''),
         priceMicro: Math.round(Number(p?.price?.amount ?? p?.price ?? 0) * 1_000_000) || 0,
-        stock: p.stock != null ? Number(p.stock) : p.count != null ? Number(p.count) : null,
-        operator: p.operator ?? null,
+        stock: p.available != null ? Number(p.available) : null,
+        operator: p.operator_name ?? (p.operator_id != null ? String(p.operator_id) : null),
       }))
       .filter((r) => r.countryCode && r.priceMicro > 0);
   }

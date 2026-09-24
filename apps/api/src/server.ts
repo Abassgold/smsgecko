@@ -2,12 +2,14 @@ import { buildApp } from './app.js';
 import { env } from './config/env.js';
 import { connectMongo, disconnectMongo } from './db/mongoose.js';
 import { logger } from './lib/logger.js';
+import { ensureProviders } from './lib/ensureProviders.js';
 import { ensureSettings } from './lib/settings.js';
 import { startWorkers, stopWorkers } from './workers/index.js';
 
 async function main() {
   await connectMongo();
   await ensureSettings();
+  await ensureProviders();
   const app = await buildApp();
 
   if (env.WORKERS_ENABLED) startWorkers(logger);

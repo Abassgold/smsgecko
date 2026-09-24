@@ -248,9 +248,8 @@ describe('v2 API (Bearer)', () => {
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe('PROVIDER_ERROR');
-    expect(res.json().error.details.attempts).toEqual([
-      { provider: 'Mock SIM bank', outcome: 'provider_error' },
-    ]);
+    expect(res.json().error.details.attempts).toEqual([{ outcome: 'provider_error' }]);
+    expect(JSON.stringify(res.json())).not.toMatch(/mock sim bank/i); // reseller never named
   });
 
   it('cancels and refunds via v2', async () => {
