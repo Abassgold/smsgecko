@@ -6,10 +6,10 @@ import { applyOtpToOrder, refundWaitingOrder } from '../lib/orderLifecycle.js';
 import { getProviderForOrder } from '../providers/sms/registry.js';
 import { getSettings } from '../lib/settings.js';
 import { sendBroadcastEmail } from '../lib/email.js';
+import { env } from '../config/env.js';
 
 const POLL_INTERVAL_MS = 4_000;
 const EXPIRY_INTERVAL_MS = 8_000;
-const BROADCAST_INTERVAL_MS = 5_000;
 const BATCH = 50;
 /** How long a worker may hold a `sending` broadcast's lease before another
  * tick is free to reclaim it — see runBroadcasts() below. */
@@ -92,7 +92,7 @@ async function runExpiry(log: Logger): Promise<void> {
 
 /**
  * One batch of one broadcast per tick — same "pick up due work, process a
- * BATCH-sized slice, come back next tick" shape as runPolling/runExpiry
+ * BROADCAST_BATCH_SIZE-sized slice, come back next tick" shape as runPolling/runExpiry
  * above, so a large recipient list can't block the event loop or one
  * worker tick for an unbounded amount of time. `Broadcast.cursor` makes
  * this resumable: each tick picks up exactly where the last one left off.
@@ -133,7 +133,7 @@ export async function runBroadcasts(log: Logger): Promise<void> {
 
   try {
     const pageFilter = job.cursor ? { ...audienceFilter, _id: { $gt: job.cursor } } : audienceFilter;
-    const recipients = await User.find(pageFilter).sort({ _id: 1 }).limit(BATCH).select('_id email');
+    const recipients = await User.find(pageFilter).sort({ _id: 1 }).limit(env.BROADCAST_BATCH_SIZE).select('_id email');
 
     if (recipients.length === 0) {
       await Broadcast.updateOne({ _id: job._id }, { $set: { status: 'completed', completedAt: new Date() } });
@@ -182,7 +182,7 @@ export function startWorkers(log: Logger): void {
   timers = [
     setInterval(guarded(() => runPolling(log)), POLL_INTERVAL_MS),
     setInterval(guarded(() => runExpiry(log)), EXPIRY_INTERVAL_MS),
-    setInterval(guarded(() => runBroadcasts(log)), BROADCAST_INTERVAL_MS),
+    setInterval(guarded(() => runBroadcasts(log)), env.BROADCAST_INTERVAL_MS),
   ];
   for (const t of timers) t.unref?.();
   log.info('background workers started (provider polling + order expiry + broadcasts)');

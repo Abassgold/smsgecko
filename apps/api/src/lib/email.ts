@@ -1,4 +1,5 @@
 import nodemailer, { type Transporter } from 'nodemailer';
+import { Resend } from 'resend';
 import { env } from '../config/env.js';
 import { logger } from './logger.js';
 import { signUnsubscribeToken } from './broadcastUnsubscribe.js';
@@ -14,43 +15,112 @@ interface SendArgs {
   headers?: Record<string, string>;
   /** Decides which suppression rules apply — see models/EmailSuppression. Defaults to transactional. */
   category?: EmailCategory;
+  /** Defaults to EMAIL_FROM. */
+  from?: string;
 }
 
-let client: Transporter | null = null;
-function transporter(): Transporter {
-  if (!client) {
-    client = nodemailer.createTransport({
-      host: env.SES_SMTP_HOST,
-      port: env.SES_SMTP_PORT,
-      secure: env.SES_SMTP_PORT === 465,
-      auth: { user: env.SES_SMTP_USER, pass: env.SES_SMTP_PASS },
+// --- SES (nodemailer) sending — commented out, not deleted, 2026-09-22 -----
+// AWS denied SES production access twice (case 178983817800576); switched to
+// Resend below. Kept here in case we ever move back — swap the transporter()
+// + sendEmail() bodies back in, `import nodemailer, { type Transporter } from
+// 'nodemailer';`, and the SES_SMTP_* env vars are still declared in config/env.ts.
+//
+// let client: Transporter | null = null;
+// function transporter(): Transporter {
+//   if (!client) {
+//     client = nodemailer.createTransport({
+//       host: env.SES_SMTP_HOST,
+//       port: env.SES_SMTP_PORT,
+//       secure: env.SES_SMTP_PORT === 465,
+//       auth: { user: env.SES_SMTP_USER, pass: env.SES_SMTP_PASS },
+//     });
+//   }
+//   return client;
+// }
+//
+// export async function sendEmail({ to, subject, html, text, headers, category = 'transactional' }: SendArgs): Promise<boolean> {
+//   if (await isSuppressed(to, category)) {
+//     logger.info({ to, subject, category }, '[email] skipped — address is on the suppression list');
+//     return false;
+//   }
+//
+//   if (!env.SES_SMTP_HOST || !env.SES_SMTP_USER || !env.SES_SMTP_PASS) {
+//     logger.warn({ to, subject }, '[email] SES SMTP unset — logging instead of sending');
+//     logger.info({ to, subject, text }, '[email] (not sent)');
+//     return true;
+//   }
+//
+//   try {
+//     await transporter().sendMail({ from: env.EMAIL_FROM, to, subject, html, text, headers });
+//   } catch (error) {
+//     logger.error({ error }, '[email] SES send failed');
+//     throw new Error(`SES send failed: ${error instanceof Error ? error.message : String(error)}`);
+//   }
+//   return true;
+// }
+// -----------------------------------------------------------------------------
+
+// SMTP (Hostinger mailbox) is the primary transport since 2026-09-24; Resend
+// stays as the fallback when SMTP_* is unset.
+let smtpClient: Transporter | null = null;
+function smtp(): Transporter {
+  if (!smtpClient) {
+    smtpClient = nodemailer.createTransport({
+      pool: true,
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      secure: env.SMTP_PORT === 465,
+      auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
     });
   }
+  return smtpClient;
+}
+
+let client: Resend | null = null;
+function resend(): Resend {
+  if (!client) client = new Resend(env.RESEND_API_KEY);
   return client;
 }
 
 /**
- * Resolves `true` once the message is handed to SES (or logged, when SES isn't
- * configured), `false` if it was skipped because SES reported the address as
- * undeliverable or as a spam complainer.
+ * Resolves `true` once the message is handed to SMTP or Resend (or logged,
+ * when neither is configured), `false` if it was skipped because a prior
+ * bounce or spam complaint put the address on our own suppression list.
  */
-export async function sendEmail({ to, subject, html, text, headers, category = 'transactional' }: SendArgs): Promise<boolean> {
+export async function sendEmail({
+  to,
+  subject,
+  html,
+  text,
+  headers,
+  category = 'transactional',
+  from = env.EMAIL_FROM,
+}: SendArgs): Promise<boolean> {
   if (await isSuppressed(to, category)) {
     logger.info({ to, subject, category }, '[email] skipped — address is on the suppression list');
     return false;
   }
 
-  if (!env.SES_SMTP_HOST || !env.SES_SMTP_USER || !env.SES_SMTP_PASS) {
-    logger.warn({ to, subject }, '[email] SES SMTP unset — logging instead of sending');
+  if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS) {
+    try {
+      await smtp().sendMail({ from, to, subject, html, text, headers });
+    } catch (error) {
+      logger.error({ error }, '[email] SMTP send failed');
+      throw new Error(`SMTP send failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return true;
+  }
+
+  if (!env.RESEND_API_KEY) {
+    logger.warn({ to, subject }, '[email] SMTP and RESEND_API_KEY unset — logging instead of sending');
     logger.info({ to, subject, text }, '[email] (not sent)');
     return true;
   }
 
-  try {
-    await transporter().sendMail({ from: env.EMAIL_FROM, to, subject, html, text, headers });
-  } catch (error) {
-    logger.error({ error }, '[email] SES send failed');
-    throw new Error(`SES send failed: ${error instanceof Error ? error.message : String(error)}`);
+  const { error } = await resend().emails.send({ from, to, subject, html, text, headers });
+  if (error) {
+    logger.error({ error }, '[email] Resend send failed');
+    throw new Error(`Resend send failed: ${error.message}`);
   }
   return true;
 }
@@ -132,6 +202,7 @@ export async function sendBroadcastEmail(to: string, userId: string, subject: st
     html,
     text,
     category: 'broadcast',
+    from: env.BROADCAST_FROM,
     headers: {
       'List-Unsubscribe': `<${unsubscribeUrl}>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',

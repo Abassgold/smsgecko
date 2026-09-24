@@ -71,7 +71,10 @@ const envSchema = z.object({
   WORKERS_ENABLED: bool.default(true),
 
   /** Amazon SES SMTP endpoint for transactional email, e.g. email-smtp.eu-north-1.amazonaws.com.
-   *  When unset, emails are logged to the console instead of sent. */
+   *  When unset, emails are logged to the console instead of sent.
+   *  UNUSED as of 2026-09-22 — AWS denied SES production access twice (case
+   *  178983817800576), so sending switched to Resend (see RESEND_API_KEY
+   *  below). Left in place, not deleted, in case we ever move back. */
   SES_SMTP_HOST: z.string().optional(),
   SES_SMTP_PORT: z.coerce.number().int().positive().default(587),
   /** IAM SMTP credentials scoped to ses:SendRawEmail only — see SMTP settings > Create SMTP credentials in the SES console. */
@@ -79,11 +82,30 @@ const envSchema = z.object({
   SES_SMTP_PASS: z.string().optional(),
   /** ARN of the SNS topic SES publishes bounce/complaint notifications to. The
    *  /api/v1/ses/notifications webhook rejects anything from a different topic,
-   *  and returns 503 until this is set. */
+   *  and returns 503 until this is set.
+   *  Still live even though sending moved to Resend — harmless to leave wired
+   *  up, just won't receive new events since nothing goes through SES anymore. */
   SES_SNS_TOPIC_ARN: z.string().optional(),
-  /** From address for transactional email. Must be a verified SES identity/domain in production,
-   *  and a real monitored inbox — not a no-reply address. */
+  /** Resend API key — see https://resend.com/api-keys. When unset, emails are
+   *  logged to the console instead of sent (same fallback SES had). */
+  RESEND_API_KEY: z.string().optional(),
+  /** Generic SMTP mailbox (Hostinger Business Email: smtp.hostinger.com:465,
+   *  user support@smsgecko.com). When set, it takes priority over Resend. */
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(465),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  /** From address for transactional email. Must be a real monitored inbox or an
+   *  alias of the SMTP mailbox — not a no-reply address. */
   EMAIL_FROM: z.string().default('SMSGecko <support@smsgecko.com>'),
+  /** From address for admin broadcasts (an alias of the SMTP mailbox). */
+  BROADCAST_FROM: z.string().default('SMSGecko <news@smsgecko.com>'),
+  /** Broadcast pacing: at most BROADCAST_BATCH_SIZE emails every
+   *  BROADCAST_INTERVAL_MS. Hostinger Starter caps a mailbox at 1,000/day, and
+   *  broadcasts share that with verification/reset mail, so the default is
+   *  20 every 5 min (240/hour). */
+  BROADCAST_BATCH_SIZE: z.coerce.number().int().positive().default(20),
+  BROADCAST_INTERVAL_MS: z.coerce.number().int().positive().default(300_000),
   /** Public base URL of the web app, used to build links in emails. */
   APP_URL: z.string().default('http://localhost:3000'),
   /** Public base URL of this API itself, used to build the NowPayments IPN callback URL. */

@@ -51,6 +51,16 @@ services:
         sync: false
       - key: SES_SNS_TOPIC_ARN
         sync: false # SNS topic SES posts bounces/complaints to
+      - key: SMTP_HOST
+        value: smtp.hostinger.com
+      - key: SMTP_PORT
+        value: '465'
+      - key: SMTP_USER
+        value: support@smsgecko.com
+      - key: SMTP_PASS
+        sync: false # Hostinger mailbox password for SMTP_USER
+      - key: BROADCAST_FROM
+        value: SMSGecko <news@smsgecko.com>
       - key: EMAIL_FROM
         sync: false # e.g. SMSGecko <support@smsgecko.com>
       - key: APP_URL
