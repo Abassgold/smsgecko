@@ -1,6 +1,7 @@
 import { conflict, providerError } from '../../lib/errors.js';
 import { bustCatalogCache } from '../../lib/catalog.js';
 import { decryptJson } from '../../lib/secretbox.js';
+import { envCredentials, isEnvProvider } from '../../lib/providerEnv.js';
 import { logger } from '../../lib/logger.js';
 import { ProviderConfig, type ProviderConfigDoc } from '../../models/ProviderConfig.js';
 import type { OrderDoc } from '../../models/Order.js';
@@ -87,7 +88,11 @@ function instantiate(cfg: ProviderConfigDoc): SmsProvider {
   const hit = cache.get(id);
   if (hit && hit.sig === sig && Date.now() - hit.at < CACHE_TTL_MS) return hit.provider;
   const factory = ADAPTERS[cfg.key];
-  const provider = factory ? factory(cfg, decryptJson(cfg.configEnc)) : NULL_PROVIDER;
+  // Resellers take their credentials from env; the stored blob only carries
+  // non-secret extras (serviceMap / countryMap). Env always wins.
+  const stored = decryptJson<Record<string, unknown>>(cfg.configEnc);
+  const config = isEnvProvider(cfg.key) ? { ...stored, ...envCredentials(cfg.key) } : stored;
+  const provider = factory ? factory(cfg, config) : NULL_PROVIDER;
   cache.set(id, { provider, sig, at: Date.now() });
   return provider;
 }

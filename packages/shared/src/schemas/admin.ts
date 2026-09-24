@@ -30,6 +30,10 @@ export interface ProviderConfigView {
   priority: number;
   /** Adapter config with secret-looking values masked ("••••1234"). */
   config: Record<string, unknown>;
+  /** Env vars a reseller reads its credentials from ([] for generic providers). */
+  envVars: string[];
+  /** Required env vars that are unset — the provider can't be enabled until [] . */
+  missingEnvVars: string[];
   stats: ProviderStatsView;
   healthOk: boolean | null;
   healthDetail: string | null;

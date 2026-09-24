@@ -77,8 +77,12 @@ export default function AdminProvidersPage() {
                     <div className="text-xs text-faint">
                       {p.key === 'custom_http' ? 'generic HTTP' : `${p.key} adapter`}
                     </div>
-                    {p.key !== 'custom_http' && !p.config.apiKey ? (
-                      <div className="mt-1 text-xs text-warning">Needs an API key — click Edit</div>
+                    {p.missingEnvVars.length ? (
+                      <div className="mt-1 max-w-xs text-xs text-warning">
+                        Set {p.missingEnvVars.join(' + ')} in Render env
+                      </div>
+                    ) : p.envVars.length ? (
+                      <div className="mt-1 text-xs text-faint">Key loaded from env ✓</div>
                     ) : null}
                     {p.stats.lastError ? (
                       <div className="mt-1 max-w-xs truncate text-xs text-danger" title={p.stats.lastError}>

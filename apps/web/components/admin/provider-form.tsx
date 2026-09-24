@@ -44,14 +44,11 @@ export function ProviderForm({ mode, onDone }: { mode: Mode; onDone: () => void 
   const [mapJson, setMapJson] = useState(JSON.stringify(c.map ?? {}, null, 2));
   const [mapErr, setMapErr] = useState<string | null>(null);
 
-  // Reseller adapters: the fields every one needs get real inputs; anything
-  // else (serviceMap / countryMap / pricingOption…) stays in the JSON box.
+  // Reseller credentials come from env on the API (never stored); only
+  // optional extras (serviceMap / countryMap / pricingOption…) are edited here.
   const extraConfig = Object.fromEntries(
     Object.entries(c).filter(([k]) => !['baseUrl', 'apiKey', 'userId'].includes(k)),
   );
-  const [resellerBaseUrl, setResellerBaseUrl] = useState(String(c.baseUrl ?? ''));
-  const [resellerApiKey, setResellerApiKey] = useState(String(c.apiKey ?? ''));
-  const [resellerUserId, setResellerUserId] = useState(String(c.userId ?? ''));
   const [configJson, setConfigJson] = useState(JSON.stringify(extraConfig, null, 2));
   const [configErr, setConfigErr] = useState<string | null>(null);
   const isReseller = (RESELLER_KEYS as readonly string[]).includes(key);
@@ -98,12 +95,7 @@ export function ProviderForm({ mode, onDone }: { mode: Mode; onDone: () => void 
             map,
           }
         : isReseller
-          ? {
-              ...(resellerConfig as Record<string, unknown>),
-              baseUrl: resellerBaseUrl.trim(),
-              apiKey: resellerApiKey.trim(),
-              ...(key === 'sms_bower' ? { userId: resellerUserId.trim() } : {}),
-            }
+          ? resellerConfig
           : {};
 
     if (mode.kind === 'create') {
@@ -220,26 +212,21 @@ export function ProviderForm({ mode, onDone }: { mode: Mode; onDone: () => void 
 
       {isReseller ? (
         <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface-2/50 p-4">
-          <div className="text-xs uppercase tracking-widest text-faint">Connection</div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="API key" hint="From your account on the provider's site. Stored encrypted.">
-              <TextInput
-                type="password"
-                autoComplete="off"
-                value={resellerApiKey}
-                onChange={(e) => setResellerApiKey(e.target.value)}
-                placeholder={editing && resellerApiKey ? 'leave masked value to keep' : 'Paste the API key'}
-              />
-            </Field>
-            {key === 'sms_bower' ? (
-              <Field label="User ID" hint="smsbower requires it to rent numbers.">
-                <TextInput value={resellerUserId} onChange={(e) => setResellerUserId(e.target.value)} />
-              </Field>
-            ) : null}
-            <Field label="Base URL">
-              <TextInput value={resellerBaseUrl} onChange={(e) => setResellerBaseUrl(e.target.value)} />
-            </Field>
-          </div>
+          <div className="text-xs uppercase tracking-widest text-faint">Credentials</div>
+          <p className="text-xs text-muted">
+            Read from the API&apos;s environment (Render → Environment), never stored here:{' '}
+            {(editing?.envVars ?? []).length ? (
+              (editing?.envVars ?? []).map((v, i) => (
+                <span key={v}>
+                  {i ? ' + ' : ''}
+                  <code>{v}</code>
+                </span>
+              ))
+            ) : (
+              <span>the provider&apos;s API key variable</span>
+            )}
+            .
+          </p>
           <Field
             label="Advanced config (JSON, optional)"
             hint="serviceMap / countryMap translate smsgecko codes into this provider's own codes."

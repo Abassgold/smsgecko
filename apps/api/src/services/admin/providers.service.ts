@@ -4,6 +4,12 @@ import { ProviderConfig, type ProviderConfigDoc } from '../../models/ProviderCon
 import { Order } from '../../models/Order.js';
 import { bustProviderCache, runHealthCheck } from '../../providers/sms/registry.js';
 import { badRequest, conflict, notFound } from '../../lib/errors.js';
+import {
+  ENV_CREDENTIAL_FIELDS,
+  envVarNames,
+  isEnvProvider,
+  missingEnvVars,
+} from '../../lib/providerEnv.js';
 
 /** Keys whose *value* should be masked in admin responses. */
 const SECRET_KEY_RE = /(api[_-]?key|key|secret|token|password|passwd|credential)$/i;
@@ -37,6 +43,9 @@ export function toProviderView(cfg: ProviderConfigDoc) {
       lastError: stats.lastError ?? null,
       lastErrorAt: stats.lastErrorAt ? new Date(stats.lastErrorAt).toISOString() : null,
     },
+    // Resellers read their key from env: which vars it uses, and which are unset.
+    envVars: envVarNames(cfg.key),
+    missingEnvVars: missingEnvVars(cfg.key),
     healthOk: cfg.healthOk ?? null,
     healthDetail: cfg.healthDetail ?? null,
     healthCheckedAt: cfg.healthCheckedAt ? cfg.healthCheckedAt.toISOString() : null,
@@ -73,13 +82,20 @@ export interface UpdateProviderInput {
   config?: Record<string, unknown>;
 }
 
-/** Adapters that cannot do anything until an `apiKey` has been pasted in. */
-const KEYED_ADAPTERS = new Set(['hero_sms', 'sms_bower', 'sms_code', 'sms_pool']);
-
-function assertCanEnable(key: string, config: Record<string, unknown>): void {
-  if (KEYED_ADAPTERS.has(key) && !config.apiKey) {
-    throw badRequest('Add an API key first — click Edit on this provider and paste it into "API key"');
+/** A reseller can only be switched on once its env credentials are set. */
+function assertCanEnable(key: string): void {
+  const missing = missingEnvVars(key);
+  if (missing.length) {
+    throw badRequest(`Set ${missing.join(' and ')} in the API environment (Render → Environment), then try again`);
   }
+}
+
+/** Env-backed resellers never persist credentials — drop any that were sent. */
+function withoutCredentials(key: string, config: Record<string, unknown>): Record<string, unknown> {
+  if (!isEnvProvider(key)) return config;
+  const out = { ...config };
+  for (const f of ENV_CREDENTIAL_FIELDS) delete out[f];
+  return out;
 }
 
 async function sortedConfigs(): Promise<ProviderConfigDoc[]> {
@@ -94,13 +110,13 @@ export async function createProvider(body: CreateProviderInput) {
   if (await ProviderConfig.exists({ label: body.label })) {
     throw conflict('A provider with that label already exists');
   }
-  if (body.enabled) assertCanEnable(body.key, body.config ?? {});
+  if (body.enabled) assertCanEnable(body.key);
   const cfg = await ProviderConfig.create({
     key: body.key,
     label: body.label,
     enabled: body.enabled,
     priority: body.priority,
-    configEnc: encryptJson(body.config ?? {}),
+    configEnc: encryptJson(withoutCredentials(body.key, body.config ?? {})),
   });
   if (cfg.enabled) await disableOthers(cfg._id);
   bustProviderCache();
@@ -134,9 +150,9 @@ export async function updateProvider(id: string, body: UpdateProviderInput) {
   if (body.enabled !== undefined) cfg.enabled = body.enabled;
   if (body.priority !== undefined) cfg.priority = body.priority;
   if (body.config !== undefined) {
-    cfg.configEnc = encryptJson(mergeConfigPatch(cfg, body.config));
+    cfg.configEnc = encryptJson(withoutCredentials(cfg.key, mergeConfigPatch(cfg, body.config)));
   }
-  if (cfg.enabled) assertCanEnable(cfg.key, decryptJson(cfg.configEnc));
+  if (body.enabled) assertCanEnable(cfg.key);
   await cfg.save();
   if (cfg.enabled) await disableOthers(cfg._id);
   bustProviderCache();

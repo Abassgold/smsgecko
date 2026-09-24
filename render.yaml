@@ -67,3 +67,15 @@ services:
         sync: false # https://<your-vercel-domain>
       - key: EMAIL_VERIFICATION_TTL_MINUTES
         value: '5'
+      # SMS reseller credentials — read from env only, never stored in the DB.
+      # The admin Providers page just toggles them on/off.
+      - key: HERO_SMS_API_KEY
+        sync: false
+      - key: SMSBOWER_API_KEY
+        sync: false
+      - key: SMSBOWER_USER_ID
+        sync: false
+      - key: SMSCODE_API_KEY
+        sync: false
+      - key: SMSPOOL_API_KEY
+        sync: false
