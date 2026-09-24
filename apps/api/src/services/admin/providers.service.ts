@@ -78,7 +78,7 @@ const KEYED_ADAPTERS = new Set(['hero_sms', 'sms_bower', 'sms_code', 'sms_pool']
 
 function assertCanEnable(key: string, config: Record<string, unknown>): void {
   if (KEYED_ADAPTERS.has(key) && !config.apiKey) {
-    throw badRequest('Add an API key before turning this provider on');
+    throw badRequest('Add an API key first — click Edit on this provider and paste it into "API key"');
   }
 }
 
