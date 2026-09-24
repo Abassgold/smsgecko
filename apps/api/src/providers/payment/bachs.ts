@@ -11,11 +11,6 @@ function apiBase(): string {
   return env.BACHS_SANDBOX ? 'https://sandbox-api.bachs.io' : 'https://api.bachs.io';
 }
 
-// The African bank-transfer/mobile-money corridors Bachs replaces Korapay
-// with. Deliberately excludes USD_CARD/NGN_CARD (Stripe already covers
-// cards) and CRYPTO (NowPayments/Cryptomus already cover crypto) — each
-// provider here owns one lane, so a Bachs checkout only ever offers the
-// corridors nothing else in this app does.
 const CORRIDORS = [
   'NGN_BANK_TRANSFER',
   'MOMO_GHS',
@@ -29,23 +24,12 @@ const CORRIDORS = [
   'MOMO_ZMW',
 ];
 
-/**
- * Real (sandbox by default) Bachs integration via hand-rolled REST calls —
- * replaces Korapay. Bachs prices every checkout in USD and converts to
- * whichever corridor the customer picks on their own hosted page, so unlike
- * Korapay we never need to know the target currency up front or maintain our
- * own FX rate table — Bachs absorbs the conversion entirely on their side.
- */
 export class BachsProvider implements PaymentProvider {
   readonly name = 'bachs';
 
   constructor(private readonly apiKey: string) {}
 
   async createCharge(input: CreateChargeInput): Promise<Charge> {
-    // Bachs has no product-less "raw amount" providerRef of its own until
-    // the session is created, but it does accept our own `reference` for
-    // dashboard readability — generate one up front, same pattern as
-    // Cryptomus's locally-minted order_id.
     const reference = `dep_${Date.now().toString(36)}_${randomUUID().slice(0, 8)}`;
 
     const res = await fetch(`${apiBase()}/v1/checkout-sessions`, {
@@ -72,9 +56,6 @@ export class BachsProvider implements PaymentProvider {
       message?: string;
     };
     if (!res.ok || !data.checkout_id || !data.checkout_url) {
-      // Logged for us; the customer gets a clean, generic message —
-      // Bachs' own text can reference internal details that aren't ours to
-      // show.
       logger.warn({ status: res.status, message: data.message }, 'bachs checkout session create failed');
       throw badRequest('Could not start a Bachs payment. Please try again.');
     }
@@ -90,15 +71,6 @@ export class BachsProvider implements PaymentProvider {
   }
 }
 
-/**
- * Verifies the preferred `X-Bachs-Signature-V2` header: `t=<unix ts>,
- * v1=<hex hmac>[,v1=<hex hmac>...]`, where the hmac is
- * HMAC-SHA256(`${t}.${rawBody}`, webhookSecret). Multiple `v1=` entries can
- * appear during a secret rotation — any match is accepted. Verification
- * needs the exact raw request bytes (see `req.rawBody` in app.ts), not a
- * re-serialized copy of the parsed JSON. A 5-minute tolerance on the
- * timestamp guards against replay of a captured payload.
- */
 export function verifyBachsSignature(
   rawBody: Buffer,
   header: string | undefined,

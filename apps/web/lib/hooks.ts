@@ -177,20 +177,24 @@ export function useTransactions(type: string, page: number) {
 
 /* ---------- catalog ---------- */
 
-export function useServices(q: string) {
+// Fetched once (whole catalog, no `q`) and cached for 5 minutes — filtering as the
+// user types happens client-side (see NewOrder), not as a query per keystroke.
+// A per-keystroke server round trip is what FloZap's dashboard deliberately avoids
+// (it preloads its full country/service lists once and runs a plain `.filter()`
+// against them locally): no debounce needed, no request pile-up while typing, and
+// no flicker from a query key that briefly has no cached data yet.
+export function useServices() {
   return useQuery({
-    queryKey: ['services', q],
-    queryFn: () =>
-      apiFetch<ServiceView[]>(`/v1/catalog/services${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+    queryKey: ['services'],
+    queryFn: () => apiFetch<ServiceView[]>('/v1/catalog/services'),
     staleTime: 5 * 60_000,
   });
 }
 
-export function useCountries(q: string) {
+export function useCountries() {
   return useQuery({
-    queryKey: ['countries', q],
-    queryFn: () =>
-      apiFetch<CountryView[]>(`/v1/catalog/countries${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+    queryKey: ['countries'],
+    queryFn: () => apiFetch<CountryView[]>('/v1/catalog/countries'),
     staleTime: 5 * 60_000,
   });
 }

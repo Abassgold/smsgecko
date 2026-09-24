@@ -20,10 +20,32 @@ export function NewOrder() {
   const [operator, setOperator] = useState('');
   const [offerId, setOfferId] = useState<string | null>(null);
 
-  const services = useServices(serviceQuery);
-  const countries = useCountries(countryQuery);
+  const services = useServices();
+  const countries = useCountries();
   const quote = useQuote(serviceId ?? undefined, countryId ?? undefined);
   const createOrder = useCreateOrder();
+
+  // Client-side filter over the full (once-fetched) catalog — see the comment on
+  // useServices/useCountries. Capped after filtering, not before: a provider's
+  // full service list can run into the thousands (e.g. smspool ~1,400), so we
+  // still search the whole thing but only mount a manageable number of chips.
+  const CHIP_RENDER_CAP = 60;
+  const filteredServices = useMemo(() => {
+    const needle = serviceQuery.trim().toLowerCase();
+    const all = services.data ?? [];
+    const matches = needle
+      ? all.filter((s) => s.name.toLowerCase().includes(needle) || s.slug.toLowerCase().includes(needle))
+      : all;
+    return matches.slice(0, CHIP_RENDER_CAP);
+  }, [services.data, serviceQuery]);
+  const filteredCountries = useMemo(() => {
+    const needle = countryQuery.trim().toLowerCase();
+    const all = countries.data ?? [];
+    const matches = needle
+      ? all.filter((c) => c.name.toLowerCase().includes(needle) || c.code.toLowerCase().includes(needle))
+      : all;
+    return matches.slice(0, CHIP_RENDER_CAP);
+  }, [countries.data, countryQuery]);
 
   const allOffers = useMemo(() => quote.data?.offers ?? [], [quote.data]);
   const operators = useMemo(() => quote.data?.operators ?? [], [quote.data]);
@@ -68,7 +90,7 @@ export function NewOrder() {
         <div>
           <div className="mb-2 text-xs uppercase tracking-widest text-faint">Service</div>
           <ChipPicker
-            items={(services.data ?? []).map((s) => ({
+            items={filteredServices.map((s) => ({
               id: s.id,
               label: s.name,
               prefix: serviceIcon(s.name),
@@ -79,12 +101,13 @@ export function NewOrder() {
             onQueryChange={setServiceQuery}
             placeholder="Search services…"
             loading={services.isFetching}
+            emptyLabel={services.isError ? "Couldn't load services — try refreshing" : undefined}
           />
         </div>
         <div>
           <div className="mb-2 text-xs uppercase tracking-widest text-faint">Country</div>
           <ChipPicker
-            items={(countries.data ?? []).map((c) => ({
+            items={filteredCountries.map((c) => ({
               id: c.id,
               label: c.name,
               prefix: <span>{c.flagEmoji}</span>,
@@ -95,6 +118,7 @@ export function NewOrder() {
             onQueryChange={setCountryQuery}
             placeholder="Search countries…"
             loading={countries.isFetching}
+            emptyLabel={countries.isError ? "Couldn't load countries — try refreshing" : undefined}
           />
         </div>
       </div>

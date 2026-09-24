@@ -157,7 +157,7 @@ export async function runHealthCheck(cfg: ProviderConfigDoc): Promise<HealthResu
 
 async function bumpStat(
   id: unknown,
-  patch: Record<string, number | Date | string>,
+  patch: Record<string, number | Date | string | null>,
 ): Promise<void> {
   const inc: Record<string, number> = {};
   const set: Record<string, unknown> = {};
@@ -193,7 +193,16 @@ export async function rentWithFallback(input: RentInput): Promise<RentWithFallba
     await bumpStat(cfg._id, { rentAttempts: 1 });
     try {
       const result = await provider.rent(input);
-      await bumpStat(cfg._id, { rentSuccess: 1, lastUsedAt: new Date() });
+      // A success clears any stale lastError left over from an earlier failed
+      // attempt — otherwise the admin page keeps showing a red error banner
+      // indefinitely once a provider has recovered, since nothing else ever
+      // unsets it.
+      await bumpStat(cfg._id, {
+        rentSuccess: 1,
+        lastUsedAt: new Date(),
+        lastError: null,
+        lastErrorAt: null,
+      });
       return {
         providerConfigId: String(cfg._id),
         providerKey: cfg.key,
