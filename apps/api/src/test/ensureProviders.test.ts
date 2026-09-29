@@ -16,7 +16,7 @@ beforeAll(async () => {
   inject = makeInject(app);
 });
 
-const ENV_VARS = ['HERO_SMS_API_KEY', 'SMSBOWER_API_KEY', 'SMSBOWER_USER_ID', 'SMSCODE_API_KEY', 'SMSPOOL_API_KEY'];
+const ENV_VARS = ['HERO_SMS_API_KEY', 'SMSBOWER_API_KEY', 'SMSBOWER_USER_ID', 'SMSCODE_API_KEY', 'SMSPOOL_API_KEY', 'TIGERSMS_API_KEY'];
 afterEach(() => {
   for (const v of ENV_VARS) delete process.env[v];
 });
@@ -34,7 +34,7 @@ describe('built-in reseller providers', () => {
     await ensureProviders();
     await ensureProviders();
     const rows = await list();
-    expect(rows.map((r) => r.key).sort()).toEqual(['hero_sms', 'sms_bower', 'sms_code', 'sms_pool']);
+    expect(rows.map((r) => r.key).sort()).toEqual(['hero_sms', 'sms_bower', 'sms_code', 'sms_pool', 'tiger_sms']);
     expect(rows.every((r) => !r.enabled)).toBe(true);
   });
 
@@ -45,6 +45,7 @@ describe('built-in reseller providers', () => {
     expect(byKey.sms_pool!.missingEnvVars).toEqual([]);
     expect(byKey.sms_bower!.missingEnvVars).toEqual(['SMSBOWER_API_KEY', 'SMSBOWER_USER_ID']);
     expect(byKey.hero_sms!.envVars).toEqual(['HERO_SMS_API_KEY']);
+    expect(byKey.tiger_sms!.envVars).toEqual(['TIGERSMS_API_KEY']);
   });
 
   it('refuses to enable a reseller until its env credentials are set', async () => {

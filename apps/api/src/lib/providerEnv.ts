@@ -44,6 +44,13 @@ export const RESELLER_ENV: Record<string, ResellerEnvSpec> = {
       { field: 'baseUrl', name: 'SMSPOOL_BASE_URL', required: false },
     ],
   },
+  tiger_sms: {
+    defaultBaseUrl: 'https://api.tiger-sms.com/stubs/handler_api.php',
+    vars: [
+      { field: 'apiKey', name: 'TIGERSMS_API_KEY', required: true },
+      { field: 'baseUrl', name: 'TIGERSMS_BASE_URL', required: false },
+    ],
+  },
 };
 
 /** Credential fields that come from env and must never be stored in the DB. */

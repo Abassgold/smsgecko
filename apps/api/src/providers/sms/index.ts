@@ -17,3 +17,4 @@ export { SmsBowerProvider, type SmsBowerConfig } from './adapters/smsBower.js';
 export { SmsCodeProvider, type SmsCodeConfig } from './adapters/smsCode.js';
 export { SmsPoolProvider, type SmsPoolConfig } from './adapters/smsPool.js';
 export type { ActivateConfig } from './adapters/activateProtocol.js';
+export { TigerSmsProvider, type TigerSmsConfig } from './adapters/tigerSms.js';

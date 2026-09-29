@@ -15,6 +15,8 @@ const PROVIDER_MIN_HOLD_SECONDS: Record<string, number> = {
   sms_code: 120,
   hero_sms: 180,
   sms_bower: 180,
+  // tiger-sms refuses cancels for the first ~2 minutes (EARLY_CANCEL_DENIED).
+  tiger_sms: 180,
 };
 
 /** Unknown / generic providers (e.g. custom_http) — hold for the same short lock-in. */

@@ -10,6 +10,7 @@ import { HeroSmsProvider, type HeroSmsConfig } from './adapters/heroSms.js';
 import { SmsBowerProvider, type SmsBowerConfig } from './adapters/smsBower.js';
 import { SmsCodeProvider, type SmsCodeConfig } from './adapters/smsCode.js';
 import { SmsPoolProvider, type SmsPoolConfig } from './adapters/smsPool.js';
+import { TigerSmsProvider, type TigerSmsConfig } from './adapters/tigerSms.js';
 import {
   NoStockError,
   ProviderConfigError,
@@ -30,6 +31,7 @@ const ADAPTERS: Record<string, AdapterFactory> = {
   sms_bower: (cfg, decrypted) => new SmsBowerProvider(decrypted as SmsBowerConfig, cfg.label),
   sms_code: (cfg, decrypted) => new SmsCodeProvider(decrypted as SmsCodeConfig, cfg.label),
   sms_pool: (cfg, decrypted) => new SmsPoolProvider(decrypted as SmsPoolConfig, cfg.label),
+  tiger_sms: (cfg, decrypted) => new TigerSmsProvider(decrypted as TigerSmsConfig, cfg.label),
 };
 
 /**

@@ -79,3 +79,5 @@ services:
         sync: false
       - key: SMSPOOL_API_KEY
         sync: false
+      - key: TIGERSMS_API_KEY
+        sync: false

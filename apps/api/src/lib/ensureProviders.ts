@@ -14,6 +14,7 @@ const BUILT_IN_PROVIDERS: Array<{ key: ProviderAdapterKey; label: string }> = [
   { key: 'sms_bower', label: 'smsbower' },
   { key: 'sms_code', label: 'smscode' },
   { key: 'sms_pool', label: 'smspool' },
+  { key: 'tiger_sms', label: 'tiger-sms' },
 ];
 
 /**

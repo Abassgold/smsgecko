@@ -7,6 +7,7 @@ export const PROVIDER_ADAPTER_KEYS = [
   'sms_bower',
   'sms_code',
   'sms_pool',
+  'tiger_sms',
 ] as const;
 export type ProviderAdapterKey = (typeof PROVIDER_ADAPTER_KEYS)[number];
 

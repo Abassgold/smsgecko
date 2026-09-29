@@ -37,7 +37,7 @@ POST /orders ──▶ waiting ──▶ completed   (polling worker applied a d
 ```
 
 - `expiresAt = createdAt + max(orderTtlSeconds, providerMinHold)` — some providers
-  (`hero_sms`, `sms_bower`) hold a number ≥ 10 min before it may be auto-expired or
+  (`hero_sms`, `sms_bower`, `tiger_sms`) hold a number ≥ 10 min before it may be auto-expired or
   user-canceled.
 - The charge happens once, at `POST /orders`. `completed` moves no money.
 - An order is single-shot: rent → one code → done / cancel / expire. There is no
