@@ -17,6 +17,7 @@ function toRow(o: OrderDoc, email: string, payment?: TransactionDoc): AdminOrder
     : null;
   return {
     id: o.id as string,
+    publicId: (o.publicId ?? null) as string | null,
     status: o.status,
     source: o.source,
     user: { id: String(o.userId), email },

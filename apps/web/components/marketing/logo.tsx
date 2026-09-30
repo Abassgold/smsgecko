@@ -28,7 +28,7 @@ export function Logo({ className, href = '/' }: { className?: string; href?: str
           <circle cx="36" cy="16" r="1.8" fill="var(--accent-contrast)" />
         </svg>
       </span>
-      <span className="text-[17px] tracking-tight">smsgecko</span>
+      <span className="text-[19px] tracking-tight">smsgecko</span>
     </Link>
   );
 }

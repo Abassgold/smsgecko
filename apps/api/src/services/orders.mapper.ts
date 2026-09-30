@@ -22,6 +22,7 @@ export function toOrderView(order: OrderDoc, messages: SmsMessageDoc[] = []): Or
 
   return {
     id: order.id as string,
+    publicId: order.publicId ?? null,
     status: order.status,
     service: { id: String(order.serviceId), name: order.serviceName, iconKey: order.serviceIconKey },
     country: {

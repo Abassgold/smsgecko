@@ -74,7 +74,7 @@ export default function OrdersPage() {
                     className="cursor-pointer border-b border-border last:border-0 hover:bg-surface-2/50"
                   >
                     <td className="px-5 py-3">
-                      <span className="font-mono text-xs text-accent">#{o.id.slice(-8)}</span>
+                      <span className="font-mono text-xs text-accent">{o.publicId ?? `#${o.id.slice(-8)}`}</span>
                     </td>
                     <td className="px-5 py-3">{o.service.name}</td>
                     <td className="px-5 py-3 text-muted">

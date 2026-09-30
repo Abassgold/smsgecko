@@ -57,6 +57,7 @@ export async function getUserDetail(id: string): Promise<AdminUserDetail> {
     affiliateCode: user.affiliateCode,
     recentOrders: orders.map((o) => ({
       id: o.id as string,
+      publicId: (o.publicId ?? null) as string | null,
       status: o.status,
       source: o.source,
       service: o.serviceName,

@@ -26,6 +26,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const logout = useLogout();
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const currentNav =
+    NAV.find((item) =>
+      item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href),
+    ) ?? NAV[0];
 
   return (
     <div className="flex min-h-full flex-1">
@@ -89,22 +94,46 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <Logo href="/admin" />
           <Badge tone="accent">Admin</Badge>
         </header>
-        <nav className="flex gap-1 overflow-x-auto border-b border-border px-4 py-2 md:hidden">
-          {NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'whitespace-nowrap rounded-lg px-3 py-1.5 text-sm',
-                (item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href))
-                  ? 'bg-surface-2 text-text'
-                  : 'text-muted',
-              )}
+        <div className="relative border-b border-border px-4 py-2 md:hidden">
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            className="flex w-full items-center justify-between rounded-lg bg-surface-2 px-3 py-2 text-sm text-text"
+          >
+            <span className="flex items-center gap-2.5">
+              <span className="w-4 text-center text-faint">{currentNav.icon}</span>
+              {currentNav.label}
+            </span>
+            <span className="text-faint">{menuOpen ? '▲' : '▼'}</span>
+          </button>
+          {menuOpen ? (
+            <div
+              role="menu"
+              className="absolute left-4 right-4 z-20 mt-1 flex flex-col gap-0.5 rounded-xl border border-border bg-surface p-2 shadow-xl"
             >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+              {NAV.map((item) => {
+                const active =
+                  item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMenuOpen(false)}
+                    className={cn(
+                      'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
+                      active ? 'bg-surface-2 text-text' : 'text-muted hover:text-text',
+                    )}
+                  >
+                    <span className="w-4 text-center text-faint">{item.icon}</span>
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
         <main className="flex-1 p-5 sm:p-8">{children}</main>
       </div>
     </div>

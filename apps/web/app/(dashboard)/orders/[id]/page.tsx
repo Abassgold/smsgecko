@@ -65,7 +65,7 @@ export default function OrderDetailPage() {
         <Link href="/orders" className="text-sm text-accent">
           ← All orders
         </Link>
-        <span className="font-mono text-xs text-faint">#{o.id.slice(-8)}</span>
+        <span className="font-mono text-xs text-faint">{o.publicId ?? `#${o.id.slice(-8)}`}</span>
       </div>
 
       <Card className="p-6">

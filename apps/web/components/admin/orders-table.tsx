@@ -67,7 +67,7 @@ export function OrdersTable({ userId }: { userId?: string }) {
             <tbody>
               {orders.data.items.map((o) => (
                 <tr key={o.id} className="border-b border-border last:border-0">
-                  <td className="px-4 py-3 font-mono text-xs text-accent">#{o.id.slice(-8)}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-accent">{o.publicId ?? `#${o.id.slice(-8)}`}</td>
                   <td className="px-4 py-3">
                     <Badge tone={o.source === 'api' ? 'accent' : 'muted'}>{o.source}</Badge>
                   </td>

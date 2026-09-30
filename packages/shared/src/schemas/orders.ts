@@ -33,6 +33,8 @@ export interface SmsMessageView {
 
 export interface OrderView {
   id: string;
+  /** Short, human-friendly reference (e.g. "SG-8FQ3-K2"); null on older orders. */
+  publicId: string | null;
   status: OrderStatus;
   service: { id: string; name: string; iconKey: string };
   country: { id: string; name: string; code: string; flagEmoji: string };

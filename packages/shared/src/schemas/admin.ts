@@ -102,6 +102,7 @@ export interface AdminUserDetail extends AdminUserView {
   affiliateCode: string;
   recentOrders: Array<{
     id: string;
+    publicId: string | null;
     status: OrderStatus;
     source: OrderSource;
     service: string;
@@ -122,6 +123,7 @@ export interface AdminUserDetail extends AdminUserView {
 
 export interface AdminOrderRow {
   id: string;
+  publicId: string | null;
   status: OrderStatus;
   source: OrderSource;
   user: { id: string; email: string };
