@@ -4,12 +4,23 @@ import { connectMongo, disconnectMongo } from './db/mongoose.js';
 import { logger } from './lib/logger.js';
 import { ensureProviders } from './lib/ensureProviders.js';
 import { ensureSettings } from './lib/settings.js';
+import { Order } from './models/Order.js';
 import { startWorkers, stopWorkers } from './workers/index.js';
 
 async function main() {
   await connectMongo();
   await ensureSettings();
   await ensureProviders();
+  // autoIndex is off in production, so ensure the order publicId index exists.
+  // Idempotent, and creates ONLY this index (never drops others the way
+  // syncIndexes would). The partial filter skips the null publicId on older
+  // orders, so it's safe to build over an existing collection.
+  await Order.collection
+    .createIndex(
+      { publicId: 1 },
+      { unique: true, partialFilterExpression: { publicId: { $type: 'string' } } },
+    )
+    .catch((err) => logger.warn({ err }, 'order publicId index ensure failed'));
   const app = await buildApp();
 
   if (env.WORKERS_ENABLED) startWorkers(logger);
