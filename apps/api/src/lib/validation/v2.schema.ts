@@ -3,7 +3,7 @@ import * as yup from 'yup';
 export const v2IdParams = yup.object({
   id: yup
     .string()
-    .matches(/^[a-f0-9]{24}$/i, 'invalid id')
+    .matches(/^(SG-[0-9A-Z]{4}-[0-9A-Z]{2,4}|[a-f0-9]{24})$/i, 'invalid id')
     .required(),
 });
 

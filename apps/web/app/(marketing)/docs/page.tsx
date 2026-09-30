@@ -573,7 +573,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
                   `{
   "success": true,
   "data": {
-    "id": "665f2a1b9c4d8e0012ab34cd",
+    "id": "SG-8FQ3-K2",
     "status": "waiting",
     "product": { "service": "Whatsapp", "country": "United States" },
     "phone_number": "+15551234567",
@@ -610,7 +610,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
   "success": true,
   "data": [
     {
-      "id": "665f2a1b9c4d8e0012ab34cd",
+      "id": "SG-8FQ3-K2",
       "status": "waiting",
       "product": { "service": "Whatsapp", "country": "United States" },
       "phone_number": "+15551234567",
@@ -632,11 +632,13 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
             <Endpoint method="GET" path="/api/v2/orders/:id" />
             <p>
               Poll this for the code. <code>sms[]</code> holds each received message;{' '}
-              <code>otp_code</code> is the parsed code once it lands.
+              <code>otp_code</code> is the parsed code once it lands. <code>:id</code> is the
+              order&rsquo;s <code>id</code> (short, like <code>SG-8FQ3-K2</code>); a legacy 24-hex
+              id still works too.
             </p>
             <CodeLabel>Example request</CodeLabel>
             <CodeBlock
-              tabs={[curl('cURL', `curl ${BASE}/api/v2/orders/665f2a1b9c4d8e0012ab34cd \\\n  -H "Authorization: Bearer $TOKEN"`)]}
+              tabs={[curl('cURL', `curl ${BASE}/api/v2/orders/SG-8FQ3-K2 \\\n  -H "Authorization: Bearer $TOKEN"`)]}
             />
             <CodeLabel>Example response</CodeLabel>
             <CodeBlock
@@ -647,7 +649,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
                   `{
   "success": true,
   "data": {
-    "id": "665f2a1b9c4d8e0012ab34cd",
+    "id": "SG-8FQ3-K2",
     "status": "completed",
     "product": { "service": "Whatsapp", "country": "United States" },
     "phone_number": "+15551234567",
@@ -681,7 +683,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
               tabs={[
                 curl(
                   'cURL',
-                  `curl -X POST ${BASE}/api/v2/orders/665f2a1b9c4d8e0012ab34cd/finish \\\n  -H "Authorization: Bearer $TOKEN"`,
+                  `curl -X POST ${BASE}/api/v2/orders/SG-8FQ3-K2/finish \\\n  -H "Authorization: Bearer $TOKEN"`,
                 ),
               ]}
             />
@@ -694,7 +696,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
                   `{
   "success": true,
   "data": {
-    "id": "665f2a1b9c4d8e0012ab34cd",
+    "id": "SG-8FQ3-K2",
     "status": "completed",
     "product": { "service": "Whatsapp", "country": "United States" },
     "phone_number": "+15551234567",
@@ -728,7 +730,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
               tabs={[
                 curl(
                   'cURL',
-                  `curl -X POST ${BASE}/api/v2/orders/665f2a1b9c4d8e0012ab34cd/cancel \\\n  -H "Authorization: Bearer $TOKEN"`,
+                  `curl -X POST ${BASE}/api/v2/orders/SG-8FQ3-K2/cancel \\\n  -H "Authorization: Bearer $TOKEN"`,
                 ),
               ]}
             />
@@ -741,7 +743,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
                   `{
   "success": true,
   "data": {
-    "id": "665f2a1b9c4d8e0012ab34cd",
+    "id": "SG-8FQ3-K2",
     "status": "canceled",
     "product": { "service": "Whatsapp", "country": "United States" },
     "phone_number": "+15551234567",
@@ -774,7 +776,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
               tabs={[
                 curl(
                   'cURL',
-                  `curl -X POST ${BASE}/api/v2/orders/665f2a1b9c4d8e0012ab34cd/resend \\\n  -H "Authorization: Bearer $TOKEN"`,
+                  `curl -X POST ${BASE}/api/v2/orders/SG-8FQ3-K2/resend \\\n  -H "Authorization: Bearer $TOKEN"`,
                 ),
               ]}
             />
@@ -787,7 +789,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
                   `{
   "success": true,
   "data": {
-    "id": "665f2a1b9c4d8e0012ab34cd",
+    "id": "SG-8FQ3-K2",
     "status": "waiting",
     "product": { "service": "Whatsapp", "country": "United States" },
     "phone_number": "+15551234567",
@@ -823,7 +825,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
               tabs={[
                 curl(
                   'cURL',
-                  `curl -X POST ${BASE}/api/v2/orders/665f2a1b9c4d8e0012ab34cd/reactivate \\\n  -H "Authorization: Bearer $TOKEN"`,
+                  `curl -X POST ${BASE}/api/v2/orders/SG-8FQ3-K2/reactivate \\\n  -H "Authorization: Bearer $TOKEN"`,
                 ),
               ]}
             />
@@ -836,7 +838,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
                   `{
   "success": true,
   "data": {
-    "id": "665f2a1b9c4d8e0012ab34cd",
+    "id": "SG-8FQ3-K2",
     "status": "waiting",
     "product": { "service": "Whatsapp", "country": "United States" },
     "phone_number": "+15551234567",
@@ -889,7 +891,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
   "event": "order.otp_received",
   "timestamp": "2026-09-10T14:03:12.000Z",
   "data": {
-    "order_id": "665f2a1b9c4d8e0012ab34cd",
+    "order_id": "SG-8FQ3-K2",
     "status": "completed",
     "phone_number": "+15551234567",
     "otp_code": "482913",
@@ -905,7 +907,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
             />
             <Params
               rows={[
-                ['order_id', 'string', '24-hex order id.'],
+                ['order_id', 'string', 'Short order id, e.g. "SG-8FQ3-K2".'],
                 ['status', 'enum', '"waiting" | "completed" | "canceled" | "expired"'],
                 ['phone_number', 'string', 'E.164, e.g. "+15551234567".'],
                 ['otp_code', 'string | null', 'Parsed code, if one was found in the message.'],
@@ -1074,7 +1076,7 @@ app.post('/webhooks/smsgecko', express.raw({ type: 'application/json' }), (req, 
           <Section id="order-object" title="The order object">
             <Params
               rows={[
-                ['id', 'string', '24-hex order id.'],
+                ['id', 'string', 'Short order id, e.g. "SG-8FQ3-K2" (orders created before this may still be 24-hex).'],
                 ['status', 'enum', '"waiting" | "completed" | "canceled" | "expired"'],
                 ['product', 'object', '{ service, country } — display names.'],
                 ['phone_number', 'string', 'E.164, e.g. "+15551234567".'],

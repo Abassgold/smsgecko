@@ -138,7 +138,7 @@ export interface WebhookOrderData {
  */
 function toWebhookData(order: OrderDoc, otpMessage: string | null = null): WebhookOrderData {
   return {
-    order_id: order.id as string,
+    order_id: (order.publicId ?? order.id) as string,
     status: order.status,
     phone_number: order.phoneNumber,
     otp_code: order.otpCode ?? null,

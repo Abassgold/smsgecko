@@ -13,7 +13,7 @@ import {
 import { resolveForOrder } from './catalog.service.js';
 import { getSettings } from '../lib/settings.js';
 import { parseOfferId } from '../lib/catalog.js';
-import { sha256 } from '../lib/crypto.js';
+import { sha256, friendlyCode } from '../lib/crypto.js';
 import { debit } from '../lib/ledger.js';
 import { applyOtpToOrder, refundWaitingOrder } from '../lib/orderLifecycle.js';
 // import { dispatchWebhook } from '../lib/webhooks.js';
@@ -50,6 +50,24 @@ function hashOrderBody(body: CreateOrderBody): string {
       operator: body.operator ?? null,
     }),
   );
+}
+
+const HEX24 = /^[a-f0-9]{24}$/i;
+/** An API-supplied order id may be the short publicId ("SG-8FQ3-K2") or the
+ *  raw 24-hex _id — resolve it to the right lookup filter. */
+function orderIdFilter(orderId: string): Record<string, unknown> {
+  return HEX24.test(orderId) ? { _id: orderId } : { publicId: orderId };
+}
+
+/** A fresh, unique, human-friendly order reference like "SG-8FQ3-K2". */
+async function newOrderPublicId(): Promise<string> {
+  for (let i = 0; i < 6; i += 1) {
+    const c = friendlyCode(6);
+    const id = `SG-${c.slice(0, 4)}-${c.slice(4)}`;
+    if (!(await Order.exists({ publicId: id }))) return id;
+  }
+  const c = friendlyCode(9); // vanishingly unlikely fallback: more entropy
+  return `SG-${c.slice(0, 4)}-${c.slice(4, 7)}-${c.slice(7)}`;
 }
 
 export interface CreateOrderResult {
@@ -127,9 +145,11 @@ export async function createOrder(
       maxPriceMicro: cat.rawPriceMicro,
     });
 
+    const publicId = await newOrderPublicId();
     const data = {
       userId: user._id,
       source,
+      publicId,
       serviceId: serviceCode,
       countryId: countryCode,
       serviceSlug: cat.serviceSlug,
@@ -257,14 +277,14 @@ export async function listOrders(user: UserDoc, params: ListOrdersParams) {
 }
 
 export async function getOrderWithMessages(user: UserDoc, orderId: string) {
-  const order = await Order.findOne({ _id: orderId, userId: user._id });
+  const order = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id });
   if (!order) throw notFound('Order not found');
   const messages = await SmsMessage.find({ orderId: order._id }).sort({ receivedAt: 1 });
   return { order, messages };
 }
 
 export async function finishOrder(user: UserDoc, orderId: string): Promise<OrderDoc> {
-  const order = await Order.findOne({ _id: orderId, userId: user._id });
+  const order = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id });
   if (!order) throw notFound('Order not found');
   if (order.status === 'completed' && !order.finishedAt) {
     order.finishedAt = new Date();
@@ -282,7 +302,7 @@ export async function finishOrder(user: UserDoc, orderId: string): Promise<Order
 }
 
 export async function cancelOrder(user: UserDoc, orderId: string): Promise<OrderDoc> {
-  const order = await Order.findOne({ _id: orderId, userId: user._id });
+  const order = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id });
   if (!order) throw notFound('Order not found');
   if (order.status !== 'waiting') {
     throw conflict(`Order is already ${order.status}`);
@@ -353,7 +373,7 @@ export async function deliverOtpByProviderRef(
  * rental, no charge. The polling worker picks up whatever arrives next.
  */
 export async function resendOrder(user: UserDoc, orderId: string): Promise<OrderDoc> {
-  const order = await Order.findOne({ _id: orderId, userId: user._id });
+  const order = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id });
   if (!order) throw notFound('Order not found');
   if (order.status !== 'waiting') throw conflict(`Order is already ${order.status}`);
 
@@ -383,12 +403,12 @@ export async function reactivateOrder(user: UserDoc, orderId: string): Promise<O
   // twice. Only one call can win this update; the loser gets a clear
   // conflict instead of a duplicate charge.
   const order = await Order.findOneAndUpdate(
-    { _id: orderId, userId: user._id, status: 'completed', reactivatingAt: null },
+    { ...orderIdFilter(orderId), userId: user._id, status: 'completed', reactivatingAt: null },
     { $set: { reactivatingAt: new Date() } },
     { returnDocument: 'after' },
   );
   if (!order) {
-    const existing = await Order.findOne({ _id: orderId, userId: user._id });
+    const existing = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id });
     if (!existing) throw notFound('Order not found');
     if (existing.reactivatingAt) {
       throw conflict('A reactivation for this order is already in progress');

@@ -9,7 +9,7 @@ export function usdString(micro: number): string {
 
 export function toV2Order(order: OrderDoc, messages: SmsMessageDoc[] = []) {
   return {
-    id: order.id as string,
+    id: (order.publicId ?? order.id) as string,
     status: order.status,
     product: { service: order.serviceName, country: order.countryName },
     phone_number: order.phoneNumber,

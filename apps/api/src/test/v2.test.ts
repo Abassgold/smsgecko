@@ -4,6 +4,7 @@ import { makeInject } from './inject.js';
 import { buildApp } from '../app.js';
 import { makeCatalog, makeUser, simulateOtp } from './factories.js';
 import { ApiKey } from '../models/ApiKey.js';
+import { Order } from '../models/Order.js';
 import { User } from '../models/User.js';
 import { ProviderConfig } from '../models/ProviderConfig.js';
 import { encryptJson } from '../lib/secretbox.js';
@@ -347,5 +348,44 @@ describe('v2 API (Bearer)', () => {
       headers: { authorization: `Bearer ${second.json().key}` },
     });
     expect(usedNew.statusCode).toBe(200);
+  });
+});
+
+describe('v2 order short id (SG-XXXX-XX)', () => {
+  it('returns a short id and finds the order by short id AND by raw _id', async () => {
+    const { userId } = await makeUser(app, { balanceMicro: 2_000_000 });
+    const key = await keyFor(userId);
+    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 200_000, stock: 5 });
+
+    const created = await inject({
+      method: 'POST',
+      url: '/api/v2/orders',
+      headers: { authorization: `Bearer ${key}` },
+      payload: { catalog_product_id: `${serviceCode}::${countryCode}` },
+    });
+    expect(created.statusCode).toBe(201);
+    const shortId = (created.json() as { data: { id: string } }).data.id;
+    // Customer-facing id is the branded short reference, not the 24-hex _id.
+    expect(shortId).toMatch(/^SG-[0-9A-Z]{4}-[0-9A-Z]{2}$/);
+
+    // GET by the short id works.
+    const byShort = await inject({
+      method: 'GET',
+      url: `/api/v2/orders/${shortId}`,
+      headers: { authorization: `Bearer ${key}` },
+    });
+    expect(byShort.statusCode).toBe(200);
+    expect((byShort.json() as { data: { id: string } }).data.id).toBe(shortId);
+
+    // Backward compatible: GET by the raw 24-hex _id still works.
+    const hexId = (await Order.findOne({ publicId: shortId }))!.id as string;
+    expect(hexId).toMatch(/^[a-f0-9]{24}$/);
+    const byHex = await inject({
+      method: 'GET',
+      url: `/api/v2/orders/${hexId}`,
+      headers: { authorization: `Bearer ${key}` },
+    });
+    expect(byHex.statusCode).toBe(200);
+    expect((byHex.json() as { data: { id: string } }).data.id).toBe(shortId);
   });
 });

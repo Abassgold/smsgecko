@@ -93,8 +93,10 @@ export async function makeProvider(opts: {
 
 /** Fast-forward a mock order so the polling worker delivers its OTP now. */
 export async function simulateOtp(orderId: string): Promise<OrderDoc | null> {
-  await Order.updateOne({ _id: orderId }, { $set: { deliverAt: new Date(0) } });
-  const order = await Order.findById(orderId);
+  // Accept the API's short public id (SG-…) or the raw 24-hex _id.
+  const filter = /^[a-f0-9]{24}$/i.test(orderId) ? { _id: orderId } : { publicId: orderId };
+  await Order.updateOne(filter, { $set: { deliverAt: new Date(0) } });
+  const order = await Order.findOne(filter);
   if (!order) return null;
   const { order: updated } = await pollOrderOnce(order);
   return updated;

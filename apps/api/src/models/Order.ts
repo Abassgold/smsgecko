@@ -6,6 +6,10 @@ const orderSchema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     /** Which surface created it: the dashboard (session cookie) or the public API (Bearer key). */
     source: { type: String, enum: ORDER_SOURCES, default: 'web' },
+    /** Short, human-friendly public reference (e.g. "SG-8FQ3-K2"), shown to
+     *  customers and accepted on the API instead of the raw 24-hex _id. Unset
+     *  on pre-existing orders — they fall back to _id. */
+    publicId: { type: String, default: null },
     /** The active provider's own service / country codes at order time. */
     serviceId: { type: String, required: true },
     countryId: { type: String, required: true },
@@ -72,6 +76,10 @@ orderSchema.index({ status: 1, lastPolledAt: 1 });
 orderSchema.index({ status: 1, expiresAt: 1 });
 orderSchema.index({ providerConfigId: 1 });
 orderSchema.index({ providerRef: 1 }); // inbound SMS webhook lookup
+orderSchema.index(
+  { publicId: 1 },
+  { unique: true, partialFilterExpression: { publicId: { $type: 'string' } } },
+);
 
 export type OrderAttrs = InferSchemaType<typeof orderSchema>;
 export type OrderDoc = HydratedDocument<OrderAttrs>;

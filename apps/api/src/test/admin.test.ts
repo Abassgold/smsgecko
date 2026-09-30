@@ -177,16 +177,19 @@ describe('admin panel', () => {
       })
     ).json().data;
 
+    // v1 (dashboard/admin) ids are the raw _id; the v2 API order's id is a
+    // short public ref (SG-…), so resolve it to its _id for admin lookups.
+    const apiHexId = (await Order.findOne({ publicId: apiOrder.id }))!.id as string;
     expect((await Order.findById(webOrder.id))!.source).toBe('web');
-    expect((await Order.findById(apiOrder.id))!.source).toBe('api');
+    expect((await Order.findById(apiHexId))!.source).toBe('api');
 
     const rows = (await get('/api/v1/admin/orders', adminCookie)).json().items;
     expect(rows.find((r: { id: string }) => r.id === webOrder.id).source).toBe('web');
-    expect(rows.find((r: { id: string }) => r.id === apiOrder.id).source).toBe('api');
+    expect(rows.find((r: { id: string }) => r.id === apiHexId).source).toBe('api');
 
     const detail = (await get(`/api/v1/admin/users/${userId}`, adminCookie)).json();
     expect(detail.recentOrders.find((o: { id: string }) => o.id === webOrder.id).source).toBe('web');
-    expect(detail.recentOrders.find((o: { id: string }) => o.id === apiOrder.id).source).toBe('api');
+    expect(detail.recentOrders.find((o: { id: string }) => o.id === apiHexId).source).toBe('api');
   });
 
   it('patches settings and getSettings() reflects it', async () => {
