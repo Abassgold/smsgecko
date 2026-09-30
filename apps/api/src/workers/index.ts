@@ -1,4 +1,5 @@
 import type { Logger } from 'pino';
+import { logger } from '../lib/logger.js';
 import { Order, type OrderDoc } from '../models/Order.js';
 import { Broadcast } from '../models/Broadcast.js';
 import { User } from '../models/User.js';
@@ -23,9 +24,14 @@ function guarded(fn: () => Promise<void>): () => void {
   return () => {
     if (busy) return;
     busy = true;
-    void fn().finally(() => {
-      busy = false;
-    });
+    // .catch() (not just .finally) so a tick that throws — e.g. a DB query
+    // failing during a transient Mongo drop — is logged, never surfaced as an
+    // unhandled rejection that would crash the process.
+    void fn()
+      .catch((err) => logger.error({ err }, 'worker tick failed'))
+      .finally(() => {
+        busy = false;
+      });
   };
 }
 
