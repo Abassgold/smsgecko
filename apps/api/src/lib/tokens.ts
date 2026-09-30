@@ -34,7 +34,7 @@ export function signRefreshToken(userId: string, jti: string, family: string): s
 
 export function verifyAccessToken(token: string): AccessClaims | null {
   try {
-    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as AccessClaims;
+    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: ['HS256'] }) as AccessClaims;
     return decoded.type === 'access' ? decoded : null;
   } catch {
     return null;
@@ -43,7 +43,7 @@ export function verifyAccessToken(token: string): AccessClaims | null {
 
 export function verifyRefreshToken(token: string): RefreshClaims | null {
   try {
-    const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET) as RefreshClaims;
+    const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET, { algorithms: ['HS256'] }) as RefreshClaims;
     return decoded.type === 'refresh' ? decoded : null;
   } catch {
     return null;
@@ -63,7 +63,7 @@ export function signTwoFactorPendingToken(userId: string): string {
 
 export function verifyTwoFactorPendingToken(token: string): TwoFactorPendingClaims | null {
   try {
-    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as TwoFactorPendingClaims;
+    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: ['HS256'] }) as TwoFactorPendingClaims;
     return decoded.type === '2fa_pending' ? decoded : null;
   } catch {
     return null;

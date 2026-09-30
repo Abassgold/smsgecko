@@ -47,6 +47,14 @@ const envSchema = z.object({
 
   ORDER_TTL_SECONDS: z.coerce.number().int().positive().default(1200),
 
+  /** Shared secret the inbound SMS webhook (POST /api/v1/webhooks/sms) requires
+   *  in the `X-Webhook-Secret` header. The FloZap/NexuzMarket forwarders (and
+   *  any provider that calls back directly) must send the same value. When
+   *  UNSET the endpoint stays open but logs a loud warning — so rolling this out
+   *  never drops live OTP delivery before the forwarders are updated. Set it in
+   *  prod to actually lock the endpoint down. */
+  SMS_INBOUND_SECRET: z.string().optional(),
+
   /** Stripe secret key (test or live). When unset, card deposits are unavailable. */
   STRIPE_SECRET_KEY: z.string().optional(),
   /** Signing secret for the Stripe webhook endpoint (`whsec_...`), from the Stripe dashboard/CLI. */

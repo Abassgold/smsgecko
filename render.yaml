@@ -39,6 +39,8 @@ services:
         sync: false # base64, 32 bytes — node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
       - key: ORDER_TTL_SECONDS
         value: '1200'
+      - key: SMS_INBOUND_SECRET
+        sync: false # shared secret for POST /api/v1/webhooks/sms; set the same value on FloZap + NexuzMarket forwarders
       - key: WORKERS_ENABLED
         value: 'true'
       - key: SES_SMTP_HOST

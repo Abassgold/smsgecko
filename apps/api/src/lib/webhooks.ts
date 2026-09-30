@@ -1,3 +1,6 @@
+import { isIP } from 'node:net';
+import { lookup } from 'node:dns/promises';
+import { env } from '../config/env.js';
 import { logger } from './logger.js';
 import { hmacSha256Hex, randomToken } from './crypto.js';
 import { badRequest } from './errors.js';
@@ -40,13 +43,69 @@ export function isSafeWebhookUrl(raw: string): boolean {
   return !PRIVATE_HOSTNAME_PATTERNS.some((p) => p.test(url.hostname));
 }
 
+/** True for loopback / private / link-local / ULA / CGNAT addresses (v4 + v6). */
+export function isPrivateIp(ip: string): boolean {
+  const v = isIP(ip);
+  if (v === 4) {
+    const p = ip.split('.').map(Number) as [number, number, number, number];
+    if (p[0] === 10 || p[0] === 127 || p[0] === 0) return true;
+    if (p[0] === 169 && p[1] === 254) return true; // link-local (metadata)
+    if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true;
+    if (p[0] === 192 && p[1] === 168) return true;
+    if (p[0] === 100 && p[1] >= 64 && p[1] <= 127) return true; // CGNAT
+    return false;
+  }
+  if (v === 6) {
+    const lower = ip.toLowerCase();
+    if (lower === '::1' || lower === '::') return true;
+    if (lower.startsWith('fe80')) return true; // link-local
+    if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // ULA fc00::/7
+    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower);
+    if (mapped) return isPrivateIp(mapped[1]!);
+    return false;
+  }
+  return true; // unparseable → treat as unsafe
+}
+
+/**
+ * Resolve `hostname` and reject if any address is private/link-local. Called
+ * right before every outbound webhook POST, so a hostname that passed the
+ * set-time string check but *resolves* to an internal IP (DNS rebinding) is
+ * still blocked. Residual TOCTOU: undici re-resolves on connect, so a value
+ * that flips between this lookup and the socket connect isn't fully closed —
+ * pinning the socket to the resolved IP would be the complete fix.
+ */
+async function assertPublicHost(hostname: string): Promise<void> {
+  // Tests deliver to a local 127.0.0.1 sink on purpose; the check is a prod
+  // guard. The pure isPrivateIp() logic is unit-tested directly instead.
+  if (env.NODE_ENV === 'test') return;
+  if (isIP(hostname)) {
+    if (isPrivateIp(hostname)) throw new Error('webhook host is a private address');
+    return;
+  }
+  let addrs: Array<{ address: string }>;
+  try {
+    addrs = await lookup(hostname, { all: true });
+  } catch {
+    throw new Error('webhook host did not resolve');
+  }
+  if (addrs.length === 0 || addrs.some((a) => isPrivateIp(a.address))) {
+    throw new Error('webhook host resolves to a private address');
+  }
+}
+
 function sign(secret: string | null | undefined, payload: string): string | null {
   return secret ? `sha256=${hmacSha256Hex(secret, payload)}` : null;
 }
 
 async function post(url: string, payload: string, signature: string | null) {
+  // Re-check the resolved IP at send time (DNS rebinding), and never follow a
+  // redirect — a 3xx into http://169.254.169.254/… or an internal host would
+  // otherwise bypass the set-time URL check.
+  await assertPublicHost(new URL(url).hostname);
   return fetch(url, {
     method: 'POST',
+    redirect: 'manual',
     headers: {
       'Content-Type': 'application/json',
       'User-Agent': 'SMSGecko-Webhooks/1.0',
