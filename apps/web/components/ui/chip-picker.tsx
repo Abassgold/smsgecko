@@ -46,7 +46,9 @@ export function ChipPicker({
       </div>
 
       <div className="mt-3 flex max-h-56 flex-wrap gap-2 overflow-y-auto pr-1">
-        {items.length === 0 && !loading ? (
+        {loading && items.length === 0 ? (
+          <ChipSkeletons />
+        ) : items.length === 0 ? (
           <span className="px-1 py-2 text-sm text-faint">{emptyLabel}</span>
         ) : null}
         {items.map((item) => {
@@ -70,5 +72,29 @@ export function ChipPicker({
         })}
       </div>
     </div>
+  );
+}
+
+// Shimmer placeholder chips shown while the list loads for the first time, so
+// the picker reads as "loading" instead of flashing an empty box. Only used
+// when there's nothing yet (a background refetch keeps the existing chips).
+const SKELETON_WIDTHS = [
+  'w-16', 'w-24', 'w-20', 'w-14', 'w-28', 'w-20', 'w-16', 'w-24', 'w-20', 'w-14', 'w-24', 'w-16',
+];
+
+function ChipSkeletons() {
+  return (
+    <>
+      <span className="sr-only" role="status">
+        Loading…
+      </span>
+      {SKELETON_WIDTHS.map((w, i) => (
+        <span
+          key={i}
+          aria-hidden
+          className={cn('h-8 animate-pulse rounded-full border border-border bg-surface-2', w)}
+        />
+      ))}
+    </>
   );
 }

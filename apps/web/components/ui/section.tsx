@@ -11,7 +11,7 @@ export function Section({
   id?: string;
 }) {
   return (
-    <section id={id} className={cn('py-16 sm:py-24', className)}>
+    <section id={id} className={cn('py-12 sm:py-16', className)}>
       {children}
     </section>
   );

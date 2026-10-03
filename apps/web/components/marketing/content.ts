@@ -74,18 +74,21 @@ curl https://api.smsgecko.local/api/v2/orders/$ORDER_ID \\
 
 export const WHAT_IT_DOES = [
   {
+    icon: 'inventory',
     title: 'Live inventory',
     body: 'Every number has a price and stock count shown up front. No surprises at checkout.',
   },
   {
+    icon: 'refund',
     title: 'Automatic refunds',
     body: "If no SMS arrives inside the window, your balance is returned — no ticket, no waiting.",
   },
   {
+    icon: 'api',
     title: 'Built for automation',
     body: 'A clean REST API with Bearer auth, idempotency keys, and polling for OTP delivery.',
   },
-];
+] as const;
 
 export const PLATFORMS = [
   'WhatsApp',
