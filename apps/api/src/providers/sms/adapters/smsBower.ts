@@ -23,6 +23,7 @@ import {
   priceCapUsd,
   type ActivateConfig,
 } from './activateProtocol.js';
+import { changeRoute } from '../changeRoute.js';
 
 /**
  * smsbower — SMS-Activate-style text API. Wants a `userID` and both
@@ -48,10 +49,12 @@ export class SmsBowerProvider implements SmsProvider {
 
   async rent(input: RentInput): Promise<RentResult> {
     const cap = priceCapUsd(input);
+    const service = mapService(this.cfg, input.serviceSlug);
+    const country = changeRoute(mapCountry(this.cfg, input.countryCode), service);
     const text = await activateGet(this.cfg, {
       action: 'getNumber',
-      service: mapService(this.cfg, input.serviceSlug),
-      country: mapCountry(this.cfg, input.countryCode),
+      service,
+      country,
       maxPrice: cap,
       minPrice: cap !== undefined ? 0 : undefined,
       userID: this.cfg.userId,
@@ -105,7 +108,9 @@ export class SmsBowerProvider implements SmsProvider {
 
   async listPrices(q: CatalogQuery): Promise<CatalogPrice[]> {
     const svc = mapService(this.cfg, q.serviceCode);
-    const country = q.countryCode ? mapCountry(this.cfg, q.countryCode) : undefined;
+    // Reroute here too (e.g. US WhatsApp -> Canada) so the quoted price — and the
+    // cap derived from it — matches the country rent() will actually buy from.
+    const country = q.countryCode ? changeRoute(mapCountry(this.cfg, q.countryCode), svc) : undefined;
 
     // Preferred: getPricesV3 — one tier per upstream operator (provider_id).
     // Shape: { "<ctry>": { "<svc>": { "<providerId>": { count, price, provider_id } } } }

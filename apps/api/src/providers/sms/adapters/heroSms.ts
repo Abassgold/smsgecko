@@ -24,6 +24,7 @@ import {
   priceCapUsd,
   type ActivateConfig,
 } from './activateProtocol.js';
+import { changeRoute } from '../changeRoute.js';
 
 /**
  * hero-sms.com — SMS-Activate-style text API.
@@ -48,10 +49,12 @@ export class HeroSmsProvider implements SmsProvider {
 
   async rent(input: RentInput): Promise<RentResult> {
     const cap = priceCapUsd(input);
+    const service = mapService(this.cfg, input.serviceSlug);
+    const country = changeRoute(mapCountry(this.cfg, input.countryCode), service);
     const text = await activateGet(this.cfg, {
       action: 'getNumber',
-      service: mapService(this.cfg, input.serviceSlug),
-      country: mapCountry(this.cfg, input.countryCode),
+      service,
+      country,
       fixedPrice: cap,
       freePrice: cap !== undefined ? 'true' : undefined,
     });
@@ -122,7 +125,9 @@ export class HeroSmsProvider implements SmsProvider {
 
   async listPrices(q: CatalogQuery): Promise<CatalogPrice[]> {
     const svc = mapService(this.cfg, q.serviceCode);
-    const country = q.countryCode ? mapCountry(this.cfg, q.countryCode) : undefined;
+    // Reroute here too (e.g. US WhatsApp -> Canada) so the quoted price — and the
+    // cap derived from it — matches the country rent() will actually buy from.
+    const country = q.countryCode ? changeRoute(mapCountry(this.cfg, q.countryCode), svc) : undefined;
 
     // Preferred: the REST offers endpoint — one tier per price point.
     try {
