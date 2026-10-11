@@ -230,7 +230,7 @@ export function ProviderForm({ mode, onDone }: { mode: Mode; onDone: () => void 
           </p>
           <Field
             label="Advanced config (JSON, optional)"
-            hint="serviceMap / countryMap translate smsgecko codes into this provider's own codes."
+            hint="serviceMap / countryMap translate SMSGecko codes into this provider's own codes."
             error={configErr ?? undefined}
           >
             <textarea

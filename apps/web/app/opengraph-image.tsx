@@ -66,7 +66,7 @@ export default function OpengraphImage() {
             letterSpacing: -2,
           }}
         >
-          smsgecko
+          SMSGecko
         </div>
         <div
           style={{

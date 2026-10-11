@@ -14,7 +14,7 @@ export function Logo({ className, href = '/' }: { className?: string; href?: str
           <GeckoGlyph />
         </svg>
       </span>
-      <span className="text-[19px] tracking-tight">smsgecko</span>
+      <span className="text-[19px] tracking-tight">SMSGecko</span>
     </Link>
   );
 }
