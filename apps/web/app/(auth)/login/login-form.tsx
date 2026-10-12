@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useLogin, useVerifyTwoFactor } from '@/lib/hooks';
 import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/cn';
@@ -10,7 +10,6 @@ import { AuthLogo } from '../auth-logo';
 import { PasswordField, SubmitButton } from '../auth-ui';
 
 export function LoginForm() {
-  const router = useRouter();
   const params = useSearchParams();
   const login = useLogin();
   const verifyTwoFactor = useVerifyTwoFactor();
@@ -19,8 +18,15 @@ export function LoginForm() {
   const [remember, setRemember] = useState(false);
   const [pendingToken, setPendingToken] = useState<string | null>(null);
   const [code, setCode] = useState('');
+  const [redirecting, setRedirecting] = useState(false);
 
-  const goToNext = () => router.replace(params.get('next') || '/dashboard');
+  // Full page load, not router.replace: a soft navigation can reuse a /dashboard prefetch cached while
+  // signed out (a redirect to /login), which leaves the user sitting on the form after a good login.
+  const goToNext = () => {
+    const next = params.get('next');
+    setRedirecting(true);
+    window.location.assign(next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard');
+  };
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,7 +85,7 @@ export function LoginForm() {
             />
           </div>
 
-          <SubmitButton label="Verify" loading={verifyTwoFactor.isPending} />
+          <SubmitButton label="Verify" loading={verifyTwoFactor.isPending || redirecting} />
 
           <div className="auth-links">
             <button
@@ -146,7 +152,7 @@ export function LoginForm() {
           Remember me
         </label>
 
-        <SubmitButton label="Sign in" loading={login.isPending} />
+        <SubmitButton label="Sign in" loading={login.isPending || redirecting} />
 
         <div className="auth-links">
           <Link href="/forgot-password">Forgot password?</Link>
