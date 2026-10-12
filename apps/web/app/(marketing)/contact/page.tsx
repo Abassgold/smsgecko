@@ -4,6 +4,7 @@ import { Container } from '@/components/ui/container';
 import { Section, SectionHeading } from '@/components/ui/section';
 import { Card } from '@/components/ui/card';
 import { CheckCircleIcon } from '@/components/ui/icons';
+import { TELEGRAM_SUPPORT_HANDLE, TELEGRAM_SUPPORT_URL } from '@/lib/support';
 import { ContactForm } from './contact-form';
 
 export const metadata: Metadata = {
@@ -42,10 +43,10 @@ const OTHER_WAYS = [
     body: 'support@smsgecko.com',
   },
   {
-    href: 'https://t.me/smsgecko_support',
+    href: TELEGRAM_SUPPORT_URL,
     icon: TelegramIcon,
     title: 'Telegram Support',
-    body: '@smsgecko_support',
+    body: TELEGRAM_SUPPORT_HANDLE,
   },
 ];
 
