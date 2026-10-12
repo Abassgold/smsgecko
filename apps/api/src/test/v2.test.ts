@@ -162,6 +162,45 @@ describe('v2 API (Bearer)', () => {
     expect(res.statusCode).toBe(422);
   });
 
+  it.each(['-1', '1e3', '1e-2', 'abc', '', ' 0.5', '0.5 ', '$0.50', '0.1234567', '+1', '.5'])(
+    'rejects a malformed max_price (%j) instead of guessing a different cap',
+    async (bad) => {
+      const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 800_000, stock: 5 });
+      const { userId } = await makeUser(app, { balanceMicro: 2_000_000 });
+      const key = await keyFor(userId);
+
+      const res = await inject({
+        method: 'POST',
+        url: '/api/v2/orders',
+        headers: { authorization: `Bearer ${key}` },
+        payload: { catalog_product_id: `${serviceCode}::${countryCode}`, max_price: bad },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error.message).toMatch(/max_price/);
+    },
+  );
+
+  // The cap is used as written: below the $0.80 price it is a 422 (never a 400), at or above it the order goes through.
+  it.each([
+    ['0', 422],
+    ['0.50', 422],
+    ['0.8', 201],
+    ['1', 201],
+    ['12.345678', 201],
+  ])('accepts a plain decimal max_price (%j) as written -> %i', async (cap, expected) => {
+    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 800_000, stock: 5 });
+    const { userId } = await makeUser(app, { balanceMicro: 2_000_000 });
+    const key = await keyFor(userId);
+
+    const res = await inject({
+      method: 'POST',
+      url: '/api/v2/orders',
+      headers: { authorization: `Bearer ${key}` },
+      payload: { catalog_product_id: `${serviceCode}::${countryCode}`, max_price: cap },
+    });
+    expect(res.statusCode).toBe(expected);
+  });
+
   it('rejects a replayed idempotency key used with a different body', async () => {
     const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 150_000, stock: 5 });
     const { userId } = await makeUser(app, { balanceMicro: 2_000_000 });

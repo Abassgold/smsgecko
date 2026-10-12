@@ -8,6 +8,8 @@ import { priceTiers, priceTiersByCountry, searchCountries, searchServices } from
 import { usdString } from './v2.mapper.js';
 import type { ProductsQuery } from '../lib/validation/v2.schema.js';
 
+const MAX_PRICE_PATTERN = /^\d+(\.\d{1,6})?$/;
+
 /**
  * `?service=` unset → the active provider's service list (discovery, no prices).
  * `?service=` set → priced products per country (× tier). `?country=` narrows it.
@@ -75,9 +77,14 @@ export async function createV2Order(
     );
   }
 
-  const maxPriceMicro = body.max_price ? parseUsd(body.max_price) : undefined;
-  if (maxPriceMicro !== undefined && !Number.isFinite(maxPriceMicro)) {
-    throw badRequest('max_price must be a decimal string, e.g. "0.50"');
+  // max_price is the buyer's safety cap, so a malformed value must be refused, never "cleaned up" into a different number
+  // (parseUsd drops stray characters: "-1" would become $1.00 and "1e3" $13.00). Plain decimal only, up to 6 places.
+  let maxPriceMicro: number | undefined;
+  if (body.max_price !== undefined) {
+    if (!MAX_PRICE_PATTERN.test(body.max_price)) {
+      throw badRequest('max_price must be a plain decimal string, e.g. "0.50"');
+    }
+    maxPriceMicro = parseUsd(body.max_price);
   }
 
   // The product id IS the offer id — it carries the chosen tier. `operator_id`,
