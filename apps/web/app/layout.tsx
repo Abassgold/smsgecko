@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { Geist, Geist_Mono, Space_Grotesk } from 'next/font/google';
+import Script from 'next/script';
 import { Providers } from './providers';
 import './globals.css';
 
@@ -11,6 +12,8 @@ const display = Space_Grotesk({
   weight: ['500', '600', '700'],
   variable: '--font-display',
 });
+
+const GTM_ID = 'GTM-TZPBW4C5';
 
 const SITE_URL = 'https://smsgecko.com';
 const SITE_NAME = 'SMSGecko';
@@ -86,6 +89,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       className={`${geist.variable} ${geistMono.variable} ${display.variable} h-full`}
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        {/* Google Tag Manager: ad pixels and other tags are managed inside GTM. Page events come from lib/analytics.ts. */}
+        <Script id="gtm" strategy="afterInteractive">
+          {`(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${GTM_ID}');`}
+        </Script>
+        <noscript>
+          <iframe src={`https://www.googletagmanager.com/ns.html?id=${GTM_ID}`} height="0" width="0" style={{ display: 'none', visibility: 'hidden' }} />
+        </noscript>
         <div className="page-backdrop" aria-hidden />
         <Providers>
           {children}

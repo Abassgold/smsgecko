@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useRegister } from '@/lib/hooks';
 import { ApiError } from '@/lib/api';
+import { trackRegistration } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
 import { AuthLogo } from '../auth-logo';
 import { PasswordField, SubmitButton } from '../auth-ui';
@@ -31,7 +32,12 @@ export function RegisterForm() {
     const code = referralCode.trim();
     register.mutate(
       { email, username: username.trim(), password, ...(code ? { referralCode: code } : {}) },
-      { onSuccess: () => router.replace('/verify-email') },
+      {
+        onSuccess: () => {
+          trackRegistration({ email });
+          router.replace('/verify-email');
+        },
+      },
     );
   };
 

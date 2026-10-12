@@ -9,10 +9,12 @@ import { SectionHeading } from '@/components/ui/section';
 import { formatUsd } from '@/lib/format';
 import { serviceIcon } from '@/lib/service-icons';
 import { ApiError } from '@/lib/api';
+import { trackNumberView } from '@/lib/analytics';
 import { useCountries, useCreateOrder, useQuote, useServices } from '@/lib/hooks';
 
 export function NewOrder() {
   const router = useRouter();
+  useEffect(trackNumberView, []);
   const [serviceQuery, setServiceQuery] = useState('');
   const [countryQuery, setCountryQuery] = useState('');
   const [serviceId, setServiceId] = useState<string | null>(null);

@@ -11,6 +11,7 @@ import { CopyButton } from '@/components/ui/copy-button';
 import { OrderStatusBadge } from '@/components/dashboard/order-status-badge';
 import { formatCountdown, formatShortDateTime, formatUsd } from '@/lib/format';
 import { ApiError } from '@/lib/api';
+import { trackNumberPurchase } from '@/lib/analytics';
 import { useCancelOrder, useOrder, useReactivateOrder, useResendOrder } from '@/lib/hooks';
 
 export default function OrderDetailPage() {
@@ -42,6 +43,14 @@ export default function OrderDetailPage() {
     qc.invalidateQueries({ queryKey: ['order-stats'] });
     qc.invalidateQueries({ queryKey: ['orders'] });
   }, [status, qc]);
+
+  // Ad conversion: only when we watched the code arrive (not when an old finished order is opened from the list).
+  const sawWaiting = useRef(false);
+  if (status === 'waiting') sawWaiting.current = true;
+  const priceMicro = order.data?.priceMicro;
+  useEffect(() => {
+    if (status === 'completed' && sawWaiting.current && priceMicro !== undefined) trackNumberPurchase(id, priceMicro);
+  }, [status, priceMicro, id]);
 
   if (order.isLoading) return <LoadingRow label="Loading order…" />;
   if (order.isError || !order.data) {
