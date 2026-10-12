@@ -393,13 +393,13 @@ export default function DocsPage() {
             <h3 className="mt-2 font-display text-base font-semibold text-text">Polling an order</h3>
             <ul className="flex list-disc flex-col gap-2 pl-5 marker:text-faint">
               <li>
-                <b className="text-text">Poll every 5 seconds.</b> New SMS are collected from the
-                network about every 8 seconds, so polling faster just returns the same answer.
+                <b className="text-text">Poll every 5 seconds.</b> A code rarely arrives sooner, so
+                polling faster only uses up your request budget.
               </li>
               <li>
                 <b className="text-text">Count your parallel orders.</b> 20 orders polled every 5
-                seconds is 240 requests a minute, close to the limit. For more, poll less often
-                or spread the work over several IPs.
+                seconds is 240 requests a minute, close to the limit. If you need more than that,
+                poll less often or contact support.
               </li>
               <li>
                 <b className="text-text">Stop when the order ends.</b> Only <code>waiting</code>{' '}
@@ -422,7 +422,10 @@ export default function DocsPage() {
               <li>
                 <b className="text-text">Find a product.</b> <code>GET /catalog/products?service=</code>{' '}
                 returns one row per price tier for each country. Each row&apos;s <code>id</code> is a
-                stable tier slot.
+                stable tier slot.{' '}
+                <b className="text-text">Look it up every time you order.</b> Service codes, country
+                codes and product ids can change as the catalog is updated, so never hardcode them
+                or keep them long-term.
               </li>
               <li>
                 <b className="text-text">Create the order.</b>{' '}
@@ -453,10 +456,14 @@ export default function DocsPage() {
                   'cURL',
                   `TOKEN="smsg_live_xxxxxxxxxxxx"
 
-# 1. a WhatsApp product in the US. Countries are the provider's codes ("187" = United States), not "us":
-#    list ?service=wa without a country to see every country_code.
-PID=$(curl -s "${BASE}/api/v2/catalog/products?service=wa&country=187" \\
-  -H "Authorization: Bearer $TOKEN" | jq -r '.data[0].id')
+# 1. look the product up by name. Never hardcode service codes, country codes or product ids:
+#    they can change as the catalog is updated.
+SERVICE=$(curl -s "${BASE}/api/v2/catalog/products?search=whatsapp" \\
+  -H "Authorization: Bearer $TOKEN" \\
+  | jq -r '[.data[] | select(.service | ascii_downcase == "whatsapp")][0].service_slug')
+PID=$(curl -s "${BASE}/api/v2/catalog/products?service=$SERVICE" \\
+  -H "Authorization: Bearer $TOKEN" \\
+  | jq -r '[.data[] | select(.country == "United States")][0].id')
 [ "$PID" != "null" ] || { echo "no product for that service/country"; exit 1; }
 
 # 2. buy it, never paying more than $1.00 (the order lives at .data on a single-object response)
@@ -498,9 +505,13 @@ const api = (p, init) => fetch(\`${BASE}/api/v2\${p}\`, { ...init, headers: h })
     return body.data;
   });
 
-// Countries are the provider's codes ("187" = United States), not "us":
-// list ?service=wa without a country to see every country_code.
-const products = await api('/catalog/products?service=wa&country=187');
+// Look the product up by name. Never hardcode service codes, country codes or product ids:
+// they can change as the catalog is updated.
+const service = (await api('/catalog/products?search=whatsapp'))
+  .find((s) => s.service.toLowerCase() === 'whatsapp');
+if (!service) throw new Error('Service not found');
+const products = (await api(\`/catalog/products?service=\${service.service_slug}\`))
+  .filter((p) => p.country === 'United States'); // cheapest first
 if (!products.length) throw new Error('No product for that service/country');
 
 // Never pay more than $1.00.
@@ -555,10 +566,17 @@ if (order.otp_code) {
               is just the service code — <b>not orderable</b>). Query with <code>?service=</code> to
               get real, buyable rows.
             </p>
+            <p>
+              <b className="text-text">Don&apos;t hardcode</b> service codes, country codes or
+              product ids. They can change periodically as providers and the catalog change, so
+              look up the service and country you want by name from this endpoint each time you
+              order (or at least refresh them often). Codes shown in these docs, such as{' '}
+              <code>wa</code> or <code>187</code>, are only examples.
+            </p>
             <Params
               rows={[
                 ['service', 'string?', 'Provider service code (e.g. "wa"). Required for prices.'],
-                ['country', 'string?', 'Provider country code (e.g. "187" for United States) — narrows the results. A name or ISO code like "us" does not match; read the codes from the country_code field when you list without it.'],
+                ['country', 'string?', 'Provider country code (e.g. "187") — narrows the results. A name or ISO code like "us" does not match, and codes can change: read them from the country_code field rather than hardcoding.'],
                 ['search', 'string?', 'Without service: filter the service list by name or code (e.g. "whatsapp").'],
                 ['limit', 'int?', '1–500, default 200.'],
               ]}
