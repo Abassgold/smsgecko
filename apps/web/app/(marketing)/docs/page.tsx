@@ -386,9 +386,35 @@ export default function DocsPage() {
 
           <Section id="rate-limits" title="Rate limits">
             <p>
-              300 requests per minute per IP. Poll a single order no faster than every ~3 seconds;
-              the code rarely lands sooner than that.
+              300 requests per minute per IP. Every response carries <code>RateLimit-Limit</code>,{' '}
+              <code>RateLimit-Remaining</code> and <code>RateLimit-Reset</code> (seconds until the
+              window resets); once you are over, you get <code>429 RATE_LIMITED</code>.
             </p>
+            <h3 className="mt-2 font-display text-base font-semibold text-text">Polling an order</h3>
+            <ul className="flex list-disc flex-col gap-2 pl-5 marker:text-faint">
+              <li>
+                <b className="text-text">Poll every 5 seconds.</b> New SMS are collected from the
+                network about every 8 seconds, so polling faster just returns the same answer.
+              </li>
+              <li>
+                <b className="text-text">Count your parallel orders.</b> 20 orders polled every 5
+                seconds is 240 requests a minute, close to the limit. For more, poll less often
+                or spread the work over several IPs.
+              </li>
+              <li>
+                <b className="text-text">Stop when the order ends.</b> Only <code>waiting</code>{' '}
+                needs polling. <code>completed</code>, <code>canceled</code> and{' '}
+                <code>expired</code> are final.
+              </li>
+              <li>
+                <b className="text-text">Set a time limit.</b> Stop at <code>expires_at</code>{' '}
+                (about 7 minutes after the purchase). Expired orders are refunded automatically.
+              </li>
+              <li>
+                <b className="text-text">Back off on a 429.</b> Wait <code>RateLimit-Reset</code>{' '}
+                seconds before the next request, then carry on.
+              </li>
+            </ul>
           </Section>
 
           <Section id="lifecycle" title="The OTP lifecycle">
@@ -405,9 +431,12 @@ export default function DocsPage() {
                 <code>waiting</code> with a <code>phone_number</code>.
               </li>
               <li>
-                <b className="text-text">Poll for the code.</b> <code>GET /orders/:id</code> until{' '}
-                <code>status</code> is <code>completed</code> and <code>otp_code</code> is set. If
-                nothing arrives before <code>expires_at</code>, the order auto-refunds.
+                <b className="text-text">Poll for the code.</b> <code>GET /orders/:id</code> every 5
+                seconds until <code>otp_code</code> is set (<code>status</code> becomes{' '}
+                <code>completed</code>). Stop early if <code>status</code> turns{' '}
+                <code>canceled</code> or <code>expired</code>, or when <code>expires_at</code>{' '}
+                passes. If nothing arrives, the order auto-refunds. See{' '}
+                <a href="#rate-limits" className="text-accent">Rate limits</a> for polling advice.
               </li>
               <li>
                 <b className="text-text">Finish</b> (<code>POST /orders/:id/finish</code>) to signal
@@ -424,27 +453,43 @@ export default function DocsPage() {
                   'cURL',
                   `TOKEN="smsg_live_xxxxxxxxxxxx"
 
-# 1. a WhatsApp product in the US ("data" is the array itself here)
-PID=$(curl -s "${BASE}/api/v2/catalog/products?service=wa&country=us" \\
+# 1. a WhatsApp product in the US. Countries are the provider's codes ("187" = United States), not "us":
+#    list ?service=wa without a country to see every country_code.
+PID=$(curl -s "${BASE}/api/v2/catalog/products?service=wa&country=187" \\
   -H "Authorization: Bearer $TOKEN" | jq -r '.data[0].id')
+[ "$PID" != "null" ] || { echo "no product for that service/country"; exit 1; }
 
-# 2. buy it, capped at $0.50 (the order lives at .data on a single-object response)
+# 2. buy it, never paying more than $1.00 (the order lives at .data on a single-object response)
 ORDER=$(curl -s -X POST ${BASE}/api/v2/orders \\
   -H "Authorization: Bearer $TOKEN" \\
   -H "Idempotency-Key: $(uuidgen)" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"catalog_product_id\\":\\"$PID\\",\\"max_price\\":\\"0.50\\"}")
+  -d "{\\"catalog_product_id\\":\\"$PID\\",\\"max_price\\":\\"1.00\\"}")
 ID=$(echo "$ORDER" | jq -r '.data.id')
+[ "$ID" != "null" ] || { echo "$ORDER"; exit 1; }
 
-# 3. poll until otp_code is present
-until curl -s ${BASE}/api/v2/orders/$ID \\
-  -H "Authorization: Bearer $TOKEN" | jq -e '.data.otp_code' >/dev/null; do sleep 3; done
+# 3. poll every 5 seconds for up to ~7 minutes; stop as soon as the code arrives or the order ends
+CODE=""
+for i in $(seq 1 84); do
+  RES=$(curl -s ${BASE}/api/v2/orders/$ID -H "Authorization: Bearer $TOKEN")
+  CODE=$(echo "$RES" | jq -r '.data.otp_code // empty')
+  STATUS=$(echo "$RES" | jq -r '.data.status')
+  [ -n "$CODE" ] && break
+  [ "$STATUS" = "waiting" ] || break
+  sleep 5
+done
 
-# 4. finish
-curl -s -X POST ${BASE}/api/v2/orders/$ID/finish -H "Authorization: Bearer $TOKEN"`,
+# 4. got a code: finish. No code: cancel (full refund; an expired order is refunded for you)
+if [ -n "$CODE" ]; then
+  echo "code: $CODE"
+  curl -s -X POST ${BASE}/api/v2/orders/$ID/finish -H "Authorization: Bearer $TOKEN"
+else
+  curl -s -X POST ${BASE}/api/v2/orders/$ID/cancel -H "Authorization: Bearer $TOKEN"
+fi`,
                 ),
                 js(`const TOKEN = 'smsg_live_xxxxxxxxxxxx';
 const h = { Authorization: \`Bearer \${TOKEN}\`, 'Content-Type': 'application/json' };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Every response is { success, data } (or { success: false, error } — see Errors).
 const api = (p, init) => fetch(\`${BASE}/api/v2\${p}\`, { ...init, headers: h })
   .then((r) => r.json())
@@ -453,21 +498,32 @@ const api = (p, init) => fetch(\`${BASE}/api/v2\${p}\`, { ...init, headers: h })
     return body.data;
   });
 
-const products = await api('/catalog/products?service=wa&country=us');
+// Countries are the provider's codes ("187" = United States), not "us":
+// list ?service=wa without a country to see every country_code.
+const products = await api('/catalog/products?service=wa&country=187');
+if (!products.length) throw new Error('No product for that service/country');
+
+// Never pay more than $1.00.
 const { id } = await api('/orders', {
   method: 'POST',
   headers: { ...h, 'Idempotency-Key': crypto.randomUUID() },
-  body: JSON.stringify({ catalog_product_id: products[0].id, max_price: '0.50' }),
+  body: JSON.stringify({ catalog_product_id: products[0].id, max_price: '1.00' }),
 });
 
+// Poll every 5 seconds until the code arrives, the order ends, or it expires (~7 minutes).
 let order;
 do {
-  await new Promise((r) => setTimeout(r, 3000));
+  await sleep(5000);
   order = await api(\`/orders/\${id}\`);
-} while (!order.otp_code);
+} while (order.status === 'waiting' && !order.otp_code && Date.now() < Date.parse(order.expires_at));
 
-console.log('code:', order.otp_code);
-await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
+if (order.otp_code) {
+  console.log('code:', order.otp_code);
+  await api(\`/orders/\${id}/finish\`, { method: 'POST' });
+} else {
+  console.log('no code, order is', order.status); // expired or canceled orders are refunded for you
+  if (order.status === 'waiting') await api(\`/orders/\${id}/cancel\`, { method: 'POST' });
+}`),
               ]}
             />
           </Section>
@@ -502,14 +558,14 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
             <Params
               rows={[
                 ['service', 'string?', 'Provider service code (e.g. "wa"). Required for prices.'],
-                ['country', 'string?', 'Provider country code — narrows the results.'],
+                ['country', 'string?', 'Provider country code (e.g. "187" for United States) — narrows the results. A name or ISO code like "us" does not match; read the codes from the country_code field when you list without it.'],
                 ['search', 'string?', 'Without service: filter the service list by name or code (e.g. "whatsapp").'],
                 ['limit', 'int?', '1–500, default 200.'],
               ]}
             />
             <CodeLabel>Example request</CodeLabel>
             <CodeBlock
-              tabs={[curl('cURL', `curl "${BASE}/api/v2/catalog/products?service=wa&country=us" \\\n  -H "Authorization: Bearer $TOKEN"`)]}
+              tabs={[curl('cURL', `curl "${BASE}/api/v2/catalog/products?service=wa&country=187" \\\n  -H "Authorization: Bearer $TOKEN"`)]}
             />
             <CodeLabel>Example response</CodeLabel>
             <CodeBlock
@@ -521,11 +577,11 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
   "success": true,
   "data": [
     {
-      "id": "wa::us::0",
+      "id": "wa::187",
       "service": "wa",
       "service_slug": "wa",
       "country": "United States",
-      "country_code": "us",
+      "country_code": "187",
       "operator": null,
       "price": "0.47",
       "stock": 212412
@@ -560,7 +616,7 @@ await api(\`/orders/\${id}/finish\`, { method: 'POST' });`),
   -H "Authorization: Bearer $TOKEN" \\
   -H "Idempotency-Key: 7b1e0c9c-3d21-4b2f-9a10-8f4e2c1d0abc" \\
   -H "Content-Type: application/json" \\
-  -d '{"catalog_product_id":"wa::us::0","max_price":"0.50"}'`,
+  -d '{"catalog_product_id":"wa::187","max_price":"0.50"}'`,
                 ),
               ]}
             />
