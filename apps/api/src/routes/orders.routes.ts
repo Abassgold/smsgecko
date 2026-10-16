@@ -15,7 +15,8 @@ router.get('/stats', orders.stats);
 router.get('/active', orders.active);
 router.get('/:id', validate(idParams, 'params'), orders.getOne);
 router.post('/:id/cancel', validate(idParams, 'params'), orders.cancel);
-router.post('/:id/resend', validate(idParams, 'params'), orders.resend);
+// Asks the provider for a real SMS: a short gap between calls, like reactivate's.
+router.post('/:id/resend', throttle(5000), validate(idParams, 'params'), orders.resend);
 // A real second purchase from the provider + a real second wallet debit on
 // a rapid double-click — throttled on top of the atomic lock in
 // reactivateOrder() itself (see orders.service.ts), not instead of it.

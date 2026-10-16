@@ -24,6 +24,14 @@ export interface ProductsQuery {
   limit: number;
 }
 
+/** The body-style actions (`POST /orders/finish|cancel|resend|reactivate`) take the id in the body instead of the address. Same id format as v2IdParams. */
+export const v2IdBody = yup.object({
+  id: yup
+    .string()
+    .matches(/^(SG-[0-9A-Z]{4}-[0-9A-Z]{2,4}|[a-f0-9]{24})$/i, 'invalid id')
+    .required(),
+});
+
 export const v2CreateOrderBody = yup.object({
   catalog_product_id: yup.string().optional(),
   product_id: yup.string().optional(),

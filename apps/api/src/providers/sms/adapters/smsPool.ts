@@ -129,7 +129,10 @@ export class SmsPoolProvider implements SmsProvider {
   }
 
   async resend(providerRef: string): Promise<void> {
-    await this.form('/sms/resend', { orderid: providerRef }).catch(() => undefined);
+    const res = await this.form('/sms/resend', { orderid: providerRef });
+    if (res && typeof res === 'object' && (Number(res.success) === 0 || res.success === false)) {
+      throw new Error('provider refused the resend');
+    }
   }
 
   async reactivate(providerRef: string): Promise<{ providerRef: string } | null> {

@@ -187,8 +187,10 @@ export class CustomHttpProvider implements SmsProvider {
   }
 
   async resend(providerRef: string): Promise<void> {
-    if (!this.cfg.baseUrl || !this.cfg.apiKey || !this.cfg.resendPath) return;
-    await this.call(this.cfg.resendPath, { ref: providerRef }).catch(() => undefined);
+    if (!this.cfg.baseUrl || !this.cfg.apiKey || !this.cfg.resendPath) {
+      throw new Error('this provider has no resend endpoint configured');
+    }
+    await this.call(this.cfg.resendPath, { ref: providerRef });
   }
 
   async healthCheck(): Promise<HealthResult> {

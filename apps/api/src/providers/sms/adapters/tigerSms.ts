@@ -11,6 +11,7 @@ import type {
   SmsProvider,
 } from '../types.js';
 import {
+  assertResendAccepted,
   activateGet,
   activateJson,
   mapCountry,
@@ -79,8 +80,8 @@ export class TigerSmsProvider implements SmsProvider {
 
   async resend(providerRef: string): Promise<void> {
     // status 3 = request another SMS on the same activation
-    await activateGet(this.cfg, { action: 'setStatus', id: providerRef, status: 3 }).catch(
-      () => undefined,
+    assertResendAccepted(
+      await activateGet(this.cfg, { action: 'setStatus', id: providerRef, status: 3 }),
     );
   }
 

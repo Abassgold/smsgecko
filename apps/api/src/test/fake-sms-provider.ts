@@ -30,6 +30,8 @@ export interface MockConfig {
   catalogCountries?: { code: string; name: string; iso2?: string; dialCode?: string }[];
   /** Force `rent()` to throw — exercises the fallback chain. */
   failRent?: boolean;
+  /** Force `resend()` to throw — exercises the "provider could not resend" error. */
+  failResend?: boolean;
 }
 
 /** Stable pseudo-price per (service, country) so repeated calls don't jump around. */
@@ -79,7 +81,8 @@ export class MockSmsProvider implements SmsProvider {
   }
 
   async resend(): Promise<void> {
-    // no-op — the test drives redelivery via simulateOtp()
+    if (this.cfg.failResend) throw new Error('mock: forced resend failure');
+    // otherwise a no-op — the test drives redelivery via simulateOtp()
   }
 
   async reactivate(providerRef: string): Promise<{ providerRef: string } | null> {

@@ -60,6 +60,18 @@ export async function activateGet(
   return text;
 }
 
+/**
+ * `setStatus` (status 3) replies `ACCESS_RETRY_GET` when it worked. A refusal is a plain code such as NO_ACTIVATION or BAD_STATUS:
+ * throw on those, so a refused resend is never reported as done. A reply we don't recognise is let through (never block a resend that
+ * may have worked); the caller logs it.
+ */
+export function assertResendAccepted(text: string): void {
+  const up = text.trim().toUpperCase();
+  if (/^(NO_|BAD_|WRONG_|ERROR|BANNED|EARLY_)/.test(up)) {
+    throw new Error(`provider refused the resend: ${text.trim().slice(0, 60)}`);
+  }
+}
+
 export function mapService(cfg: ActivateConfig, slug: string): string {
   return cfg.serviceMap?.[slug] ?? cfg.serviceMap?.[slug.toLowerCase()] ?? slug;
 }

@@ -174,10 +174,11 @@ export class SmsCodeProvider implements SmsProvider {
   }
 
   async resend(providerRef: string): Promise<void> {
-    await this.api('orders/resend', {
+    const res = await this.api('orders/resend', {
       method: 'POST',
       body: JSON.stringify({ id: Number(providerRef) }),
-    }).catch(() => undefined);
+    });
+    if (res && res.success === false) throw new Error('provider refused the resend');
   }
 
   async reactivate(providerRef: string): Promise<{ providerRef: string } | null> {

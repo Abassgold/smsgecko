@@ -96,7 +96,8 @@ export interface SmsProvider {
   finish?(providerRef: string): Promise<void>;
   /**
    * Ask the upstream for another SMS on a still-active rental (SMS-Activate
-   * status 3, smscode /orders/resend). Optional; best-effort.
+   * status 3, smscode /orders/resend). Optional. MUST throw when the provider refused or
+   * could not be reached, so the API can tell the caller instead of reporting a fake success.
    */
   resend?(providerRef: string): Promise<void>;
   /**

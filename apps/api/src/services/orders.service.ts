@@ -12,6 +12,7 @@ import {
 } from '../providers/sms/registry.js';
 import { resolveForOrder } from './catalog.service.js';
 import { getSettings } from '../lib/settings.js';
+import { logger } from '../lib/logger.js';
 import { parseOfferId } from '../lib/catalog.js';
 import { sha256, friendlyCode } from '../lib/crypto.js';
 import { debit } from '../lib/ledger.js';
@@ -26,6 +27,7 @@ import {
   notFound,
   noOfferAvailable,
   paymentRequired,
+  providerError,
   requestInProgress,
   serviceUnavailable,
   unprocessable,
@@ -381,8 +383,10 @@ export async function resendOrder(user: UserDoc, orderId: string): Promise<Order
   if (!provider.resend) throw conflict('This number does not support requesting another code');
   try {
     await provider.resend(order.providerRef);
-  } catch {
-    /* best-effort */
+  } catch (err) {
+    // The provider refused or could not be reached: say so. Never report "another code requested" when it was not.
+    logger.warn({ err, orderId: String(order._id) }, '[orders] resend failed');
+    throw providerError('Could not request another code right now. Please try again shortly.');
   }
   // Force the next worker tick to poll this order immediately.
   await Order.updateOne({ _id: order._id, status: 'waiting' }, { $set: { lastPolledAt: null } });

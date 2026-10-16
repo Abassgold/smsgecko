@@ -101,6 +101,182 @@ describe('v2 API (Bearer)', () => {
     expect(found.stock).toBe(7);
   });
 
+  it('POST /orders/create does exactly what POST /orders does (same handler, shared idempotency)', async () => {
+    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 200_000, stock: 5 });
+    const productId = `${serviceCode}::${countryCode}`;
+    const { userId } = await makeUser(app, { balanceMicro: 2_000_000 });
+    const key = await keyFor(userId);
+
+    const viaCreate = await inject({
+      method: 'POST',
+      url: '/api/v2/orders/create',
+      headers: { authorization: `Bearer ${key}`, 'idempotency-key': 'v2-create-alias-1' },
+      payload: { catalog_product_id: productId, max_price: '0.50' },
+    });
+    expect(viaCreate.statusCode).toBe(201);
+    expect(viaCreate.json().data.status).toBe('waiting');
+
+    // The same replay-safe key on the other address hands back the same order: one purchase, not two.
+    const viaOrders = await inject({
+      method: 'POST',
+      url: '/api/v2/orders',
+      headers: { authorization: `Bearer ${key}`, 'idempotency-key': 'v2-create-alias-1' },
+      payload: { catalog_product_id: productId, max_price: '0.50' },
+    });
+    expect(viaOrders.json().data.id).toBe(viaCreate.json().data.id);
+
+    // Still needs a valid key and a valid body.
+    const noKey = await inject({ method: 'POST', url: '/api/v2/orders/create', payload: { catalog_product_id: productId } });
+    expect(noKey.statusCode).toBe(401);
+    const badBody = await inject({ method: 'POST', url: '/api/v2/orders/create', headers: { authorization: `Bearer ${key}` }, payload: {} });
+    expect(badBody.statusCode).toBe(400);
+  });
+
+  it('POST /orders/finish takes the id in the body and does what /orders/:id/finish does', async () => {
+    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 200_000, stock: 5 });
+    const productId = `${serviceCode}::${countryCode}`;
+    const { userId } = await makeUser(app, { balanceMicro: 2_000_000 });
+    const key = await keyFor(userId);
+    const created = await inject({
+      method: 'POST',
+      url: '/api/v2/orders/create',
+      headers: { authorization: `Bearer ${key}` },
+      payload: { catalog_product_id: productId },
+    });
+    const orderId = created.json().data.id as string;
+    await simulateOtp(orderId);
+
+    const finished = await inject({
+      method: 'POST',
+      url: '/api/v2/orders/finish',
+      headers: { authorization: `Bearer ${key}` },
+      payload: { id: orderId },
+    });
+    expect(finished.statusCode).toBe(200);
+    expect(finished.json().success).toBe(true);
+    expect(finished.json().data.id).toBe(orderId);
+    expect(finished.json().data.finished_at).toBeTruthy();
+
+    // Doing it again, on either address, is harmless and keeps the same finish time.
+    const again = await inject({ method: 'POST', url: `/api/v2/orders/${orderId}/finish`, headers: { authorization: `Bearer ${key}` } });
+    expect(again.json().data.finished_at).toBe(finished.json().data.finished_at);
+
+    // Needs the key, a well-formed id, and an order that exists.
+    const noKey = await inject({ method: 'POST', url: '/api/v2/orders/finish', payload: { id: orderId } });
+    expect(noKey.statusCode).toBe(401);
+    const noId = await inject({ method: 'POST', url: '/api/v2/orders/finish', headers: { authorization: `Bearer ${key}` }, payload: {} });
+    expect(noId.statusCode).toBe(400);
+    const badId = await inject({ method: 'POST', url: '/api/v2/orders/finish', headers: { authorization: `Bearer ${key}` }, payload: { id: 'not-an-id' } });
+    expect(badId.statusCode).toBe(400);
+    const unknown = await inject({ method: 'POST', url: '/api/v2/orders/finish', headers: { authorization: `Bearer ${key}` }, payload: { id: 'SG-ZZZZ-99' } });
+    expect(unknown.statusCode).toBe(404);
+  });
+
+  it('body-style cancel, resend and reactivate (POST /orders/<action> with {id}) do what the /orders/:id/<action> routes do', async () => {
+    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 200_000, stock: 9 });
+    const productId = `${serviceCode}::${countryCode}`;
+    const { userId } = await makeUser(app, { balanceMicro: 2_000_000 });
+    const key = await keyFor(userId);
+    const auth = { authorization: `Bearer ${key}` };
+    const balance = async () => (await User.findById(userId))!.balanceMicro;
+    const create = async () => (await inject({ method: 'POST', url: '/api/v2/orders/create', headers: auth, payload: { catalog_product_id: productId } })).json().data.id as string;
+
+    // resend + cancel on a waiting order, id in the body
+    const waitingId = await create();
+    const resent = await inject({ method: 'POST', url: '/api/v2/orders/resend', headers: auth, payload: { id: waitingId } });
+    expect(resent.statusCode).toBe(200);
+    expect(resent.json().data.status).toBe('waiting');
+    expect(await balance()).toBe(1_800_000); // resend is free
+
+    const canceled = await inject({ method: 'POST', url: '/api/v2/orders/cancel', headers: auth, payload: { id: waitingId } });
+    expect(canceled.statusCode).toBe(200);
+    expect(canceled.json().data.status).toBe('canceled');
+    expect(await balance()).toBe(2_000_000); // refunded in full
+
+    // cancelling again is refused and refunds nothing more
+    const twice = await inject({ method: 'POST', url: '/api/v2/orders/cancel', headers: auth, payload: { id: waitingId } });
+    expect(twice.statusCode).toBe(409);
+    expect(await balance()).toBe(2_000_000);
+
+    // reactivate a completed order, id in the body: charged again, reopened as waiting
+    const doneId = await create();
+    await simulateOtp(doneId);
+    expect(await balance()).toBe(1_800_000);
+    const reopened = await inject({ method: 'POST', url: '/api/v2/orders/reactivate', headers: auth, payload: { id: doneId } });
+    expect(reopened.statusCode).toBe(200);
+    expect(reopened.json().data.status).toBe('waiting');
+    expect(await balance()).toBe(1_600_000);
+
+    // the two reactivate addresses share ONE throttle: calling the other one straight away is refused, nothing is charged
+    const quick = await inject({ method: 'POST', url: `/api/v2/orders/${doneId}/reactivate`, headers: auth });
+    expect(quick.statusCode).toBe(429);
+    expect(await balance()).toBe(1_600_000);
+
+    // auth and id checks apply to all three. (reactivate is throttled before its body is read, so its 400 check uses a fresh user
+    // and a single call: a second call inside the 3s gap would be a 429 by design.)
+    for (const action of ['cancel', 'resend', 'reactivate']) {
+      const noKey = await inject({ method: 'POST', url: `/api/v2/orders/${action}`, payload: { id: doneId } });
+      expect(noKey.statusCode).toBe(401);
+    }
+    const noId = await inject({ method: 'POST', url: '/api/v2/orders/cancel', headers: auth, payload: {} });
+    expect(noId.statusCode).toBe(400);
+    const badId = await inject({ method: 'POST', url: '/api/v2/orders/cancel', headers: auth, payload: { id: 'not-an-id' } });
+    expect(badId.statusCode).toBe(400);
+    const { userId: otherUser } = await makeUser(app, { balanceMicro: 1_000_000 });
+    const otherKey = await keyFor(otherUser);
+    for (const action of ['resend', 'reactivate']) {
+      const missing = await inject({ method: 'POST', url: `/api/v2/orders/${action}`, headers: { authorization: `Bearer ${otherKey}` }, payload: {} });
+      expect(missing.statusCode).toBe(400);
+    }
+    const unknown = await inject({ method: 'POST', url: '/api/v2/orders/cancel', headers: auth, payload: { id: 'SG-ZZZZ-99' } });
+    expect(unknown.statusCode).toBe(404);
+  });
+
+  it('resend: a provider that refuses is reported as PROVIDER_ERROR (not a fake 200), and resend is throttled across both addresses', async () => {
+    const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 200_000, stock: 9 });
+    const productId = `${serviceCode}::${countryCode}`;
+    const mockConfig = (extra: object) =>
+      encryptJson({
+        catalogPriceMicro: 200_000,
+        catalogStock: 9,
+        catalogServices: [{ code: serviceCode, name: serviceCode }],
+        catalogCountries: [{ code: countryCode, name: countryCode, iso2: 'us', dialCode: '1' }],
+        ...extra,
+      });
+
+    // User A buys a number, then the provider starts refusing resends.
+    const { userId: a } = await makeUser(app, { balanceMicro: 2_000_000 });
+    const keyA = await keyFor(a);
+    const authA = { authorization: `Bearer ${keyA}` };
+    const orderA = (await inject({ method: 'POST', url: '/api/v2/orders/create', headers: authA, payload: { catalog_product_id: productId } })).json().data.id as string;
+    await ProviderConfig.updateOne({ key: 'mock' }, { $set: { configEnc: mockConfig({ failResend: true }) } });
+    bustProviderCache();
+
+    const refused = await inject({ method: 'POST', url: '/api/v2/orders/resend', headers: authA, payload: { id: orderA } });
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json().error.code).toBe('PROVIDER_ERROR');
+    expect(JSON.stringify(refused.json())).not.toMatch(/mock|forced resend failure/i); // no provider detail leaks
+    const after = await inject({ method: 'GET', url: `/api/v2/orders/${orderA}`, headers: authA });
+    expect(after.json().data.status).toBe('waiting'); // the order itself is untouched
+    expect((await User.findById(a))!.balanceMicro).toBe(1_800_000); // only the purchase was charged
+
+    // Straight after, the other address is throttled too (one shared throttle).
+    const tooSoon = await inject({ method: 'POST', url: `/api/v2/orders/${orderA}/resend`, headers: authA });
+    expect(tooSoon.statusCode).toBe(429);
+
+    // The provider recovers. User B: resend works, and a second call on either address inside the gap is throttled.
+    await ProviderConfig.updateOne({ key: 'mock' }, { $set: { configEnc: mockConfig({}) } });
+    bustProviderCache();
+    const { userId: b } = await makeUser(app, { balanceMicro: 2_000_000 });
+    const authB = { authorization: `Bearer ${await keyFor(b)}` };
+    const orderB = (await inject({ method: 'POST', url: '/api/v2/orders/create', headers: authB, payload: { catalog_product_id: productId } })).json().data.id as string;
+    const ok = await inject({ method: 'POST', url: `/api/v2/orders/${orderB}/resend`, headers: authB });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().data.status).toBe('waiting');
+    const again = await inject({ method: 'POST', url: '/api/v2/orders/resend', headers: authB, payload: { id: orderB } });
+    expect(again.statusCode).toBe(429);
+  });
+
   it('runs create → poll → finish', async () => {
     const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 200_000, stock: 5 });
     const productId = `${serviceCode}::${countryCode}`;

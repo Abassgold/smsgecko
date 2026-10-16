@@ -36,13 +36,13 @@ const NAV: { group: string; items: { id: string; label: string }[] }[] = [
   {
     group: 'Orders',
     items: [
-      { id: 'create-order', label: 'POST /orders' },
+      { id: 'create-order', label: 'POST /orders/create' },
       { id: 'active-orders', label: 'GET /orders/active' },
       { id: 'get-order', label: 'GET /orders/:id' },
-      { id: 'finish-order', label: 'POST /orders/:id/finish' },
-      { id: 'cancel-order', label: 'POST /orders/:id/cancel' },
-      { id: 'resend-order', label: 'POST /orders/:id/resend' },
-      { id: 'reactivate-order', label: 'POST /orders/:id/reactivate' },
+      { id: 'finish-order', label: 'POST /orders/finish' },
+      { id: 'cancel-order', label: 'POST /orders/cancel' },
+      { id: 'resend-order', label: 'POST /orders/resend' },
+      { id: 'reactivate-order', label: 'POST /orders/reactivate' },
     ],
   },
   {
@@ -467,7 +467,7 @@ PID=$(curl -s "${BASE}/api/v2/catalog/products?service=$SERVICE" \\
 [ "$PID" != "null" ] || { echo "no product for that service/country"; exit 1; }
 
 # 2. buy it, never paying more than $1.00 (the order lives at .data on a single-object response)
-ORDER=$(curl -s -X POST ${BASE}/api/v2/orders \\
+ORDER=$(curl -s -X POST ${BASE}/api/v2/orders/create \\
   -H "Authorization: Bearer $TOKEN" \\
   -H "Idempotency-Key: $(uuidgen)" \\
   -H "Content-Type: application/json" \\
@@ -515,7 +515,7 @@ const products = (await api(\`/catalog/products?service=\${service.service_slug}
 if (!products.length) throw new Error('No product for that service/country');
 
 // Never pay more than $1.00.
-const { id } = await api('/orders', {
+const { id } = await api('/orders/create', {
   method: 'POST',
   headers: { ...h, 'Idempotency-Key': crypto.randomUUID() },
   body: JSON.stringify({ catalog_product_id: products[0].id, max_price: '1.00' }),
@@ -560,7 +560,7 @@ if (order.otp_code) {
             <Endpoint method="GET" path="/api/v2/catalog/products" />
             <p>
               One product per price tier of a service×country, cheapest first — pass a row&apos;s{' '}
-              <code>id</code> to <a href="#create-order" className="text-accent">POST /orders</a>.
+              <code>id</code> to <a href="#create-order" className="text-accent">POST /orders/create</a>.
               Without <code>service</code> you instead get a bare service list for discovery
               (<code>price</code> <code>&quot;0&quot;</code>, <code>stock 0</code>, <code>id</code>{' '}
               is just the service code — <b>not orderable</b>). Query with <code>?service=</code> to
@@ -612,10 +612,11 @@ if (order.otp_code) {
           </Section>
 
           <Section id="create-order" title="Create an order">
-            <Endpoint method="POST" path="/api/v2/orders" />
+            <Endpoint method="POST" path="/api/v2/orders/create" />
             <p>
               Buys the chosen tier, charges the wallet, rents a number. Returns{' '}
-              <code>201</code> with a <code>waiting</code> order.
+              <code>201</code> with a <code>waiting</code> order. <code>POST /api/v2/orders</code>{' '}
+              does exactly the same and keeps working, so existing integrations don&rsquo;t need to change.
             </p>
             <Params
               rows={[
@@ -630,7 +631,7 @@ if (order.otp_code) {
               tabs={[
                 curl(
                   'cURL',
-                  `curl -X POST ${BASE}/api/v2/orders \\
+                  `curl -X POST ${BASE}/api/v2/orders/create \\
   -H "Authorization: Bearer $TOKEN" \\
   -H "Idempotency-Key: 7b1e0c9c-3d21-4b2f-9a10-8f4e2c1d0abc" \\
   -H "Content-Type: application/json" \\
@@ -747,17 +748,20 @@ if (order.otp_code) {
           </Section>
 
           <Section id="finish-order" title="Finish an order">
-            <Endpoint method="POST" path="/api/v2/orders/:id/finish" />
+            <Endpoint method="POST" path="/api/v2/orders/finish" />
             <p>
               Marks a <code>completed</code> order finished (<code>finished_at</code> is set) and
               tells the upstream you&apos;re done with the number. No-op if already finished.
+              Send the order <code>id</code> in the JSON body. <code>POST /api/v2/orders/:id/finish</code>{' '}
+              does exactly the same and keeps working.
             </p>
+            <Params rows={[['id', 'string', "The order's `id` (like SG-8FQ3-K2)."]]} />
             <CodeLabel>Example request</CodeLabel>
             <CodeBlock
               tabs={[
                 curl(
                   'cURL',
-                  `curl -X POST ${BASE}/api/v2/orders/SG-8FQ3-K2/finish \\\n  -H "Authorization: Bearer $TOKEN"`,
+                  `curl -X POST ${BASE}/api/v2/orders/finish \\\n  -H "Authorization: Bearer $TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"id":"SG-8FQ3-K2"}'`,
                 ),
               ]}
             />
@@ -794,17 +798,22 @@ if (order.otp_code) {
           </Section>
 
           <Section id="cancel-order" title="Cancel an order">
-            <Endpoint method="POST" path="/api/v2/orders/:id/cancel" />
+            <Endpoint method="POST" path="/api/v2/orders/cancel" />
             <p>
               Cancels a <code>waiting</code> order and refunds it in full. A short post-purchase
               lock applies — <code>409</code> until it elapses, and once a code has arrived.
             </p>
+            <p>
+              Send the order <code>id</code> in the JSON body. <code>POST /api/v2/orders/:id/cancel</code>{' '}
+              does exactly the same and keeps working.
+            </p>
+            <Params rows={[['id', 'string', "The order's `id` (like SG-8FQ3-K2)."]]} />
             <CodeLabel>Example request</CodeLabel>
             <CodeBlock
               tabs={[
                 curl(
                   'cURL',
-                  `curl -X POST ${BASE}/api/v2/orders/SG-8FQ3-K2/cancel \\\n  -H "Authorization: Bearer $TOKEN"`,
+                  `curl -X POST ${BASE}/api/v2/orders/cancel \\\n  -H "Authorization: Bearer $TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"id":"SG-8FQ3-K2"}'`,
                 ),
               ]}
             />
@@ -839,18 +848,25 @@ if (order.otp_code) {
           </Section>
 
           <Section id="resend-order" title="Resend a code">
-            <Endpoint method="POST" path="/api/v2/orders/:id/resend" />
+            <Endpoint method="POST" path="/api/v2/orders/resend" />
             <p>
               Asks the upstream for another SMS on a still-<code>waiting</code> order. Free — no
               new rental, no charge. <code>409</code> if the order isn&apos;t waiting or the
-              provider can&apos;t resend.
+              provider can&apos;t resend; <code>422</code> (<code>PROVIDER_ERROR</code>) if the
+              provider refused or couldn&apos;t be reached, so a <code>200</code> means another
+              code really was requested. One call every 5 seconds; faster is <code>429</code>.
             </p>
+            <p>
+              Send the order <code>id</code> in the JSON body. <code>POST /api/v2/orders/:id/resend</code>{' '}
+              does exactly the same and keeps working.
+            </p>
+            <Params rows={[['id', 'string', "The order's `id` (like SG-8FQ3-K2)."]]} />
             <CodeLabel>Example request</CodeLabel>
             <CodeBlock
               tabs={[
                 curl(
                   'cURL',
-                  `curl -X POST ${BASE}/api/v2/orders/SG-8FQ3-K2/resend \\\n  -H "Authorization: Bearer $TOKEN"`,
+                  `curl -X POST ${BASE}/api/v2/orders/resend \\\n  -H "Authorization: Bearer $TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"id":"SG-8FQ3-K2"}'`,
                 ),
               ]}
             />
@@ -886,7 +902,7 @@ if (order.otp_code) {
           </Section>
 
           <Section id="reactivate-order" title="Reactivate an order">
-            <Endpoint method="POST" path="/api/v2/orders/:id/reactivate" />
+            <Endpoint method="POST" path="/api/v2/orders/reactivate" />
             <p>
               Buys another code on a <code>completed</code> order&apos;s number. Charges the
               current tier price and reopens the order as <code>waiting</code>, keeping its
@@ -894,12 +910,17 @@ if (order.otp_code) {
               isn&apos;t completed or the provider can&apos;t reactivate; <code>422</code> if that
               service/country has no offer available right now.
             </p>
+            <p>
+              Send the order <code>id</code> in the JSON body. <code>POST /api/v2/orders/:id/reactivate</code>{' '}
+              does exactly the same and keeps working.
+            </p>
+            <Params rows={[['id', 'string', "The order's `id` (like SG-8FQ3-K2)."]]} />
             <CodeLabel>Example request</CodeLabel>
             <CodeBlock
               tabs={[
                 curl(
                   'cURL',
-                  `curl -X POST ${BASE}/api/v2/orders/SG-8FQ3-K2/reactivate \\\n  -H "Authorization: Bearer $TOKEN"`,
+                  `curl -X POST ${BASE}/api/v2/orders/reactivate \\\n  -H "Authorization: Bearer $TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"id":"SG-8FQ3-K2"}'`,
                 ),
               ]}
             />
