@@ -25,6 +25,10 @@
   --accent-ring: rgba(53, 208, 127, 0.45);
   /* Readable text/icon colour to sit on top of the bright accent. */
   --accent-contrast: #04130b;
+  /* Diagonal gradient for primary buttons: bright to deep green. The dark contrast text stays readable on both ends. */
+  --accent-grad-from: #54de96;
+  --accent-grad-to: #1f9d62;
+  --accent-teal: #00e5cc;
 
   --success: #35d07f;
   --warning: #e0a94a;
@@ -112,11 +116,23 @@ button:not(:disabled) {
   opacity: 0.5;
 }
 
+/* Headline text: near-white -> brand green -> teal, on the same 135deg diagonal as the buttons. */
 .text-gradient {
-  background: linear-gradient(180deg, #d6f7e4 0%, var(--accent) 68%, #1c8f5a 100%);
+  background: linear-gradient(135deg, #f0fff6 0%, var(--accent) 50%, var(--accent-teal) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+/* Primary button: 135deg gradient with a soft green glow. */
+.btn-gradient {
+  background-image: linear-gradient(135deg, var(--accent-grad-from) 0%, var(--accent-grad-to) 100%);
+  box-shadow: 0 2px 12px rgba(53, 208, 127, 0.28);
+  transition: filter 0.15s, box-shadow 0.15s;
+}
+.btn-gradient:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: 0 4px 18px rgba(53, 208, 127, 0.4);
 }
 
 .section-kicker::before {

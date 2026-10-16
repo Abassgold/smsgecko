@@ -9,8 +9,7 @@ const base =
   'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]';
 
 const variants: Record<Variant, string> = {
-  primary:
-    'bg-accent text-accent-contrast font-semibold hover:bg-accent-hover shadow-[0_8px_30px_-8px_var(--accent-ring)]',
+  primary: 'btn-gradient text-accent-contrast font-semibold',
   secondary: 'bg-surface-2 text-text border border-border-strong hover:bg-surface',
   outline: 'border border-border-strong text-text hover:bg-surface-2',
   ghost: 'text-muted hover:text-text hover:bg-surface-2',
