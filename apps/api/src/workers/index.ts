@@ -10,10 +10,12 @@ import { getProviderForOrder } from '../providers/sms/registry.js';
 import { getSettings } from '../lib/settings.js';
 import { sendBroadcastEmail } from '../lib/email.js';
 import { env } from '../config/env.js';
+import { runWebhookRetries } from '../lib/webhooks.js';
 
 const POLL_INTERVAL_MS = 4_000;
 const EXPIRY_INTERVAL_MS = 8_000;
 const REAPER_INTERVAL_MS = 30_000;
+const WEBHOOK_RETRY_INTERVAL_MS = 5_000;
 const BATCH = 100;
 /** Parallel provider polls per tick (manesms: 5 at a time). */
 const POLL_CONCURRENCY = 5;
@@ -270,6 +272,7 @@ export function startWorkers(log: Logger): void {
     setInterval(guarded(() => runProvisioningReaper(log)), REAPER_INTERVAL_MS),
     setInterval(guarded(() => runCatalogSync(log)), CATALOG_SYNC_INTERVAL_MS),
     setInterval(guarded(() => runBroadcasts(log)), env.BROADCAST_INTERVAL_MS),
+    setInterval(guarded(() => runWebhookRetries()), WEBHOOK_RETRY_INTERVAL_MS),
   ];
   for (const t of timers) t.unref?.();
   // First sync right away so a fresh start has real prices and stock to browse (does not block startup).

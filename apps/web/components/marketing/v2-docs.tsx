@@ -346,7 +346,9 @@ export function V2Docs() {
                   <CodeLabel>Delivery body</CodeLabel>
                   <CodeBlock tabs={[{ label: 'JSON', language: 'json', code: WEBHOOK_PAYLOAD }]} />
                   <ul className="flex list-disc flex-col gap-2 pl-5 marker:text-faint">
-                    <li>One attempt per event, with a 5 second timeout. There are no retries, so answer quickly with a 2xx and do the work afterwards. Polling remains the safety net.</li>
+                    <li>Answer with a 2xx (any code from 200 to 299) within 5 seconds. Anything else, including a redirect, a 4xx, a 5xx, a timeout or no answer, counts as not delivered.</li>
+                    <li>An undelivered event is retried 5 more times, after 10 seconds, 1 minute, 5 minutes, 30 minutes and 2 hours, then dropped. Retries stop as soon as you answer 2xx. If you are down longer than that, poll <code>GET /orders/:id</code> to catch up.</li>
+                    <li>Every attempt for one event sends the same body and signature. The <code>X-SMSGecko-Delivery</code> header is the same id each time and <code>X-SMSGecko-Attempt</code> counts 1 to 6, so you can ignore a duplicate.</li>
                     <li>Only orders you create through the API send webhooks. Purchases made on the website do not.</li>
                     <li>Your address must be https and public.</li>
                   </ul>

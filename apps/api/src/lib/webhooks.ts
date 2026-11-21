@@ -7,11 +7,22 @@ import { badRequest } from './errors.js';
 import type { UserDoc } from '../models/User.js';
 import type { OrderDoc } from '../models/Order.js';
 import { usdString } from '../services/v2.mapper.js';
+import { User } from '../models/User.js';
+import { WebhookJob } from '../models/WebhookJob.js';
 
 export type WebhookEvent = 'order.created' | 'order.otp_received' | 'order.expired' | 'order.canceled';
 
 const SIGNATURE_HEADER = 'X-SMSGecko-Signature';
 const DELIVERY_TIMEOUT_MS = 5000;
+
+/**
+ * A delivery counts only when the receiver answers with a 2xx. Anything else (a 3xx, 4xx or 5xx, a timeout, no answer)
+ * is retried: the first try, then 5 more after these waits. 6 attempts in all, spread over about 2.6 hours.
+ */
+export const WEBHOOK_RETRY_DELAYS_MS = [10_000, 60_000, 5 * 60_000, 30 * 60_000, 2 * 60 * 60_000];
+export const WEBHOOK_MAX_ATTEMPTS = WEBHOOK_RETRY_DELAYS_MS.length + 1;
+/** How long a running attempt holds its job before another worker may take it (must exceed the delivery timeout). */
+const ATTEMPT_LEASE_MS = 60_000;
 
 const PRIVATE_HOSTNAME_PATTERNS = [
   /^localhost$/i,
@@ -98,7 +109,7 @@ function sign(secret: string | null | undefined, payload: string): string | null
   return secret ? `sha256=${hmacSha256Hex(secret, payload)}` : null;
 }
 
-async function post(url: string, payload: string, signature: string | null) {
+async function post(url: string, payload: string, signature: string | null, extra: Record<string, string> = {}) {
   // Re-check the resolved IP at send time (DNS rebinding), and never follow a
   // redirect — a 3xx into http://169.254.169.254/… or an internal host would
   // otherwise bypass the set-time URL check.
@@ -109,6 +120,7 @@ async function post(url: string, payload: string, signature: string | null) {
     headers: {
       'Content-Type': 'application/json',
       'User-Agent': 'SMSGecko-Webhooks/1.0',
+      ...extra,
       ...(signature ? { [SIGNATURE_HEADER]: signature } : {}),
     },
     body: payload,
@@ -153,9 +165,9 @@ function toWebhookData(order: OrderDoc, otpMessage: string | null = null): Webho
 }
 
 /**
- * Best-effort webhook delivery: one POST, short timeout, no retry queue. A
- * no-op when the user hasn't configured a webhook. Never throws — a broken or
- * slow customer endpoint must not affect the order flow that triggered this.
+ * Queue a webhook event and send it right away. The event is saved first, so if your server is down, slow or answers
+ * anything other than 2xx, the retry worker keeps trying (see WEBHOOK_RETRY_DELAYS_MS). A no-op when the user has no
+ * webhook. Never throws: a broken customer endpoint must not affect the order flow that triggered this.
  */
 export async function dispatchWebhook(
   user: UserDoc,
@@ -164,20 +176,69 @@ export async function dispatchWebhook(
   otpMessage: string | null = null,
 ): Promise<void> {
   if (!user.webhookUrl) return;
-
-  const payload = JSON.stringify({
-    event,
-    timestamp: new Date().toISOString(),
-    data: toWebhookData(order, otpMessage),
-  });
-
   try {
-    const res = await post(user.webhookUrl, payload, sign(user.webhookSecret, payload));
-    if (!res.ok) {
-      logger.warn({ userId: user.id, event, status: res.status }, 'webhook delivery failed');
-    }
+    const payload = JSON.stringify({
+      event,
+      timestamp: new Date().toISOString(),
+      data: toWebhookData(order, otpMessage),
+    });
+    const job = await WebhookJob.create({ userId: user._id, event, payload, nextAttemptAt: new Date() });
+    await runJob(String(job._id));
   } catch (err) {
-    logger.warn({ userId: user.id, event, err }, 'webhook delivery error');
+    logger.warn({ userId: user.id, event, err }, 'webhook could not be queued');
+  }
+}
+
+/**
+ * Take one due job (atomically, so two workers never send the same one), make one attempt, and record the result.
+ * Returns false when there was nothing to take.
+ */
+async function runJob(id?: string): Promise<boolean> {
+  const now = new Date();
+  const job = await WebhookJob.findOneAndUpdate(
+    { ...(id ? { _id: id } : {}), status: 'pending', nextAttemptAt: { $lte: now } },
+    { $inc: { attempts: 1 }, $set: { nextAttemptAt: new Date(now.getTime() + ATTEMPT_LEASE_MS) } },
+    { sort: { nextAttemptAt: 1 }, new: true },
+  );
+  if (!job) return false;
+
+  let statusCode: number | null = null;
+  let error: string | null = null;
+  const user = await User.findById(job.userId).select('webhookUrl webhookSecret');
+  if (!user?.webhookUrl) {
+    // The customer removed their webhook since this event was queued: nothing to deliver to.
+    await WebhookJob.updateOne({ _id: job._id }, { $set: { status: 'failed', lastError: 'no webhook set', doneAt: new Date() } });
+    return true;
+  }
+  try {
+    const res = await post(user.webhookUrl, job.payload, sign(user.webhookSecret, job.payload), {
+      'X-SMSGecko-Delivery': String(job._id),
+      'X-SMSGecko-Attempt': String(job.attempts),
+    });
+    statusCode = res.status;
+    if (res.status < 200 || res.status > 299) error = `answered ${res.status}`;
+  } catch (err) {
+    error = err instanceof Error ? err.message.slice(0, 200) : 'request failed';
+  }
+
+  const done = new Date();
+  if (!error) {
+    await WebhookJob.updateOne({ _id: job._id }, { $set: { status: 'delivered', lastStatusCode: statusCode, lastError: null, doneAt: done } });
+  } else if (job.attempts >= WEBHOOK_MAX_ATTEMPTS) {
+    logger.warn({ userId: String(job.userId), event: job.event, statusCode, error, attempts: job.attempts }, 'webhook given up');
+    await WebhookJob.updateOne({ _id: job._id }, { $set: { status: 'failed', lastStatusCode: statusCode, lastError: error, doneAt: done } });
+  } else {
+    const wait = WEBHOOK_RETRY_DELAYS_MS[job.attempts - 1]!;
+    logger.warn({ userId: String(job.userId), event: job.event, statusCode, error, attempt: job.attempts, retryInMs: wait }, 'webhook delivery failed, will retry');
+    await WebhookJob.updateOne({ _id: job._id }, { $set: { lastStatusCode: statusCode, lastError: error, nextAttemptAt: new Date(done.getTime() + wait) } });
+  }
+  return true;
+}
+
+/** Worker tick: send every webhook that is due for a retry. */
+export async function runWebhookRetries(): Promise<void> {
+  for (let i = 0; i < 50; i++) {
+    if (!(await runJob())) return;
   }
 }
 
