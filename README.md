@@ -102,7 +102,7 @@ lives in **Settings** in the admin panel — no restart needed. To see refunds q
       mutation.
 - [x] **Admin broadcast email** — compose and send to the user base, with an unsubscribe
       flow and atomic in-flight job claiming.
-- [x] **SDKs** — `@smsgecko/sdk` (JS/TS) and `smsgecko` (Python) client packages.
+- [x] **REST API v2** — the public JSON API (`/api/v2`), documented at `/docs/v2` with OpenAPI and Postman files.
 
 Not built (would be next): a support/tickets system and a Playwright end-to-end suite.
 

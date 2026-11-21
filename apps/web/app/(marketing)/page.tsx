@@ -93,11 +93,12 @@ export default function LandingPage() {
         <Container size="wide">
           <SectionHeading>Quick Start</SectionHeading>
           <div className="mt-8">
-            <CodeBlock tabs={QUICK_START} title="SDK quickstart · /v2 by default" />
+            <CodeBlock tabs={QUICK_START} title="Quick start · SMS-Activate API" />
           </div>
           <p className="mt-4 text-center text-sm text-faint">
-            Get your API key from <span className="text-accent">Account Settings</span>. Full docs
-            at <span className="text-accent">/docs</span>.
+            Get your API key from <span className="text-accent">Account Settings</span>. Full reference at{' '}
+            <a href="/docs" className="text-accent">/docs</a>. Prefer JSON? There is a{' '}
+            <a href="/docs/v2" className="text-accent">REST API v2</a> too.
           </p>
         </Container>
       </Section>

@@ -245,7 +245,8 @@ export default function DocsPage() {
         </p>
         <p className="mt-3 text-sm text-faint">
           <a href="/api-docs/openapi.json" className="text-accent">OpenAPI spec</a> ·{' '}
-          <a href="/api-docs/postman.json" download className="text-accent">Postman collection</a>
+          <a href="/api-docs/postman.json" download className="text-accent">Postman collection</a> ·{' '}
+          Building something new? See the <a href="/docs/v2" className="text-accent">REST API v2 reference</a>
         </p>
       </div>
 
