@@ -172,7 +172,7 @@ describe('v2 API (Bearer)', () => {
     expect(unknown.statusCode).toBe(404);
   });
 
-  it('body-style cancel, resend and reactivate (POST /orders/<action> with {id}) do what the /orders/:id/<action> routes do', async () => {
+  it('body-style cancel and resend (POST /orders/<action> with {id}) do what the /orders/:id/<action> routes do', async () => {
     const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 200_000, stock: 9 });
     const productId = `${serviceCode}::${countryCode}`;
     const { userId } = await makeUser(app, { balanceMicro: 2_000_000 });
@@ -181,13 +181,9 @@ describe('v2 API (Bearer)', () => {
     const balance = async () => (await User.findById(userId))!.balanceMicro;
     const create = async () => (await inject({ method: 'POST', url: '/api/v2/orders/create', headers: auth, payload: { catalog_product_id: productId } })).json().data.id as string;
 
-    // resend + cancel on a waiting order, id in the body
+    // cancel a waiting order, id in the body
     const waitingId = await create();
-    const resent = await inject({ method: 'POST', url: '/api/v2/orders/resend', headers: auth, payload: { id: waitingId } });
-    expect(resent.statusCode).toBe(200);
-    expect(resent.json().data.status).toBe('waiting');
-    expect(await balance()).toBe(1_800_000); // resend is free
-
+    expect(await balance()).toBe(1_800_000);
     const canceled = await inject({ method: 'POST', url: '/api/v2/orders/cancel', headers: auth, payload: { id: waitingId } });
     expect(canceled.statusCode).toBe(200);
     expect(canceled.json().data.status).toBe('canceled');
@@ -198,24 +194,28 @@ describe('v2 API (Bearer)', () => {
     expect(twice.statusCode).toBe(409);
     expect(await balance()).toBe(2_000_000);
 
-    // reactivate a completed order, id in the body: charged again, reopened as waiting
-    const doneId = await create();
-    await simulateOtp(doneId);
-    expect(await balance()).toBe(1_800_000);
-    const reopened = await inject({ method: 'POST', url: '/api/v2/orders/reactivate', headers: auth, payload: { id: doneId } });
-    expect(reopened.statusCode).toBe(200);
-    expect(reopened.json().data.status).toBe('waiting');
-    expect(await balance()).toBe(1_600_000);
+    // "another SMS" needs a code first: a waiting order is refused. (A different user, because every resend call, even a refused one,
+    // starts the 5 second gap for its caller.)
+    const { userId: eager } = await makeUser(app, { balanceMicro: 1_000_000 });
+    const eagerAuth = { authorization: `Bearer ${await keyFor(eager)}` };
+    const eagerOrder = (await inject({ method: 'POST', url: '/api/v2/orders/create', headers: eagerAuth, payload: { catalog_product_id: productId } })).json().data.id as string;
+    const tooEarly = await inject({ method: 'POST', url: '/api/v2/orders/resend', headers: eagerAuth, payload: { id: eagerOrder } });
+    expect(tooEarly.statusCode).toBe(409);
+    expect(tooEarly.json().error.code).toBe('CONFLICT');
 
-    // the two reactivate addresses share ONE throttle: calling the other one straight away is refused, nothing is charged
-    const quick = await inject({ method: 'POST', url: `/api/v2/orders/${doneId}/reactivate`, headers: auth });
-    expect(quick.statusCode).toBe(429);
-    expect(await balance()).toBe(1_600_000);
+    // once the code has arrived, resend (id in the body) is free and puts the order back to waiting for the next SMS
+    const secondWaiting = await create();
+    await simulateOtp(secondWaiting);
+    const before = await balance();
+    const resent = await inject({ method: 'POST', url: '/api/v2/orders/resend', headers: auth, payload: { id: secondWaiting } });
+    expect(resent.statusCode).toBe(200);
+    expect(resent.json().data.status).toBe('waiting');
+    expect(resent.json().data.otp_code).toBeNull();
+    expect(await balance()).toBe(before); // free
 
-    // auth and id checks apply to all three. (reactivate is throttled before its body is read, so its 400 check uses a fresh user
-    // and a single call: a second call inside the 3s gap would be a 429 by design.)
-    for (const action of ['cancel', 'resend', 'reactivate']) {
-      const noKey = await inject({ method: 'POST', url: `/api/v2/orders/${action}`, payload: { id: doneId } });
+    // auth and id checks apply to both. (resend is throttled before its body is read, so its 400 check uses a fresh user.)
+    for (const action of ['cancel', 'resend']) {
+      const noKey = await inject({ method: 'POST', url: `/api/v2/orders/${action}`, payload: { id: secondWaiting } });
       expect(noKey.statusCode).toBe(401);
     }
     const noId = await inject({ method: 'POST', url: '/api/v2/orders/cancel', headers: auth, payload: {} });
@@ -223,16 +223,17 @@ describe('v2 API (Bearer)', () => {
     const badId = await inject({ method: 'POST', url: '/api/v2/orders/cancel', headers: auth, payload: { id: 'not-an-id' } });
     expect(badId.statusCode).toBe(400);
     const { userId: otherUser } = await makeUser(app, { balanceMicro: 1_000_000 });
-    const otherKey = await keyFor(otherUser);
-    for (const action of ['resend', 'reactivate']) {
-      const missing = await inject({ method: 'POST', url: `/api/v2/orders/${action}`, headers: { authorization: `Bearer ${otherKey}` }, payload: {} });
-      expect(missing.statusCode).toBe(400);
-    }
+    const missing = await inject({ method: 'POST', url: '/api/v2/orders/resend', headers: { authorization: `Bearer ${await keyFor(otherUser)}` }, payload: {} });
+    expect(missing.statusCode).toBe(400);
     const unknown = await inject({ method: 'POST', url: '/api/v2/orders/cancel', headers: auth, payload: { id: 'SG-ZZZZ-99' } });
     expect(unknown.statusCode).toBe(404);
+
+    // reactivate is gone: no provider we sell through can do it
+    const gone = await inject({ method: 'POST', url: `/api/v2/orders/${secondWaiting}/reactivate`, headers: auth });
+    expect(gone.statusCode).toBe(404);
   });
 
-  it('resend: a provider that refuses is reported as PROVIDER_ERROR (not a fake 200), and resend is throttled across both addresses', async () => {
+  it('resend: a provider that refuses is reported as unavailable (not a fake 200), and resend is throttled across both addresses', async () => {
     const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 200_000, stock: 9 });
     const productId = `${serviceCode}::${countryCode}`;
     const mockConfig = (extra: object) =>
@@ -244,20 +245,22 @@ describe('v2 API (Bearer)', () => {
         ...extra,
       });
 
-    // User A buys a number, then the provider starts refusing resends.
+    // User A buys a number and gets the code, then the provider starts refusing "another SMS".
     const { userId: a } = await makeUser(app, { balanceMicro: 2_000_000 });
     const keyA = await keyFor(a);
     const authA = { authorization: `Bearer ${keyA}` };
     const orderA = (await inject({ method: 'POST', url: '/api/v2/orders/create', headers: authA, payload: { catalog_product_id: productId } })).json().data.id as string;
+    await simulateOtp(orderA);
     await ProviderConfig.updateOne({ key: 'mock' }, { $set: { configEnc: mockConfig({ failResend: true }) } });
     bustProviderCache();
 
     const refused = await inject({ method: 'POST', url: '/api/v2/orders/resend', headers: authA, payload: { id: orderA } });
-    expect(refused.statusCode).toBe(422);
-    expect(refused.json().error.code).toBe('PROVIDER_ERROR');
+    expect(refused.statusCode).toBe(503);
+    expect(refused.json().error.code).toBe('PROVIDER_UNAVAILABLE');
     expect(JSON.stringify(refused.json())).not.toMatch(/mock|forced resend failure/i); // no provider detail leaks
     const after = await inject({ method: 'GET', url: `/api/v2/orders/${orderA}`, headers: authA });
-    expect(after.json().data.status).toBe('waiting'); // the order itself is untouched
+    expect(after.json().data.status).toBe('completed'); // the order itself is untouched, the code is still there
+    expect(after.json().data.otp_code).toBeTruthy();
     expect((await User.findById(a))!.balanceMicro).toBe(1_800_000); // only the purchase was charged
 
     // Straight after, the other address is throttled too (one shared throttle).
@@ -270,6 +273,7 @@ describe('v2 API (Bearer)', () => {
     const { userId: b } = await makeUser(app, { balanceMicro: 2_000_000 });
     const authB = { authorization: `Bearer ${await keyFor(b)}` };
     const orderB = (await inject({ method: 'POST', url: '/api/v2/orders/create', headers: authB, payload: { catalog_product_id: productId } })).json().data.id as string;
+    await simulateOtp(orderB);
     const ok = await inject({ method: 'POST', url: `/api/v2/orders/${orderB}/resend`, headers: authB });
     expect(ok.statusCode).toBe(200);
     expect(ok.json().data.status).toBe('waiting');

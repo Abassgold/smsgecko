@@ -24,7 +24,7 @@ export interface ProductsQuery {
   limit: number;
 }
 
-/** The body-style actions (`POST /orders/finish|cancel|resend|reactivate`) take the id in the body instead of the address. Same id format as v2IdParams. */
+/** The body-style actions (`POST /orders/finish|cancel|resend`) take the id in the body instead of the address. Same id format as v2IdParams. */
 export const v2IdBody = yup.object({
   id: yup
     .string()

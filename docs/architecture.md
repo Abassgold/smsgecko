@@ -147,8 +147,8 @@ Started in `server.ts` when `WORKERS_ENABLED=true`; guarded so a slow tick never
   `adjust-balance` → `adjustment` ledger row), `orders` (global list + force-`cancel` +
   `repoll`), `catalog` (`services`/`countries`/`offers` CRUD + `offers/bulk`),
   `finance` (`transactions`, `deposits` + `PATCH` confirm/fail), `settings` (`GET`/`PATCH`).
-- **`/api/v2/*`** — `Authorization: Bearer smsg_live_…` (`ApiKey`). The public SDK-style
-  API: `catalog/products`, `orders` (create with `catalog_product_id` + `max_price` +
+- **`/api/v2/*`** — `Authorization: Bearer smsg_live_…` (`ApiKey`). The public JSON
+  REST API: `catalog/products`, `orders` (create with `catalog_product_id` + `max_price` +
   `Idempotency-Key`), `orders/:id`, `orders/:id/finish`, `orders/:id/cancel`. Prices are
   decimal-string USD. Shares the exact same order/ledger core as v1.
 

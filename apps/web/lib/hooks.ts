@@ -257,7 +257,7 @@ function useOrderAction(path: (id: string) => string) {
     onSuccess: (data) => {
       qc.setQueryData(['order', data.id], data);
       qc.invalidateQueries({ queryKey: ['orders'] });
-      // A cancel refunds and a reactivate charges — refresh every view that
+      // A cancel refunds — refresh every view that
       // shows a balance or a ledger entry.
       qc.invalidateQueries({ queryKey: ['wallet'] });
       qc.invalidateQueries({ queryKey: ['order-stats'] });
@@ -269,16 +269,6 @@ function useOrderAction(path: (id: string) => string) {
 
 export function useCancelOrder() {
   return useOrderAction((id) => `/v1/orders/${id}/cancel`);
-}
-
-/** Ask the provider for another SMS on a still-waiting order (free). */
-export function useResendOrder() {
-  return useOrderAction((id) => `/v1/orders/${id}/resend`);
-}
-
-/** Buy another code on a completed order, same number (charged). */
-export function useReactivateOrder() {
-  return useOrderAction((id) => `/v1/orders/${id}/reactivate`);
 }
 
 /* ---------- deposits ---------- */

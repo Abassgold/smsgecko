@@ -40,8 +40,9 @@ POST /orders ──▶ waiting ──▶ completed   (polling worker applied a d
   (`hero_sms`, `sms_bower`, `tiger_sms`) hold a number ≥ 10 min before it may be auto-expired or
   user-canceled.
 - The charge happens once, at `POST /orders`. `completed` moves no money.
-- An order is single-shot: rent → one code → done / cancel / expire. There is no
-  "resend SMS", "ban number", or "reactivate" endpoint.
+- An order is rent → code → done / cancel / expire. After a code arrives you can ask for another SMS on the same
+  number (free, `POST /api/v2/orders/:id/resend`, or `setStatus=3` on the SMS-Activate protocol: one code path). There
+  is no "ban number" and no "reactivate" (buying a second code on the same number): none of Tiger, Hero or SMSBower can do it.
 
 ---
 
@@ -65,8 +66,6 @@ POST /orders ──▶ waiting ──▶ completed   (polling worker applied a d
 | `GET /active` | Your still-`waiting` orders, newest first. → `OrderView[]` |
 | `GET /:id` | One order with `messages[]`, `secondsLeft` (countdown to `expiresAt`) and `cancelLockSeconds` (post-purchase cancel lock). **Poll this** to watch for the OTP. → `OrderView` |
 | `POST /:id/cancel` | Cancel a `waiting` order → **full refund** + stock returned + number released. → `OrderView` |
-| `POST /:id/resend` | Ask the upstream for another SMS on a `waiting` order. **Free** — no new rental. `409` if the order isn't waiting or the provider can't resend. → `OrderView` |
-| `POST /:id/reactivate` | On a `completed` order, buy another code on the **same number**. Charges the current tier price, reopens the order as `waiting`, keeps message history. `402` insufficient balance · `409` order not completed / provider can't reactivate. → `OrderView` |
 
 `OrderView` = `{ id, status, service:{id,name,iconKey}, country:{id,name,code,flagEmoji}, phoneNumber, priceMicro, otpCode, messages:[{id,sender,text,parsedOtp,receivedAt}], secondsLeft, createdAt, completedAt, canceledAt }`.
 
@@ -98,8 +97,7 @@ Mint keys at `POST /api/v1/api-keys` (session auth).
 | `GET /orders/:id` | Poll for the code. → `V2Order` = `{ id, status: waiting\|completed\|canceled\|expired, product:{service,country}, phone_number, price, otp_code, sms:[{sender,text,received_at}], created_at, expires_at, finished_at }` |
 | `POST /orders/:id/finish` | Mark a `completed` order finished (sets `finished_at`) — client signals it is done with the number. |
 | `POST /orders/:id/cancel` | Cancel + refund a `waiting` order (per-provider hold applies). |
-| `POST /orders/:id/resend` | Request another SMS on a `waiting` order (free). |
-| `POST /orders/:id/reactivate` | Buy another code on a `completed` order, same number (charged). |
+| `POST /orders/:id/resend` | After a code has arrived, ask for another SMS on the same number (free). Order goes back to `waiting`. |
 
 `max_price` is a decimal USD string (`"0.50"`); a `400` is returned if it isn't parseable.
 

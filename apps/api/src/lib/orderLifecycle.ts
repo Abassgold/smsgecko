@@ -114,18 +114,12 @@ export async function refundWaitingOrder(
       );
       if (!flipped) return;
 
-      // Pairs with the charge it reverses. Most orders only have the one creation
-      // charge, but a reactivated order has a second, separate charge — refund
-      // that one's reference instead so the pairing stays correct.
-      const reactivated = await Transaction.exists({
-        orderId: flipped._id,
-        reference: `${flipped._id}_reactivate`,
-      }).session(session);
+      // Pairs with the one charge it reverses (an order is only ever charged once).
       await credit(flipped.userId, flipped.priceMicro, {
         type: 'refund',
         description: to === 'expired' ? 'Order expired — refund' : 'Order canceled — refund',
         orderId: flipped._id,
-        reference: reactivated ? `${flipped._id}_reactivate_R` : `${flipped._id}_R`,
+        reference: `${flipped._id}_R`,
         session,
       });
       order = flipped;

@@ -24,7 +24,7 @@ import {
   revertToCompleted,
 } from '../lib/orderLifecycle.js';
 // import { dispatchWebhook } from '../lib/webhooks.js';
-import { holdRemainingSeconds, isActivateStyle, minHoldSecondsFor } from '../lib/providerPolicy.js';
+import { holdRemainingSeconds, minHoldSecondsFor } from '../lib/providerPolicy.js';
 import {
   AppError,
   badRequest,
@@ -447,36 +447,10 @@ export async function deliverOtpByProviderRef(
 }
 
 /**
- * Ask the upstream for another SMS on a still-`waiting` order. Free — no new
- * rental, no charge. The polling worker picks up whatever arrives next.
- */
-export async function resendOrder(user: UserDoc, orderId: string): Promise<OrderDoc> {
-  const order = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id, ...VISIBLE });
-  if (!order) throw notFound('Order not found');
-  if (order.status !== 'waiting') throw conflict(`Order is already ${order.status}`);
-
-  // SMS-Activate-style providers only take "another SMS" AFTER a code arrived (see retryOrder), and cancelling a
-  // waiting activation after it would not be refunded. Same rule as manesms.
-  if (isActivateStyle(order.provider)) {
-    throw conflict('Another code can only be requested after the first one has arrived');
-  }
-  const provider = await getProviderForOrder(order);
-  if (!provider.resend) throw conflict('This number does not support requesting another code');
-  try {
-    await provider.resend(order.providerRef!);
-  } catch (err) {
-    // The provider refused or could not be reached: say so. Never report "another code requested" when it was not.
-    logger.warn({ err, orderId: String(order._id) }, '[orders] resend failed');
-    throw providerError('Could not request another code right now. Please try again shortly.');
-  }
-  // Force the next worker tick to poll this order immediately.
-  await Order.updateOne({ _id: order._id, status: 'waiting' }, { $set: { lastPolledAt: null } });
-  return (await Order.findById(order._id)) ?? order;
-}
-
-/**
  * "Request another SMS" (setStatus 3), the manesms way: only for a COMPLETED order that has not expired. Free, no new
- * rental. The delivered code moves into `otpHistory` so the poller can tell the new SMS from the old one, and the
+ * rental. This is the ONE "another SMS" path: the SMS-Activate protocol (setStatus 3) and the REST API (POST /orders/:id/resend)
+ * both call it, so the two APIs behave the same. (There used to be a second path for "resend while still waiting" and a paid
+ * "reactivate": both were written for providers we no longer sell through, and neither works with Tiger, Hero or SMSBower.) The delivered code moves into `otpHistory` so the poller can tell the new SMS from the old one, and the
  * order goes back to `waiting`. Cancelling or expiring in that state never refunds (see revertToCompleted).
  */
 export async function retryOrder(user: UserDoc, orderId: string): Promise<OrderDoc> {
@@ -503,82 +477,4 @@ export async function retryOrder(user: UserDoc, orderId: string): Promise<OrderD
     },
   );
   return (await Order.findById(order._id)) ?? order;
-}
-
-/**
- * Buy another code on an already-`completed` order, on the same number. Charges
- * the current tier price, reopens the same order as `waiting`, keeps its message
- * history. Only providers that implement `reactivate` support this.
- */
-export async function reactivateOrder(user: UserDoc, orderId: string): Promise<OrderDoc> {
-  // Atomically claim the order before doing anything real — this is what
-  // actually closes the race a rapid double-click (or a naive client
-  // retry) could otherwise hit: two concurrent calls both reading
-  // status: 'completed' before either has written back, both going on to
-  // buy a second reactivation from the provider and debit the wallet
-  // twice. Only one call can win this update; the loser gets a clear
-  // conflict instead of a duplicate charge.
-  const order = await Order.findOneAndUpdate(
-    { ...orderIdFilter(orderId), userId: user._id, ...VISIBLE, status: 'completed', reactivatingAt: null },
-    { $set: { reactivatingAt: new Date() } },
-    { returnDocument: 'after' },
-  );
-  if (!order) {
-    const existing = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id, ...VISIBLE });
-    if (!existing) throw notFound('Order not found');
-    if (existing.reactivatingAt) {
-      throw conflict('A reactivation for this order is already in progress');
-    }
-    throw conflict('Only a completed order can be reactivated');
-  }
-
-  try {
-    const provider = await getProviderForOrder(order);
-    if (!provider.reactivate) throw conflict('This number cannot be reactivated');
-
-    const settings = await getSettings();
-    const cat = await resolveForOrder(order.serviceId, order.countryId, settings);
-    if (!cat) throw noOfferAvailable();
-    if (cat.priceMicro > user.balanceMicro) throw paymentRequired();
-
-    const result = await provider.reactivate(order.providerRef!).catch(() => null);
-    if (!result) throw conflict('The provider could not reactivate this number');
-
-    await debit(user._id, cat.priceMicro, {
-      type: 'order_payment',
-      description: 'Number reactivation',
-      orderId: order._id,
-      // Distinct from the original creation charge's reference — reactivation is
-      // a second, separate payment on the same order.
-      reference: `${order._id}_reactivate`,
-    });
-
-    const expiresAt = new Date(
-      Date.now() + Math.max(settings.orderTtlSeconds, minHoldSecondsFor(order.provider)) * 1000,
-    );
-    await Order.updateOne(
-      { _id: order._id },
-      {
-        $set: {
-          status: 'waiting',
-          otpCode: null,
-          completedAt: null,
-          finishedAt: null,
-          deliverAt: null,
-          lastPolledAt: null,
-          providerRef: result.providerRef,
-          providerCostMicro: (order.providerCostMicro ?? 0) + cat.rawPriceMicro,
-          expiresAt,
-          reactivatingAt: null,
-        },
-      },
-    );
-    return (await Order.findById(order._id))!;
-  } catch (err) {
-    // Release the lock on any failure — a failed attempt (no offer, no
-    // balance, provider declined) must not permanently strand the order in
-    // a "reactivating forever" state the user can't retry.
-    await Order.updateOne({ _id: order._id }, { $set: { reactivatingAt: null } });
-    throw err;
-  }
 }

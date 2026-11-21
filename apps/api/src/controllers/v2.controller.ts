@@ -9,8 +9,7 @@ import {
   finishOrder,
   getOrderWithMessages,
   listActiveOrders,
-  reactivateOrder,
-  resendOrder,
+  retryOrder,
 } from '../services/orders.service.js';
 import { createV2Order, listCatalogProducts } from '../services/v2.service.js';
 import { toV2Order, usdString } from '../services/v2.mapper.js';
@@ -74,14 +73,7 @@ export const getActiveOrders = asyncHandler(async (req, res) => {
 
 export const resendOrderHandler = asyncHandler(async (req, res) => {
   const { id } = valid<{ id: string }>(req, 'params');
-  const order = await resendOrder(req.apiUser!, id);
-  const { messages } = await getOrderWithMessages(req.apiUser!, id);
-  res.json(ok(toV2Order(order, messages)));
-});
-
-export const reactivateOrderHandler = asyncHandler(async (req, res) => {
-  const { id } = valid<{ id: string }>(req, 'params');
-  const order = await reactivateOrder(req.apiUser!, id);
+  const order = await retryOrder(req.apiUser!, id);
   const { messages } = await getOrderWithMessages(req.apiUser!, id);
   res.json(ok(toV2Order(order, messages)));
 });

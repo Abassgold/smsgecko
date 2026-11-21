@@ -15,7 +15,6 @@ import {
   getWebhook,
   listProducts,
   patchWebhook,
-  reactivateOrderHandler,
   resendOrderHandler,
   testWebhookHandler,
 } from '../controllers/v2.controller.js';
@@ -25,7 +24,7 @@ router.use(requireApiKey);
 
 router.get('/balance', getBalance);
 router.get('/catalog/products', validate(productsQuery, 'query'), listProducts);
-// Two addresses, one handler: `/orders/create` reads better in docs and logs; `/orders` stays for existing integrations and the SDKs.
+// Two addresses, one handler: `/orders/create` reads better in docs and logs; `/orders` stays for existing integrations.
 router.post(['/orders', '/orders/create'], validate(v2CreateOrderBody), createOrderHandler);
 router.get('/orders/active', getActiveOrders);
 /*
@@ -40,23 +39,15 @@ const idFromBody: RequestHandler[] = [
   },
   validate(v2IdParams, 'params'),
 ];
-// ONE throttle instance for both reactivate addresses: a throttle remembers its own last call, so two instances would let a client
-// alternate between the addresses and skip the gap.
-const reactivateThrottle = throttle(3000);
-// Same idea for resend: it asks the provider for a real SMS, so don't let it be hammered. 5s matches the documented polling pace.
+// "Another SMS" asks the provider for a real SMS, so don't let it be hammered. 5s matches the documented polling pace.
 const resendThrottle = throttle(5000);
 router.post('/orders/finish', ...idFromBody, finishOrderHandler);
 router.post('/orders/cancel', ...idFromBody, cancelOrderHandler);
 router.post('/orders/resend', resendThrottle, ...idFromBody, resendOrderHandler);
-router.post('/orders/reactivate', reactivateThrottle, ...idFromBody, reactivateOrderHandler);
 router.get('/orders/:id', validate(v2IdParams, 'params'), getOrder);
 router.post('/orders/:id/finish', validate(v2IdParams, 'params'), finishOrderHandler);
 router.post('/orders/:id/cancel', validate(v2IdParams, 'params'), cancelOrderHandler);
 router.post('/orders/:id/resend', resendThrottle, validate(v2IdParams, 'params'), resendOrderHandler);
-// A real second purchase from the provider + a real second wallet debit on
-// a rapid double-call — throttled on top of the atomic lock in
-// reactivateOrder() itself (see orders.service.ts), not instead of it.
-router.post('/orders/:id/reactivate', reactivateThrottle, validate(v2IdParams, 'params'), reactivateOrderHandler);
 router.get('/webhook', getWebhook);
 router.patch('/webhook', validate(v2PatchWebhookBody), patchWebhook);
 router.post('/webhook/test', testWebhookHandler);

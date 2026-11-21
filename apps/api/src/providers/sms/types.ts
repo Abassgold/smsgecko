@@ -98,17 +98,11 @@ export interface SmsProvider {
    */
   finish?(providerRef: string): Promise<void>;
   /**
-   * Ask the upstream for another SMS on a still-active rental (SMS-Activate
-   * status 3). Optional. MUST throw when the provider refused or
-   * could not be reached, so the API can tell the caller instead of reporting a fake success.
+   * Ask the upstream for another SMS on the same number (SMS-Activate status 3), after the first code arrived. Free.
+   * Optional. MUST throw when the provider refused or could not be reached, so the API can tell the caller instead of
+   * reporting a fake success.
    */
   resend?(providerRef: string): Promise<void>;
-  /**
-   * Buy another code on an already-finished rental, same number. Returns the
-   * (possibly new) provider ref, or null if the provider can't reactivate.
-   * Optional — most SMS-Activate clones don't support it.
-   */
-  reactivate?(providerRef: string): Promise<{ providerRef: string } | null>;
   healthCheck(): Promise<HealthResult>;
 
   /** Live catalog — the storefront is driven by the highest-priority enabled provider. */

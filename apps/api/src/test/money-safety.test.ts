@@ -11,7 +11,7 @@ import { debit } from '../lib/ledger.js';
 import { logger } from '../lib/logger.js';
 import { applyOtpToOrder, refundWaitingOrder } from '../lib/orderLifecycle.js';
 import { bustProviderCache } from '../providers/sms/registry.js';
-import { cancelOrder, createOrder, listOrders, resendOrder, retryOrder } from '../services/orders.service.js';
+import { cancelOrder, createOrder, listOrders, retryOrder } from '../services/orders.service.js';
 import { runExpiry, runProvisioningReaper } from '../workers/index.js';
 import {
   parseReleaseResponse,
@@ -229,12 +229,10 @@ describe('another SMS (setStatus 3): only after a code arrived', () => {
     return { s, order: done };
   }
 
-  it('is refused on a waiting order, and on activate-style providers for a waiting order too', async () => {
+  it('is refused on a waiting order (a code must have arrived first)', async () => {
     const s = await setup();
     const order = await s.buy();
     await expect(retryOrder(await s.user(), order.id as string)).rejects.toMatchObject({ statusCode: 409 });
-    await Order.updateOne({ _id: order._id }, { $set: { provider: 'tiger_sms' } });
-    await expect(resendOrder(await s.user(), order.id as string)).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it('moves the code to otpHistory and waits again; cancelling that wait never refunds', async () => {
