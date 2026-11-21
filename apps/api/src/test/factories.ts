@@ -73,7 +73,7 @@ export async function makeAdmin(app: Application): Promise<{ cookie: string; use
 
 /** Add a provider config to the fallback chain. */
 export async function makeProvider(opts: {
-  key?: 'mock' | 'custom_http';
+  key?: 'mock' | 'tiger_sms';
   label?: string;
   enabled?: boolean;
   priority?: number;
@@ -81,7 +81,7 @@ export async function makeProvider(opts: {
 }) {
   seq += 1;
   const cfg = await ProviderConfig.create({
-    key: opts.key ?? 'custom_http',
+    key: opts.key ?? 'tiger_sms',
     label: opts.label ?? `Provider ${seq}`,
     enabled: opts.enabled ?? true,
     priority: opts.priority ?? 50,

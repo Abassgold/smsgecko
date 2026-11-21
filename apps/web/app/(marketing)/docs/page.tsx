@@ -4,8 +4,11 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Container } from '@/components/ui/container';
 import { CodeBlock, CodeLabel } from '@/components/ui/code-block';
 import { cn } from '@/lib/cn';
+import { GROUPS, METHODS, type ApiMethod, type ApiResponse } from '@/lib/api-methods';
 
-const BASE = 'https://api.smsgecko.com';
+// The web host proxies /stubs/* to the API (api.smsgecko.com is not used for this).
+const BASE = 'https://www.smsgecko.com';
+const ENDPOINT = `${BASE}/stubs/handler_api.php`;
 
 
 const NAV: { group: string; items: { id: string; label: string }[] }[] = [
@@ -13,54 +16,17 @@ const NAV: { group: string; items: { id: string; label: string }[] }[] = [
     group: 'Getting started',
     items: [
       { id: 'overview', label: 'Overview' },
-      // { id: 'auth', label: 'Authentication' },
       { id: 'base-url', label: 'Base URL' },
-      { id: 'response-format', label: 'Response format' },
-      { id: 'idempotency', label: 'Idempotency' },
+      { id: 'authentication', label: 'Authentication' },
       { id: 'errors', label: 'Errors' },
       { id: 'rate-limits', label: 'Rate limits' },
+      { id: 'lifecycle', label: 'The OTP lifecycle' },
     ],
   },
-  {
-    group: 'Lifecycle',
-    items: [{ id: 'lifecycle', label: 'The OTP lifecycle' }],
-  },
-  {
-    group: 'Account',
-    items: [{ id: 'get-balance', label: 'GET /balance' }],
-  },
-  {
-    group: 'Catalog',
-    items: [{ id: 'list-products', label: 'GET /catalog/products' }],
-  },
-  {
-    group: 'Orders',
-    items: [
-      { id: 'create-order', label: 'POST /orders/create' },
-      { id: 'active-orders', label: 'GET /orders/active' },
-      { id: 'get-order', label: 'GET /orders/:id' },
-      { id: 'finish-order', label: 'POST /orders/finish' },
-      { id: 'cancel-order', label: 'POST /orders/cancel' },
-      { id: 'resend-order', label: 'POST /orders/resend' },
-      { id: 'reactivate-order', label: 'POST /orders/reactivate' },
-    ],
-  },
-  {
-    group: 'Webhooks',
-    items: [
-      { id: 'webhooks-overview', label: 'Overview' },
-      { id: 'get-webhook', label: 'GET /webhook' },
-      { id: 'patch-webhook', label: 'PATCH /webhook' },
-      { id: 'test-webhook', label: 'POST /webhook/test' },
-    ],
-  },
-  {
-    group: 'Reference',
-    items: [
-      { id: 'order-object', label: 'The order object' },
-      { id: 'product-object', label: 'The product object' },
-    ],
-  },
+  ...GROUPS.map((g) => ({
+    group: g,
+    items: METHODS.filter((m) => m.group === g).map((m) => ({ id: m.name, label: m.name })),
+  })),
 ];
 
 function useActiveSection(ids: string[]) {
@@ -205,9 +171,65 @@ function Params({
 }
 
 const curl = (label: string, code: string) => ({ label, language: 'bash', code });
-const js = (code: string) => ({ label: 'JavaScript', language: 'javascript', code });
 
 /* ------------------------------------------------------------------ page */
+
+const STATUS_TEXT: Record<number, string> = {
+  200: '200 OK',
+  400: '400 Bad Request',
+  401: '401 Unauthorized',
+  429: '429 Too Many Requests',
+  503: '503 Service Unavailable',
+};
+
+const requestUrl = (m: ApiMethod) =>
+  `${ENDPOINT}?action=${m.name}${m.params.filter((p) => p.required).map((p) => `&${p.name}=${p.example ?? ''}`).join('')}&api_key=YOUR_API_KEY`;
+
+function ResponseBlock({ r }: { r: ApiResponse }) {
+  const isJson = r.body.startsWith('{') || r.body.startsWith('[');
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="text-sm">
+        <b className="text-text">{r.label}</b> — {r.desc}
+      </p>
+      <CodeBlock
+        status={STATUS_TEXT[r.status] ?? String(r.status)}
+        tabs={[{ label: isJson ? 'JSON' : 'Text', language: isJson ? 'json' : 'text', code: r.body }]}
+      />
+    </div>
+  );
+}
+
+function MethodSection({ m }: { m: ApiMethod }) {
+  return (
+    <Section id={m.name} title={m.name}>
+      <Endpoint method="GET" path={`/stubs/handler_api.php?action=${m.name}`} />
+      <p>{m.desc}</p>
+      {m.notes && (
+        <ul className="flex list-disc flex-col gap-2 pl-5 marker:text-faint">
+          {m.notes.map((n) => <li key={n}>{n}</li>)}
+        </ul>
+      )}
+      {m.params.length > 0 && (
+        <Params
+          headers={['Parameter', 'Required', 'Notes']}
+          rows={m.params.map((p) => [p.name, p.required ? 'yes' : 'no', p.desc])}
+        />
+      )}
+      <CodeLabel>Example request</CodeLabel>
+      <CodeBlock
+        tabs={[
+          curl('cURL', `curl "${requestUrl(m)}"`),
+          { label: 'URL', language: 'text', code: requestUrl(m) },
+        ]}
+      />
+      <CodeLabel>Responses</CodeLabel>
+      <div className="flex flex-col gap-4">
+        {m.responses.map((r) => <ResponseBlock key={r.label} r={r} />)}
+      </div>
+    </Section>
+  );
+}
 
 export default function DocsPage() {
   return (
@@ -217,9 +239,13 @@ export default function DocsPage() {
           <span className="text-gradient">API</span> Reference
         </h1>
         <p className="mt-4 text-[15px] text-muted">
-          A REST API over HTTPS with JSON bodies and Bearer authentication. Buy a virtual number
-          for an exact price tier, poll it for the verification code, then finish. Everything the
-          dashboard does is available here.
+          SMSGecko speaks the SMS-Activate protocol: one URL, <code>action</code> and{' '}
+          <code>api_key</code> in the query string, plain-text answers. Existing SMS-Activate
+          software and scripts work by changing only the host.
+        </p>
+        <p className="mt-3 text-sm text-faint">
+          <a href="/api-docs/openapi.json" className="text-accent">OpenAPI spec</a> ·{' '}
+          <a href="/api-docs/postman.json" download className="text-accent">Postman collection</a>
         </p>
       </div>
 
@@ -233,972 +259,97 @@ export default function DocsPage() {
         <div className="flex min-w-0 flex-col gap-10">
           <Section id="overview" title="Overview">
             <p>
-              The API is versioned under <code>/api/v2</code>. Every response is JSON with a{' '}
-              <code>success</code> boolean at the top — see{' '}
-              <a href="#response-format" className="text-accent">Response format</a>. Money is a
-              decimal USD string with variable precision (<code>&quot;0.5&quot;</code>,{' '}
-              <code>&quot;0.425&quot;</code>) — parse it, don&apos;t assume two places. Timestamps
-              are ISO 8601 UTC.
+              Every call is a <code>GET</code> (or form <code>POST</code>) to one URL with an{' '}
+              <code>action</code>. Most answers are plain-text tokens such as{' '}
+              <code>ACCESS_NUMBER:4829371650:15551234567</code>; the V2 and list methods answer
+              JSON. Prices are in US dollars.
             </p>
             <p>
-              Typical integration: list <a href="#list-products" className="text-accent">products</a>{' '}
-              for a service, <a href="#create-order" className="text-accent">create an order</a>{' '}
-              against one, then <a href="#get-order" className="text-accent">poll the order</a>{' '}
-              until <code>otp_code</code> is set.
+              Typical integration: <a href="#getServicesList" className="text-accent">find the service
+              code</a> and <a href="#getCountries" className="text-accent">country id</a>,{' '}
+              <a href="#getNumber" className="text-accent">buy a number</a>, then{' '}
+              <a href="#getStatus" className="text-accent">poll its status</a> until the code arrives.
+              Look codes up with those two methods rather than hard-coding them.
+            </p>
+            <p>
+              Already use SMS-Activate software? Pick “SMS-Activate” as the service, set the host to{' '}
+              <code>{BASE}</code> and enter your API key. The tool adds{' '}
+              <code>/stubs/handler_api.php</code> itself. Methods a tool uses beyond the ones listed
+              here are not supported yet.
             </p>
           </Section>
 
           <Section id="base-url" title="Base URL">
-            <Params
-              rows={[
-                ['Production', 'string', `${BASE}/api/v2`],
-              ]}
-            />
+            <Params headers={['Name', 'Notes']} rows={[['Production', ENDPOINT], ['Alias', `${BASE}/api/handler_api`]]} />
           </Section>
 
-          <Section id="auth" title="Authentication">
+          <Section id="authentication" title="Authentication">
             <p>
-              Every request needs a Bearer token. Mint one from the dashboard (Settings → API keys)
-              using a session cookie. Keys look like <code>smsg_live_…</code> and are shown only once,
-              so copy it somewhere safe and include it in every request.
+              Pass your key as <code>api_key</code>. Create one in the dashboard (Settings → API
+              keys); keys look like <code>smsg_live_…</code> and are shown only once, so copy it
+              somewhere safe.
             </p>
             <CodeBlock
-              title="Header"
-              tabs={[curl('cURL', `curl ${BASE}/api/v2/orders/active \\\n  -H "Authorization: Bearer smsg_live_xxxxxxxxxxxx"`)]}
+              title="Request"
+              tabs={[curl('cURL', `curl "${ENDPOINT}?action=getBalance&api_key=smsg_live_xxxxxxxxxxxx"`)]}
             />
             <p className="text-sm text-faint">
-              A missing or invalid key returns <code>401 UNAUTHORIZED</code>. A valid key for a
-              suspended account returns <code>403 FORBIDDEN</code>.
-            </p>
-          </Section>
-
-          <Section id="response-format" title="Response format">
-            <p>
-              Every response is JSON with a top-level <code>success</code> boolean — check it
-              before touching <code>data</code>.
-            </p>
-            <CodeLabel>Success</CodeLabel>
-            <CodeBlock
-              tabs={[
-                curl(
-                  'JSON',
-                  `{
-  "success": true,
-  "data": { ... }
-}`,
-                ),
-              ]}
-            />
-            <CodeLabel>Error</CodeLabel>
-            <CodeBlock
-              tabs={[
-                curl(
-                  'JSON',
-                  `{
-  "success": false,
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Human-readable message"
-  }
-}`,
-                ),
-              ]}
-            />
-            <p className="text-sm text-faint">
-              <code>error.code</code> is a stable machine-readable string (e.g.{' '}
-              <code>INSUFFICIENT_BALANCE</code>) — switch on it, not on{' '}
-              <code>error.message</code>, which can change. Full list in{' '}
-              <a href="#errors" className="text-accent">Errors</a>.
-            </p>
-          </Section>
-
-          <Section id="idempotency" title="Idempotency">
-            <p>
-              <code>POST /orders</code> is retry-safe. Send an <code>Idempotency-Key</code> header
-              (8–128 chars) — replaying it returns the original order instead of buying twice.
-              Reuse the same key across every retry of one logical purchase (changing{' '}
-              <code>max_price</code> on a retry is fine; it isn&apos;t part of the key&apos;s
-              identity).
-            </p>
-            <p>
-              A second request with the same key while the first is still being processed gets{' '}
-              <code>409 REQUEST_IN_PROGRESS</code> — retry shortly rather than assuming it failed.
-              Reusing a key with a different <code>catalog_product_id</code> or{' '}
-              <code>operator_id</code> gets <code>422 IDEMPOTENCY_KEY_REUSED</code>; pick a new key
-              for a genuinely different order.
+              A missing, wrong or revoked key (or a suspended account) answers <code>BAD_KEY</code>{' '}
+              with HTTP 401, before any method runs.
             </p>
           </Section>
 
           <Section id="errors" title="Errors">
             <p>
-              Failures use HTTP status codes plus the{' '}
-              <a href="#response-format" className="text-accent">error envelope</a> above.{' '}
-              <code>error.code</code> is the stable, machine-readable field — switch on it, not on{' '}
-              <code>error.message</code>. <code>error.details</code> additionally carries
-              field-level messages on <code>BAD_REQUEST</code> from a failed body/query check.
+              Failures are plain-text tokens, usually with HTTP 200 as the protocol expects — match
+              on the token, not the status code. The exceptions are <code>BAD_KEY</code> (401),{' '}
+              <code>WRONG_MAX_PRICE</code> (400), a malformed <code>maxPrice</code> (<code>BAD_ACTION</code>, 400), a cancel that could not be confirmed (<code>BAD_ACTION</code>, 503) and <code>RATE_LIMITED</code> (429).
             </p>
             <Params
-              headers={['Code', 'HTTP', 'Description']}
+              headers={['Token', 'Meaning']}
               rows={[
-                ['BAD_REQUEST', '400', 'Malformed request body/query, or an invalid `Idempotency-Key` header.'],
-                ['INVALID_JSON', '400', 'Request body is not valid JSON.'],
-                ['UNAUTHORIZED', '401', 'Missing or invalid Bearer token.'],
-                ['INSUFFICIENT_BALANCE', '402', 'Wallet balance is below the order or reactivation price.'],
-                ['FORBIDDEN', '403', 'API key belongs to a suspended account.'],
-                ['NOT_FOUND', '404', 'No order with that id under your account, or the route doesn’t exist.'],
-                [
-                  'CONFLICT',
-                  '409',
-                  'No provider is enabled, the order is already resolved (finished/canceled/expired), already has a code, or the provider can’t resend/reactivate.',
-                ],
-                [
-                  'CANCEL_TOO_EARLY',
-                  '409',
-                  'The number was bought too recently — the post-purchase hold hasn’t elapsed. `error.details.retryAfterSeconds` says how much longer.',
-                ],
-                [
-                  'REQUEST_IN_PROGRESS',
-                  '409',
-                  'A create request with this exact `Idempotency-Key` is still being processed — retry shortly.',
-                ],
-                ['UNPROCESSABLE', '422', 'The live price moved above your `max_price`.'],
-                [
-                  'NO_OFFER_AVAILABLE',
-                  '422',
-                  'No active offer matches that service/country/tier right now — out of stock, or the tier no longer exists.',
-                ],
-                [
-                  'IDEMPOTENCY_KEY_REUSED',
-                  '422',
-                  'This `Idempotency-Key` was replayed with a different `catalog_product_id` or `operator_id`. Use a new key for a different logical order.',
-                ],
-                [
-                  'PROVIDER_ERROR',
-                  '422',
-                  'No number could be rented. `error.details.attempts` has one `{ outcome }` per upstream tried, where `outcome` is `no_numbers`, `provider_unavailable`, or `provider_error`.',
-                ],
-                ['RATE_LIMITED', '429', 'Too many requests — check the `RateLimit-Reset` header (seconds) and back off.'],
-                ['INTERNAL_ERROR', '500', 'Unexpected server error — safe to retry once.'],
-                ['SERVICE_UNAVAILABLE', '503', 'Ordering is paused for maintenance.'],
+                ['BAD_KEY', 'Missing, wrong or revoked api_key, or a suspended account.'],
+                ['BAD_ACTION', 'Unknown action, a malformed maxPrice, or an unexpected server error. With HTTP 503 on setStatus=8: the cancel could not be confirmed, nothing was refunded, try again shortly.'],
+                ['BAD_SERVICE / BAD_COUNTRY', 'Unknown service code or country id.'],
+                ['NO_NUMBERS', 'Nothing available for that service and country right now.'],
+                ['NO_BALANCE', 'Your balance is lower than the price.'],
+                ['WRONG_MAX_PRICE:<price>', 'The current price is above your maxPrice. Nothing was bought.'],
+                ['RATE_LIMITED', 'Over 300 requests a minute from your IP (HTTP 429). Wait a minute and carry on.'],
+                ['NO_ACTIVATION', 'Unknown activation id, or it belongs to another account.'],
+                ['BAD_STATUS', 'Unsupported status, or not possible in the activation’s current state (e.g. status 3 before a code arrived).'],
+                ['EARLY_CANCEL_DENIED', 'Too soon after purchase to cancel; try again in a couple of minutes.'],
               ]}
             />
           </Section>
 
           <Section id="rate-limits" title="Rate limits">
             <p>
-              300 requests per minute per IP. Every response carries <code>RateLimit-Limit</code>,{' '}
-              <code>RateLimit-Remaining</code> and <code>RateLimit-Reset</code> (seconds until the
-              window resets); once you are over, you get <code>429 RATE_LIMITED</code>.
+              300 requests per minute per IP. Once you are over, requests answer{' '}
+              <code>RATE_LIMITED</code> (HTTP 429) until the window resets.
             </p>
-            <h3 className="mt-2 font-display text-base font-semibold text-text">Polling an order</h3>
+            <h3 className="mt-2 font-display text-base font-semibold text-text">Polling an activation</h3>
             <ul className="flex list-disc flex-col gap-2 pl-5 marker:text-faint">
-              <li>
-                <b className="text-text">Poll every 5 seconds.</b> A code rarely arrives sooner, so
-                polling faster only uses up your request budget.
-              </li>
-              <li>
-                <b className="text-text">Count your parallel orders.</b> 20 orders polled every 5
-                seconds is 240 requests a minute, close to the limit. If you need more than that,
-                poll less often or contact support.
-              </li>
-              <li>
-                <b className="text-text">Stop when the order ends.</b> Only <code>waiting</code>{' '}
-                needs polling. <code>completed</code>, <code>canceled</code> and{' '}
-                <code>expired</code> are final.
-              </li>
-              <li>
-                <b className="text-text">Set a time limit.</b> Stop at <code>expires_at</code>{' '}
-                (about 7 minutes after the purchase). Expired orders are refunded automatically.
-              </li>
-              <li>
-                <b className="text-text">Back off on a 429.</b> Wait <code>RateLimit-Reset</code>{' '}
-                seconds before the next request, then carry on.
-              </li>
+              <li><b className="text-text">Poll every 5 seconds.</b> A code rarely arrives sooner, so polling faster only uses your request budget.</li>
+              <li><b className="text-text">Count your parallel activations.</b> 20 activations polled every 5 seconds is 240 requests a minute, close to the limit.</li>
+              <li><b className="text-text">Stop when it ends.</b> Only <code>STATUS_WAIT_CODE</code> (and <code>STATUS_WAIT_RETRY</code> after you asked for another SMS) needs more polling; <code>STATUS_OK</code> and <code>STATUS_CANCEL</code> are final.</li>
+              <li><b className="text-text">Set a time limit.</b> Unanswered numbers are refunded automatically when they expire (<code>getNumberV2</code> returns <code>activationEndTime</code>).</li>
             </ul>
           </Section>
 
           <Section id="lifecycle" title="The OTP lifecycle">
-            <ol className="flex list-decimal flex-col gap-3 pl-5 marker:text-faint">
-              <li>
-                <b className="text-text">Find a product.</b> <code>GET /catalog/products?service=</code>{' '}
-                returns one row per price tier for each country. Each row&apos;s <code>id</code> is a
-                stable tier slot.{' '}
-                <b className="text-text">Look it up every time you order.</b> Service codes, country
-                codes and product ids can change as the catalog is updated, so never hardcode them
-                or keep them long-term.
-              </li>
-              <li>
-                <b className="text-text">Create the order.</b>{' '}
-                <code>POST /orders</code> with <code>catalog_product_id</code> and a{' '}
-                <code>max_price</code> cap. The wallet is charged now; the order is{' '}
-                <code>waiting</code> with a <code>phone_number</code>.
-              </li>
-              <li>
-                <b className="text-text">Poll for the code.</b> <code>GET /orders/:id</code> every 5
-                seconds until <code>otp_code</code> is set (<code>status</code> becomes{' '}
-                <code>completed</code>). Stop early if <code>status</code> turns{' '}
-                <code>canceled</code> or <code>expired</code>, or when <code>expires_at</code>{' '}
-                passes. If nothing arrives, the order auto-refunds. See{' '}
-                <a href="#rate-limits" className="text-accent">Rate limits</a> for polling advice.
-              </li>
-              <li>
-                <b className="text-text">Finish</b> (<code>POST /orders/:id/finish</code>) to signal
-                you&apos;re done. Or <b className="text-text">cancel</b> a still-waiting order for a
-                full refund, <b className="text-text">resend</b> to ask for another SMS, or{' '}
-                <b className="text-text">reactivate</b> a completed order to buy another code on the
-                same number.
-              </li>
+            <ol className="flex list-decimal flex-col gap-2 pl-5 marker:text-faint">
+              <li><code>getNumber</code> charges your balance and returns the activation id and number.</li>
+              <li>Enter the number on the service, then poll <code>getStatus</code> every 5 seconds: <code>STATUS_WAIT_CODE</code> until the SMS arrives.</li>
+              <li><code>STATUS_OK:&lt;code&gt;</code> — use the code, then <code>setStatus</code> with <code>status=6</code> to finish.</li>
+              <li>No SMS? <code>setStatus</code> with <code>status=8</code> cancels for a full refund (after the short lock-in), or let it expire and it is refunded automatically.</li>
             </ol>
-            <CodeBlock
-              title="End to end"
-              tabs={[
-                curl(
-                  'cURL',
-                  `TOKEN="smsg_live_xxxxxxxxxxxx"
-
-# 1. look the product up by name. Never hardcode service codes, country codes or product ids:
-#    they can change as the catalog is updated.
-SERVICE=$(curl -s "${BASE}/api/v2/catalog/products?search=whatsapp" \\
-  -H "Authorization: Bearer $TOKEN" \\
-  | jq -r '[.data[] | select(.service | ascii_downcase == "whatsapp")][0].service_slug')
-PID=$(curl -s "${BASE}/api/v2/catalog/products?service=$SERVICE" \\
-  -H "Authorization: Bearer $TOKEN" \\
-  | jq -r '[.data[] | select(.country == "United States")][0].id')
-[ "$PID" != "null" ] || { echo "no product for that service/country"; exit 1; }
-
-# 2. buy it, never paying more than $1.00 (the order lives at .data on a single-object response)
-ORDER=$(curl -s -X POST ${BASE}/api/v2/orders/create \\
-  -H "Authorization: Bearer $TOKEN" \\
-  -H "Idempotency-Key: $(uuidgen)" \\
-  -H "Content-Type: application/json" \\
-  -d "{\\"catalog_product_id\\":\\"$PID\\",\\"max_price\\":\\"1.00\\"}")
-ID=$(echo "$ORDER" | jq -r '.data.id')
-[ "$ID" != "null" ] || { echo "$ORDER"; exit 1; }
-
-# 3. poll every 5 seconds for up to ~7 minutes; stop as soon as the code arrives or the order ends
-CODE=""
-for i in $(seq 1 84); do
-  RES=$(curl -s ${BASE}/api/v2/orders/$ID -H "Authorization: Bearer $TOKEN")
-  CODE=$(echo "$RES" | jq -r '.data.otp_code // empty')
-  STATUS=$(echo "$RES" | jq -r '.data.status')
-  [ -n "$CODE" ] && break
-  [ "$STATUS" = "waiting" ] || break
-  sleep 5
-done
-
-# 4. got a code: finish. No code: cancel (full refund; an expired order is refunded for you)
-if [ -n "$CODE" ]; then
-  echo "code: $CODE"
-  curl -s -X POST ${BASE}/api/v2/orders/$ID/finish -H "Authorization: Bearer $TOKEN"
-else
-  curl -s -X POST ${BASE}/api/v2/orders/$ID/cancel -H "Authorization: Bearer $TOKEN"
-fi`,
-                ),
-                js(`const TOKEN = 'smsg_live_xxxxxxxxxxxx';
-const h = { Authorization: \`Bearer \${TOKEN}\`, 'Content-Type': 'application/json' };
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-// Every response is { success, data } (or { success: false, error } — see Errors).
-const api = (p, init) => fetch(\`${BASE}/api/v2\${p}\`, { ...init, headers: h })
-  .then((r) => r.json())
-  .then((body) => {
-    if (!body.success) throw new Error(body.error.message);
-    return body.data;
-  });
-
-// Look the product up by name. Never hardcode service codes, country codes or product ids:
-// they can change as the catalog is updated.
-const service = (await api('/catalog/products?search=whatsapp'))
-  .find((s) => s.service.toLowerCase() === 'whatsapp');
-if (!service) throw new Error('Service not found');
-const products = (await api(\`/catalog/products?service=\${service.service_slug}\`))
-  .filter((p) => p.country === 'United States'); // cheapest first
-if (!products.length) throw new Error('No product for that service/country');
-
-// Never pay more than $1.00.
-const { id } = await api('/orders/create', {
-  method: 'POST',
-  headers: { ...h, 'Idempotency-Key': crypto.randomUUID() },
-  body: JSON.stringify({ catalog_product_id: products[0].id, max_price: '1.00' }),
-});
-
-// Poll every 5 seconds until the code arrives, the order ends, or it expires (~7 minutes).
-let order;
-do {
-  await sleep(5000);
-  order = await api(\`/orders/\${id}\`);
-} while (order.status === 'waiting' && !order.otp_code && Date.now() < Date.parse(order.expires_at));
-
-if (order.otp_code) {
-  console.log('code:', order.otp_code);
-  await api(\`/orders/\${id}/finish\`, { method: 'POST' });
-} else {
-  console.log('no code, order is', order.status); // expired or canceled orders are refunded for you
-  if (order.status === 'waiting') await api(\`/orders/\${id}/cancel\`, { method: 'POST' });
-}`),
-              ]}
-            />
           </Section>
 
-          <Section id="get-balance" title="Get wallet balance">
-            <Endpoint method="GET" path="/api/v2/balance" />
-            <p>
-              Your current wallet balance, as the same decimal USD string used everywhere else
-              in the API.
-            </p>
-            <CodeLabel>Example request</CodeLabel>
-            <CodeBlock
-              tabs={[curl('cURL', `curl ${BASE}/api/v2/balance \\\n  -H "Authorization: Bearer $TOKEN"`)]}
-            />
-            <CodeLabel>Example response</CodeLabel>
-            <CodeBlock
-              status="200 OK"
-              tabs={[curl('JSON', `{ "success": true, "data": { "balance": "12.47" } }`)]}
-            />
-          </Section>
-
-          <Section id="list-products" title="List products">
-            <Endpoint method="GET" path="/api/v2/catalog/products" />
-            <p>
-              One product per price tier of a service×country, cheapest first — pass a row&apos;s{' '}
-              <code>id</code> to <a href="#create-order" className="text-accent">POST /orders/create</a>.
-              Without <code>service</code> you instead get a bare service list for discovery
-              (<code>price</code> <code>&quot;0&quot;</code>, <code>stock 0</code>, <code>id</code>{' '}
-              is just the service code — <b>not orderable</b>). Query with <code>?service=</code> to
-              get real, buyable rows.
-            </p>
-            <p>
-              <b className="text-text">Don&apos;t hardcode</b> service codes, country codes or
-              product ids. They can change periodically as providers and the catalog change, so
-              look up the service and country you want by name from this endpoint each time you
-              order (or at least refresh them often). Codes shown in these docs, such as{' '}
-              <code>wa</code> or <code>187</code>, are only examples.
-            </p>
-            <Params
-              rows={[
-                ['service', 'string?', 'Provider service code (e.g. "wa"). Required for prices.'],
-                ['country', 'string?', 'Provider country code (e.g. "187") — narrows the results. A name or ISO code like "us" does not match, and codes can change: read them from the country_code field rather than hardcoding.'],
-                ['search', 'string?', 'Without service: filter the service list by name or code (e.g. "whatsapp").'],
-                ['limit', 'int?', '1–500, default 200.'],
-              ]}
-            />
-            <CodeLabel>Example request</CodeLabel>
-            <CodeBlock
-              tabs={[curl('cURL', `curl "${BASE}/api/v2/catalog/products?service=wa&country=187" \\\n  -H "Authorization: Bearer $TOKEN"`)]}
-            />
-            <CodeLabel>Example response</CodeLabel>
-            <CodeBlock
-              status="200 OK"
-              tabs={[
-                curl(
-                  'JSON',
-                  `{
-  "success": true,
-  "data": [
-    {
-      "id": "wa::187",
-      "service": "wa",
-      "service_slug": "wa",
-      "country": "United States",
-      "country_code": "187",
-      "operator": null,
-      "price": "0.47",
-      "stock": 212412
-    }
-  ]
-}`,
-                ),
-              ]}
-            />
-          </Section>
-
-          <Section id="create-order" title="Create an order">
-            <Endpoint method="POST" path="/api/v2/orders/create" />
-            <p>
-              Buys the chosen tier, charges the wallet, rents a number. Returns{' '}
-              <code>201</code> with a <code>waiting</code> order. <code>POST /api/v2/orders</code>{' '}
-              does exactly the same and keeps working, so existing integrations don&rsquo;t need to change.
-            </p>
-            <Params
-              rows={[
-                ['catalog_product_id', 'string', 'A product `id` from /catalog/products. (`product_id` is accepted too.)'],
-                ['max_price', 'string?', 'Decimal USD cap — 422 if the live price exceeds it.'],
-                ['operator_id', 'string?', 'Pin a carrier: buys the cheapest in-stock tier for it, overriding any tier index in `catalog_product_id`.'],
-                ['Idempotency-Key', 'header?', '8–128 chars — replay-safe create.'],
-              ]}
-            />
-            <CodeLabel>Example request</CodeLabel>
-            <CodeBlock
-              tabs={[
-                curl(
-                  'cURL',
-                  `curl -X POST ${BASE}/api/v2/orders/create \\
-  -H "Authorization: Bearer $TOKEN" \\
-  -H "Idempotency-Key: 7b1e0c9c-3d21-4b2f-9a10-8f4e2c1d0abc" \\
-  -H "Content-Type: application/json" \\
-  -d '{"catalog_product_id":"wa::187","max_price":"0.50"}'`,
-                ),
-              ]}
-            />
-            <CodeLabel>Example response</CodeLabel>
-            <CodeBlock
-              status="201 Created"
-              tabs={[
-                curl(
-                  'JSON',
-                  `{
-  "success": true,
-  "data": {
-    "id": "SG-8FQ3-K2",
-    "status": "waiting",
-    "product": { "service": "Whatsapp", "country": "United States" },
-    "phone_number": "+15551234567",
-    "price": "0.47",
-    "otp_code": null,
-    "sms": [],
-    "created_at": "2026-09-10T14:00:00.000Z",
-    "expires_at": "2026-09-10T14:20:00.000Z",
-    "finished_at": null
-  }
-}`,
-                ),
-              ]}
-            />
-          </Section>
-
-          <Section id="active-orders" title="Active orders">
-            <Endpoint method="GET" path="/api/v2/orders/active" />
-            <p>
-              Every still-<code>waiting</code> order on your account, newest first:{' '}
-              <code>{'{ "success": true, "data": Order[] }'}</code>.
-            </p>
-            <CodeLabel>Example request</CodeLabel>
-            <CodeBlock
-              tabs={[curl('cURL', `curl ${BASE}/api/v2/orders/active \\\n  -H "Authorization: Bearer $TOKEN"`)]}
-            />
-            <CodeLabel>Example response</CodeLabel>
-            <CodeBlock
-              status="200 OK"
-              tabs={[
-                curl(
-                  'JSON',
-                  `{
-  "success": true,
-  "data": [
-    {
-      "id": "SG-8FQ3-K2",
-      "status": "waiting",
-      "product": { "service": "Whatsapp", "country": "United States" },
-      "phone_number": "+15551234567",
-      "price": "0.47",
-      "otp_code": null,
-      "sms": [],
-      "created_at": "2026-09-10T14:00:00.000Z",
-      "expires_at": "2026-09-10T14:20:00.000Z",
-      "finished_at": null
-    }
-  ]
-}`,
-                ),
-              ]}
-            />
-          </Section>
-
-          <Section id="get-order" title="Get an order">
-            <Endpoint method="GET" path="/api/v2/orders/:id" />
-            <p>
-              Poll this for the code. <code>sms[]</code> holds each received message;{' '}
-              <code>otp_code</code> is the parsed code once it lands. <code>:id</code> is the
-              order&rsquo;s <code>id</code> (short, like <code>SG-8FQ3-K2</code>); a legacy 24-hex
-              id still works too.
-            </p>
-            <CodeLabel>Example request</CodeLabel>
-            <CodeBlock
-              tabs={[curl('cURL', `curl ${BASE}/api/v2/orders/SG-8FQ3-K2 \\\n  -H "Authorization: Bearer $TOKEN"`)]}
-            />
-            <CodeLabel>Example response</CodeLabel>
-            <CodeBlock
-              status="200 OK"
-              tabs={[
-                curl(
-                  'JSON',
-                  `{
-  "success": true,
-  "data": {
-    "id": "SG-8FQ3-K2",
-    "status": "completed",
-    "product": { "service": "Whatsapp", "country": "United States" },
-    "phone_number": "+15551234567",
-    "price": "0.47",
-    "otp_code": "482913",
-    "sms": [
-      {
-        "sender": "WhatsApp",
-        "text": "Your WhatsApp code: 482-913",
-        "received_at": "2026-09-10T14:03:12.000Z"
-      }
-    ],
-    "created_at": "2026-09-10T14:00:00.000Z",
-    "expires_at": "2026-09-10T14:20:00.000Z",
-    "finished_at": null
-  }
-}`,
-                ),
-              ]}
-            />
-          </Section>
-
-          <Section id="finish-order" title="Finish an order">
-            <Endpoint method="POST" path="/api/v2/orders/finish" />
-            <p>
-              Marks a <code>completed</code> order finished (<code>finished_at</code> is set) and
-              tells the upstream you&apos;re done with the number. No-op if already finished.
-              Send the order <code>id</code> in the JSON body. <code>POST /api/v2/orders/:id/finish</code>{' '}
-              does exactly the same and keeps working.
-            </p>
-            <Params rows={[['id', 'string', "The order's `id` (like SG-8FQ3-K2)."]]} />
-            <CodeLabel>Example request</CodeLabel>
-            <CodeBlock
-              tabs={[
-                curl(
-                  'cURL',
-                  `curl -X POST ${BASE}/api/v2/orders/finish \\\n  -H "Authorization: Bearer $TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"id":"SG-8FQ3-K2"}'`,
-                ),
-              ]}
-            />
-            <CodeLabel>Example response</CodeLabel>
-            <CodeBlock
-              status="200 OK"
-              tabs={[
-                curl(
-                  'JSON',
-                  `{
-  "success": true,
-  "data": {
-    "id": "SG-8FQ3-K2",
-    "status": "completed",
-    "product": { "service": "Whatsapp", "country": "United States" },
-    "phone_number": "+15551234567",
-    "price": "0.47",
-    "otp_code": "482913",
-    "sms": [
-      {
-        "sender": "WhatsApp",
-        "text": "Your WhatsApp code: 482-913",
-        "received_at": "2026-09-10T14:03:12.000Z"
-      }
-    ],
-    "created_at": "2026-09-10T14:00:00.000Z",
-    "expires_at": "2026-09-10T14:20:00.000Z",
-    "finished_at": "2026-09-10T14:05:00.000Z"
-  }
-}`,
-                ),
-              ]}
-            />
-          </Section>
-
-          <Section id="cancel-order" title="Cancel an order">
-            <Endpoint method="POST" path="/api/v2/orders/cancel" />
-            <p>
-              Cancels a <code>waiting</code> order and refunds it in full. A short post-purchase
-              lock applies — <code>409</code> until it elapses, and once a code has arrived.
-            </p>
-            <p>
-              Send the order <code>id</code> in the JSON body. <code>POST /api/v2/orders/:id/cancel</code>{' '}
-              does exactly the same and keeps working.
-            </p>
-            <Params rows={[['id', 'string', "The order's `id` (like SG-8FQ3-K2)."]]} />
-            <CodeLabel>Example request</CodeLabel>
-            <CodeBlock
-              tabs={[
-                curl(
-                  'cURL',
-                  `curl -X POST ${BASE}/api/v2/orders/cancel \\\n  -H "Authorization: Bearer $TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"id":"SG-8FQ3-K2"}'`,
-                ),
-              ]}
-            />
-            <CodeLabel>Example response</CodeLabel>
-            <CodeBlock
-              status="200 OK"
-              tabs={[
-                curl(
-                  'JSON',
-                  `{
-  "success": true,
-  "data": {
-    "id": "SG-8FQ3-K2",
-    "status": "canceled",
-    "product": { "service": "Whatsapp", "country": "United States" },
-    "phone_number": "+15551234567",
-    "price": "0.47",
-    "otp_code": null,
-    "sms": [],
-    "created_at": "2026-09-10T14:00:00.000Z",
-    "expires_at": "2026-09-10T14:20:00.000Z",
-    "finished_at": null
-  }
-}`,
-                ),
-              ]}
-            />
-            <p className="text-sm text-faint">
-              <code>sms</code> is always empty here — cancel doesn&apos;t look up message history,
-              since a canceled order has none to poll.
-            </p>
-          </Section>
-
-          <Section id="resend-order" title="Resend a code">
-            <Endpoint method="POST" path="/api/v2/orders/resend" />
-            <p>
-              Asks the upstream for another SMS on a still-<code>waiting</code> order. Free — no
-              new rental, no charge. <code>409</code> if the order isn&apos;t waiting or the
-              provider can&apos;t resend; <code>422</code> (<code>PROVIDER_ERROR</code>) if the
-              provider refused or couldn&apos;t be reached, so a <code>200</code> means another
-              code really was requested. One call every 5 seconds; faster is <code>429</code>.
-            </p>
-            <p>
-              Send the order <code>id</code> in the JSON body. <code>POST /api/v2/orders/:id/resend</code>{' '}
-              does exactly the same and keeps working.
-            </p>
-            <Params rows={[['id', 'string', "The order's `id` (like SG-8FQ3-K2)."]]} />
-            <CodeLabel>Example request</CodeLabel>
-            <CodeBlock
-              tabs={[
-                curl(
-                  'cURL',
-                  `curl -X POST ${BASE}/api/v2/orders/resend \\\n  -H "Authorization: Bearer $TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"id":"SG-8FQ3-K2"}'`,
-                ),
-              ]}
-            />
-            <CodeLabel>Example response</CodeLabel>
-            <CodeBlock
-              status="200 OK"
-              tabs={[
-                curl(
-                  'JSON',
-                  `{
-  "success": true,
-  "data": {
-    "id": "SG-8FQ3-K2",
-    "status": "waiting",
-    "product": { "service": "Whatsapp", "country": "United States" },
-    "phone_number": "+15551234567",
-    "price": "0.47",
-    "otp_code": null,
-    "sms": [],
-    "created_at": "2026-09-10T14:00:00.000Z",
-    "expires_at": "2026-09-10T14:20:00.000Z",
-    "finished_at": null
-  }
-}`,
-                ),
-              ]}
-            />
-            <p className="text-sm text-faint">
-              The response is just the order as it stands right after the request — the resend
-              itself is fire-and-forget upstream. Keep polling <code>GET /orders/:id</code> for
-              the new message.
-            </p>
-          </Section>
-
-          <Section id="reactivate-order" title="Reactivate an order">
-            <Endpoint method="POST" path="/api/v2/orders/reactivate" />
-            <p>
-              Buys another code on a <code>completed</code> order&apos;s number. Charges the
-              current tier price and reopens the order as <code>waiting</code>, keeping its
-              message history. <code>402</code> on low balance; <code>409</code> if the order
-              isn&apos;t completed or the provider can&apos;t reactivate; <code>422</code> if that
-              service/country has no offer available right now.
-            </p>
-            <p>
-              Send the order <code>id</code> in the JSON body. <code>POST /api/v2/orders/:id/reactivate</code>{' '}
-              does exactly the same and keeps working.
-            </p>
-            <Params rows={[['id', 'string', "The order's `id` (like SG-8FQ3-K2)."]]} />
-            <CodeLabel>Example request</CodeLabel>
-            <CodeBlock
-              tabs={[
-                curl(
-                  'cURL',
-                  `curl -X POST ${BASE}/api/v2/orders/reactivate \\\n  -H "Authorization: Bearer $TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"id":"SG-8FQ3-K2"}'`,
-                ),
-              ]}
-            />
-            <CodeLabel>Example response</CodeLabel>
-            <CodeBlock
-              status="200 OK"
-              tabs={[
-                curl(
-                  'JSON',
-                  `{
-  "success": true,
-  "data": {
-    "id": "SG-8FQ3-K2",
-    "status": "waiting",
-    "product": { "service": "Whatsapp", "country": "United States" },
-    "phone_number": "+15551234567",
-    "price": "0.47",
-    "otp_code": null,
-    "sms": [
-      {
-        "sender": "WhatsApp",
-        "text": "Your WhatsApp code: 482-913",
-        "received_at": "2026-09-10T14:03:12.000Z"
-      }
-    ],
-    "created_at": "2026-09-10T14:00:00.000Z",
-    "expires_at": "2026-09-10T15:10:00.000Z",
-    "finished_at": null
-  }
-}`,
-                ),
-              ]}
-            />
-            <p className="text-sm text-faint">
-              <code>id</code>, <code>phone_number</code> and past <code>sms</code> entries carry
-              over from before reactivation; <code>otp_code</code>, <code>status</code> and{' '}
-              <code>expires_at</code> reset like a fresh order.
-            </p>
-          </Section>
-
-          <Section id="webhooks-overview" title="Webhook Notifications">
-            <p>
-              Configure a webhook URL to receive real-time push notifications for order events
-              instead of polling. This is the recommended approach for bot scripts.
-            </p>
-            <CodeLabel>Events</CodeLabel>
-            <Params
-              headers={['Event', 'Trigger']}
-              rows={[
-                ['order.otp_received', 'An OTP arrived — same moment `otp_code` is set.'],
-              ]}
-            />
-            <CodeLabel>Payload</CodeLabel>
-            <p>
-              Every delivery has the same envelope — <code>event</code>, <code>timestamp</code>,
-              and a flat <code>data</code> object (not the same shape as the{' '}
-              <a href="#order-object" className="text-accent">order object</a> returned by the
-              REST endpoints):
-            </p>
-            <CodeBlock
-              title="Webhook POST Body"
-              tabs={[curl('JSON', `{
-  "event": "order.otp_received",
-  "timestamp": "2026-09-10T14:03:12.000Z",
-  "data": {
-    "order_id": "SG-8FQ3-K2",
-    "status": "completed",
-    "phone_number": "+15551234567",
-    "otp_code": "482913",
-    "otp_message": "Your WhatsApp code: 482-913",
-    "service": "WhatsApp",
-    "country": "United States",
-    "price": "0.47",
-    "created_at": "2026-09-10T14:01:02.000Z",
-    "expires_at": "2026-09-10T14:11:02.000Z",
-    "finished_at": null
-  }
-}`)]}
-            />
-            <Params
-              rows={[
-                ['order_id', 'string', 'Short order id, e.g. "SG-8FQ3-K2".'],
-                ['status', 'enum', '"waiting" | "completed" | "canceled" | "expired"'],
-                ['phone_number', 'string', 'E.164, e.g. "+15551234567".'],
-                ['otp_code', 'string | null', 'Parsed code, if one was found in the message.'],
-                ['otp_message', 'string | null', 'Raw text of the SMS that completed the order.'],
-                ['service', 'string', 'Display name, e.g. "WhatsApp".'],
-                ['country', 'string', 'Display name, e.g. "United States".'],
-                ['price', 'string', 'Decimal USD charged.'],
-                ['created_at', 'string', 'ISO 8601.'],
-                ['expires_at', 'string', 'ISO 8601.'],
-                ['finished_at', 'string | null', 'ISO 8601, once you call /finish.'],
-              ]}
-            />
-            <CodeLabel>Signature verification</CodeLabel>
-            <p>
-              Each webhook request includes an{' '}
-              <code>X-SMSGecko-Signature: sha256=&lt;hex&gt;</code> header — HMAC-SHA256 of the raw
-              request body using your <code>webhook_secret</code> as the key. Verify this signature
-              on your server before trusting the payload:
-            </p>
-            <CodeBlock
-              tabs={[
-                js(`import { createHmac, timingSafeEqual } from 'node:crypto';
-
-function isValidSignature(rawBody, header, secret) {
-  const expected = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
-  const a = Buffer.from(expected);
-  const b = Buffer.from(header ?? '');
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
-// rawBody must be the exact bytes received — parse JSON only after verifying.
-app.post('/webhooks/smsgecko', express.raw({ type: 'application/json' }), (req, res) => {
-  if (!isValidSignature(req.body, req.get('X-SMSGecko-Signature'), process.env.SMSGECKO_WEBHOOK_SECRET)) {
-    return res.sendStatus(401);
-  }
-  const event = JSON.parse(req.body);
-  // ...
-  res.sendStatus(200);
-});`),
-              ]}
-            />
-            <p className="text-sm text-faint">
-              Delivery is best-effort — one attempt, a 5s timeout, no retry queue.{' '}
-              <a href="#get-order" className="text-accent">GET /orders/:id</a> always reflects the
-              real state, so treat webhooks as a fast path, not the source of truth.
-            </p>
-          </Section>
-
-          <Section id="get-webhook" title="Get webhook config">
-            <Endpoint method="GET" path="/api/v2/webhook" />
-            <p>
-              Your account&apos;s current webhook, or <code>null</code>s if none is configured yet.
-            </p>
-            <CodeLabel>Parameters</CodeLabel>
-            <p className="text-sm italic text-faint">None</p>
-            <CodeLabel>Example request</CodeLabel>
-            <CodeBlock
-              tabs={[curl('cURL', `curl ${BASE}/api/v2/webhook \\\n  -H "Authorization: Bearer $TOKEN"`)]}
-            />
-            <CodeLabel>Example response</CodeLabel>
-            <CodeBlock
-              status="200 OK"
-              tabs={[
-                curl(
-                  'JSON',
-                  `{
-  "success": true,
-  "data": {
-    "webhook_url": "https://example.com/webhooks/smsgecko",
-    "webhook_secret": "3f1c9e7b2a6d4508f0c1e9b7a2d6f435"
-  }
-}`,
-                ),
-              ]}
-            />
-          </Section>
-
-          <Section id="patch-webhook" title="Set or update the webhook">
-            <Endpoint method="PATCH" path="/api/v2/webhook" />
-            <p>
-              Partial update — send only the fields you&apos;re changing.
-            </p>
-            <CodeLabel>Body parameters</CodeLabel>
-            <Params
-              headers={['Name', 'Type', 'Required', 'Description']}
-              rows={[
-                [
-                  'webhook_url',
-                  'string | null',
-                  'No',
-                  'Must be https:// and not a local/private address. Pass null to remove the webhook (and its secret).',
-                ],
-                [
-                  'webhook_secret',
-                  'string',
-                  'No',
-                  '16–128 chars. Omit when first setting webhook_url and one is generated for you; omit on later calls to leave it unchanged.',
-                ],
-              ]}
-            />
-            <CodeLabel>Example request</CodeLabel>
-            <CodeBlock
-              tabs={[
-                curl(
-                  'cURL',
-                  `curl -X PATCH ${BASE}/api/v2/webhook \\
-  -H "Authorization: Bearer $TOKEN" \\
-  -H "Content-Type: application/json" \\
-  -d '{"webhook_url":"https://example.com/webhooks/smsgecko"}'`,
-                ),
-              ]}
-            />
-            <CodeLabel>Example response</CodeLabel>
-            <CodeBlock
-              status="200 OK"
-              tabs={[
-                curl(
-                  'JSON',
-                  `{
-  "success": true,
-  "data": {
-    "webhook_url": "https://example.com/webhooks/smsgecko",
-    "webhook_secret": "3f1c9e7b2a6d4508f0c1e9b7a2d6f435"
-  }
-}`,
-                ),
-              ]}
-            />
-            <p className="text-sm text-faint">
-              <code>400 BAD_REQUEST</code> if <code>webhook_url</code> isn&apos;t <code>https://</code>{' '}
-              or resolves to something like <code>localhost</code> or a private IP range.
-            </p>
-          </Section>
-
-          <Section id="test-webhook" title="Send a test event">
-            <Endpoint method="POST" path="/api/v2/webhook/test" />
-            <p>
-              Fires a synthetic <code>webhook.test</code> event at your configured URL right now, so
-              you can check your receiver end-to-end without waiting for a real order.{' '}
-              <code>409</code> if no <code>webhook_url</code> is set.
-            </p>
-            <CodeLabel>Example request</CodeLabel>
-            <CodeBlock
-              tabs={[curl('cURL', `curl -X POST ${BASE}/api/v2/webhook/test \\\n  -H "Authorization: Bearer $TOKEN"`)]}
-            />
-            <CodeLabel>Example response</CodeLabel>
-            <CodeBlock
-              status="200 OK"
-              tabs={[
-                curl(
-                  'JSON',
-                  `{
-  "success": true,
-  "data": { "delivered": true, "statusCode": 200 }
-}`,
-                ),
-              ]}
-            />
-            <p className="text-sm text-faint">
-              <code>delivered</code> reflects whether your endpoint answered with a 2xx —{' '}
-              <code>statusCode</code> is <code>null</code> if the request errored or timed out
-              before getting a response at all.
-            </p>
-          </Section>
-
-          <Section id="order-object" title="The order object">
-            <Params
-              rows={[
-                ['id', 'string', 'Short order id, e.g. "SG-8FQ3-K2" (orders created before this may still be 24-hex).'],
-                ['status', 'enum', '"waiting" | "completed" | "canceled" | "expired"'],
-                ['product', 'object', '{ service, country } — display names.'],
-                ['phone_number', 'string', 'E.164, e.g. "+15551234567".'],
-                ['price', 'string', 'Decimal USD charged.'],
-                ['otp_code', 'string | null', 'Parsed code once delivered.'],
-                ['sms', 'array', '[{ sender, text, received_at }]'],
-                ['created_at', 'string', 'ISO 8601.'],
-                ['expires_at', 'string', 'Auto-refund deadline while waiting.'],
-                ['finished_at', 'string | null', 'Set by /finish.'],
-              ]}
-            />
-          </Section>
-
-          <Section id="product-object" title="The product object">
-            <Params
-              rows={[
-                ['id', 'string', '"<service>::<country>[::<tier>]" — pass to /orders.'],
-                ['service', 'string', 'Provider service code.'],
-                ['service_slug', 'string', 'Same code (kept for compatibility).'],
-                ['country', 'string', 'Display name.'],
-                ['country_code', 'string', 'Provider country code.'],
-                ['operator', 'string | null', 'Upstream operator, when distinguished.'],
-                ['price', 'string', 'Decimal USD, markup applied. Variable precision — "0.5", "0.425".'],
-                ['stock', 'number', 'Reported availability (0 = unknown / none).'],
-              ]}
-            />
-          </Section>
+          {GROUPS.map((g) => (
+            <div key={g} className="flex flex-col gap-10">
+              {METHODS.filter((m) => m.group === g).map((m) => <MethodSection key={m.name} m={m} />)}
+            </div>
+          ))}
         </div>
       </div>
     </Container>

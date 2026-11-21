@@ -40,14 +40,14 @@ describe('admin panel', () => {
     const { cookie } = await makeAdmin(app);
 
     const created = await post('/api/v1/admin/providers', cookie, {
-      key: 'custom_http',
+      key: 'tiger_sms',
       label: 'Reseller X',
-      enabled: true,
+      enabled: false, // a reseller can't be switched on until its key is set in the API's environment
       priority: 5,
-      config: { baseUrl: '', apiKey: 'sk_secret_1234' },
+      config: { apiKey: 'sk_typed_in_admin' },
     });
     expect(created.statusCode).toBe(201);
-    expect(created.json().config.apiKey).toBe('••••1234'); // masked
+    expect(created.json().config.apiKey).toBeUndefined(); // credentials come from env only: a key sent here is dropped, never stored or returned
     const newId = created.json().id as string;
 
     const list = await get('/api/v1/admin/providers', cookie);
@@ -64,7 +64,7 @@ describe('admin panel', () => {
 
     const test = await post(`/api/v1/admin/providers/${newId}/test`, cookie);
     expect(test.statusCode).toBe(200);
-    expect(test.json().ok).toBe(false); // no baseUrl
+    expect(test.json().ok).toBe(false); // no API key in the environment
 
     expect((await inject({ method: 'DELETE', url: `/api/v1/admin/providers/${newId}`, headers: { cookie } })).statusCode).toBe(200);
   });
@@ -102,10 +102,10 @@ describe('admin panel', () => {
 
   it('fails with no working provider and refunds nothing', async () => {
     await ProviderConfig.updateMany({}, { $set: { enabled: false } });
-    await makeProvider({ key: 'custom_http', label: 'OnlyBroken', enabled: true, priority: 0, config: {} });
+    await makeProvider({ key: 'tiger_sms', label: 'OnlyBroken', enabled: true, priority: 0, config: {} });
     const { cookie, userId } = await makeUser(app, { balanceMicro: 1_000_000 });
 
-    // custom_http reports no catalog, so the pair can't be priced.
+    // A reseller with no credentials set reports no catalog, so the pair can't be priced.
     const res = await post('/api/v1/orders', cookie, {
       serviceId: 'whatsapp',
       countryId: 'us',

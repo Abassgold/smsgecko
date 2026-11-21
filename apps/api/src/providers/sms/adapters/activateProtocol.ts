@@ -3,10 +3,12 @@ import { dialCodeFor, lookupCountry } from '../../../lib/countryLookup.js';
 import {
   NoStockError,
   ProviderConfigError,
+  ProviderUnavailableError,
   type CatalogCountry,
   type CatalogPrice,
   type CatalogService,
   type PollResult,
+  type ReleaseResult,
   type RentInput,
 } from '../types.js';
 
@@ -20,7 +22,6 @@ export interface ActivateConfig {
 const NO_STOCK = [
   'NO_NUMBERS',
   'NO_NUMBER',
-  'NO_BALANCE',
   'NO_FREE_PHONES',
   'NO_ACTIVATIONS',
   'NO_ACTIVATION',
@@ -44,14 +45,23 @@ export async function activateGet(
     if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
   }
 
-  const res = await fetch(url, {
-    headers: { accept: 'text/plain, application/json' },
-    signal: AbortSignal.timeout(15_000),
-  });
-  const text = (await res.text()).trim();
+  let res: Response;
+  let text: string;
+  try {
+    res = await fetch(url, {
+      headers: { accept: 'text/plain, application/json' },
+      signal: AbortSignal.timeout(15_000),
+    });
+    text = (await res.text()).trim(); // the timeout also covers reading the body
+  } catch (err) {
+    throw new ProviderUnavailableError(`provider unreachable: ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   if (res.status === 401 || res.status === 403) {
     throw new ProviderConfigError(`${res.status} from provider`);
+  }
+  if (res.status === 429 || res.status >= 500) {
+    throw new ProviderUnavailableError(`provider answered ${res.status}`);
   }
   const up = text.toUpperCase();
   if (AUTH_ERRORS.some((e) => up === e || up.startsWith(`${e}:`) || up.startsWith(`${e} `))) {
@@ -101,24 +111,61 @@ export function parseRentResponse(text: string): { providerRef: string; phoneNum
   if (NO_STOCK.some((e) => up === e || up.startsWith(`${e}:`))) {
     throw new NoStockError(text.slice(0, 60));
   }
-  throw new NoStockError(`unexpected rent response: ${text.slice(0, 80)}`);
+  // NO_BALANCE (our provider account is empty) and anything unrecognised: not a stock problem, never "no numbers".
+  throw new ProviderUnavailableError(`unexpected rent response: ${text.slice(0, 80)}`);
+}
+
+/**
+ * Some resellers answer a refused cancel with JSON instead of the plain token, e.g. hero-sms:
+ * `{"title":"EARLY_CANCEL_DENIED","details":"Activation …"}` (seen live). Use its `title` as the token.
+ */
+function releaseToken(raw: string): string {
+  const t = raw.trim();
+  if (!t.startsWith('{')) return t;
+  try {
+    const j = JSON.parse(t) as { title?: unknown; status?: unknown; message?: unknown };
+    const token = [j.title, j.status, j.message].find((v) => typeof v === 'string' && v.trim());
+    return typeof token === 'string' ? token.trim() : t;
+  } catch {
+    return t;
+  }
+}
+
+/**
+ * What an SMS-Activate-style `setStatus status=8` (cancel) answered. Anything not recognised throws, so the caller
+ * does not refund on a guess.
+ */
+export function parseReleaseResponse(raw: string): ReleaseResult {
+  const text = releaseToken(raw);
+  const up = text.trim().toUpperCase();
+  if (up.startsWith('ACCESS_CANCEL') || up.startsWith('STATUS_CANCEL')) return { status: 'canceled' };
+  if (up.startsWith('EARLY_CANCEL_DENIED')) return { status: 'too_early' };
+  if (up.startsWith('STATUS_OK') || up.startsWith('SMS_RECEIVED')) {
+    const code = text.includes(':') ? text.slice(text.indexOf(':') + 1).trim() : '';
+    return { status: 'received', code: code || null };
+  }
+  // Already gone upstream: nothing left to cancel.
+  if (up === 'NO_ACTIVATION') return { status: 'canceled' };
+  throw new ProviderUnavailableError(`unexpected cancel response: ${text.trim().slice(0, 60)}`);
 }
 
 /** Parse a `getStatus` response into a PollResult. */
 export function parseStatusResponse(text: string, sender = ''): PollResult {
   const up = text.toUpperCase();
-  if (up.startsWith('STATUS_OK')) {
+  // STATUS_WAIT_RETRY:<code> = a code has arrived and the provider awaits our retry/finish decision. After our own
+  // "another SMS" it keeps answering with the PREVIOUS code until the new one lands: the caller skips codes it has
+  // already delivered (Order.otpHistory).
+  if (up.startsWith('STATUS_OK') || up.startsWith('STATUS_WAIT_RETRY')) {
     const code = text.slice(text.indexOf(':') + 1).trim();
-    return {
-      status: 'received',
-      code: code || null,
-      messages: code ? [{ sender, text: code, receivedAt: new Date() }] : [],
-    };
+    if (!code) return { status: 'waiting' };
+    return { status: 'received', code, messages: [{ sender, text: code, receivedAt: new Date() }] };
   }
-  if (up.startsWith('STATUS_CANCEL') || up === 'NO_ACTIVATION') {
+  if (up.startsWith('STATUS_CANCEL') || up.startsWith('ACCESS_CANCEL')) {
     return { status: 'canceled' };
   }
-  // STATUS_WAIT_CODE, STATUS_WAIT_RETRY, STATUS_WAIT_RESEND, …
+  // STATUS_WAIT_CODE, STATUS_WAIT_RESEND, … and NO_ACTIVATION. NO_ACTIVATION is never treated as a cancel: it can be
+  // a transient lookup miss, and a refund here would pay back money the provider may still hold (the expiry
+  // worker closes the order at its TTL either way).
   return { status: 'waiting' };
 }
 

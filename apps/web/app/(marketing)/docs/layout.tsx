@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 export const metadata: Metadata = {
   title: 'API Reference',
   description:
-    'The SMSGecko v2 REST API — buy virtual numbers and receive OTP codes programmatically.',
+    'The SMSGecko SMS-Activate-compatible API — buy virtual numbers and receive OTP codes with any SMS-Activate client.',
   alternates: { canonical: '/docs' },
 };
 

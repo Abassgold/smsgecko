@@ -9,6 +9,7 @@ import type {
   HealthResult,
   PollContext,
   PollResult,
+  ReleaseResult,
   RentInput,
   RentResult,
   SmsProvider,
@@ -30,6 +31,12 @@ export interface MockConfig {
   catalogCountries?: { code: string; name: string; iso2?: string; dialCode?: string }[];
   /** Force `rent()` to throw — exercises the fallback chain. */
   failRent?: boolean;
+  /** What `release()` answers: default canceled. 'throw' = provider unreachable. */
+  release?: 'canceled' | 'too_early' | 'received' | 'throw';
+  /** Force `listCountryPrices()` to throw (a country whose price fetch fails during a sync). */
+  failCountryPrices?: boolean;
+  /** Make `listCountries()` come back empty. */
+  noCountries?: boolean;
   /** Force `resend()` to throw — exercises the "provider could not resend" error. */
   failResend?: boolean;
 }
@@ -76,8 +83,17 @@ export class MockSmsProvider implements SmsProvider {
     };
   }
 
-  async release(): Promise<void> {
-    // no-op for the mock bank
+  async release(): Promise<ReleaseResult> {
+    switch (this.cfg.release) {
+      case 'throw':
+        throw new Error('mock: provider unreachable');
+      case 'too_early':
+        return { status: 'too_early' };
+      case 'received':
+        return { status: 'received', code: '424242' };
+      default:
+        return { status: 'canceled' };
+    }
   }
 
   async resend(): Promise<void> {
@@ -98,7 +114,18 @@ export class MockSmsProvider implements SmsProvider {
     return SERVICES.map((s) => ({ code: s.slug, name: s.name }));
   }
 
+  async listCountryPrices(countryCode: string): Promise<CatalogPrice[]> {
+    if (this.cfg.failCountryPrices) throw new Error('mock: forced country price failure');
+    return (await this.listServices()).map((s) => ({
+      serviceCode: s.code,
+      countryCode,
+      priceMicro: this.cfg.catalogPriceMicro ?? mockPriceMicro(s.code, countryCode),
+      stock: this.cfg.catalogStock ?? 999,
+    }));
+  }
+
   async listCountries(): Promise<CatalogCountry[]> {
+    if (this.cfg.noCountries) return [];
     if (this.cfg.catalogCountries?.length) return this.cfg.catalogCountries;
     return COUNTRIES.map((c) => ({
       code: c.code,

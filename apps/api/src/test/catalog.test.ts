@@ -13,6 +13,7 @@ import type {
   HealthResult,
   PollContext,
   PollResult,
+  ReleaseResult,
   RentInput,
   RentResult,
   SmsProvider,
@@ -51,7 +52,9 @@ class FlakyProvider implements SmsProvider {
   async poll(_ctx: PollContext): Promise<PollResult> {
     return { status: 'waiting' };
   }
-  async release(): Promise<void> {}
+  async release(): Promise<ReleaseResult> {
+    return { status: 'canceled' };
+  }
   async healthCheck(): Promise<HealthResult> {
     return { ok: true };
   }

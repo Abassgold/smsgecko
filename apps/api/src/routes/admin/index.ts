@@ -8,6 +8,7 @@ import financeRoutes from './finance.routes.js';
 import settingsRoutes from './settings.routes.js';
 import logsRoutes from './logs.routes.js';
 import broadcastsRoutes from './broadcasts.routes.js';
+import catalogRoutes from './catalog.routes.js';
 
 /** Everything under /api/v1/admin, gated by requireUser + requireAdmin. */
 const router = Router();
@@ -22,5 +23,6 @@ router.use('/finance', financeRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/logs', logsRoutes);
 router.use('/broadcasts', broadcastsRoutes);
+router.use('/catalog', catalogRoutes);
 
 export default router;

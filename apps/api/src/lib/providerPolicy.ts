@@ -10,16 +10,13 @@ import type { OrderDoc } from '../models/Order.js';
  */
 const PROVIDER_MIN_HOLD_SECONDS: Record<string, number> = {
   mock: 0,
-  sms_pool: 0,
-  // smscode refuses cancels for the first ~2 minutes (CANCEL_TOO_EARLY).
-  sms_code: 120,
   hero_sms: 180,
   sms_bower: 180,
   // tiger-sms refuses cancels for the first ~2 minutes (EARLY_CANCEL_DENIED).
   tiger_sms: 180,
 };
 
-/** Unknown / generic providers (e.g. custom_http) — hold for the same short lock-in. */
+/** Unknown providers (a retired adapter, or a row with no adapter) — hold for the same short lock-in. */
 export const DEFAULT_MIN_HOLD_SECONDS = 180;
 
 export function minHoldSecondsFor(providerKey: string): number {
@@ -36,3 +33,7 @@ export function holdRemainingSeconds(order: OrderDoc): number {
   const heldMs = Date.now() - (order.get('createdAt') as Date).getTime();
   return Math.max(0, Math.ceil(minHold - heldMs / 1000));
 }
+
+/** SMS-Activate-protocol resellers. Their "another SMS" (status 3) is only valid AFTER a code arrived; see retryOrder. */
+const ACTIVATE_STYLE = new Set(['hero_sms', 'sms_bower', 'tiger_sms']);
+export const isActivateStyle = (providerKey: string): boolean => ACTIVATE_STYLE.has(providerKey);

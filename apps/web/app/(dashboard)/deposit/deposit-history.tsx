@@ -17,6 +17,7 @@ const STATUS_TONE = {
   failed: 'danger',
   pending: 'warning',
   expired: 'muted',
+  partial: 'warning',
 } as const;
 
 const TABS: { key: keyof DepositCounts; label: string }[] = [
@@ -25,6 +26,7 @@ const TABS: { key: keyof DepositCounts; label: string }[] = [
   { key: 'confirmed', label: 'Confirmed' },
   { key: 'failed', label: 'Failed' },
   { key: 'expired', label: 'Expired' },
+  { key: 'partial', label: 'Partial' },
 ];
 
 export function DepositHistory() {

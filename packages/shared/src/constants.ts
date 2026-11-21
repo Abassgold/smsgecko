@@ -21,12 +21,14 @@ export const DEPOSIT_METHODS = [
   'crypto_usdt',
   'bachs',
   'cryptomus',
+  'trybit',
   'ewallet',
   'qris',
 ] as const;
 export type DepositMethod = (typeof DEPOSIT_METHODS)[number];
 
-export const DEPOSIT_STATUSES = ['pending', 'confirmed', 'failed', 'expired'] as const;
+/** `partial`: the customer paid less than the invoice and under the auto-credit limit; the share paid waits for an admin. */
+export const DEPOSIT_STATUSES = ['pending', 'confirmed', 'failed', 'expired', 'partial'] as const;
 export type DepositStatus = (typeof DEPOSIT_STATUSES)[number];
 
 export const TICKET_STATUSES = ['open', 'pending', 'closed'] as const;

@@ -7,6 +7,7 @@ import type {
   PollContext,
   PollResult,
   RentInput,
+  ReleaseResult,
   RentResult,
   SmsProvider,
 } from '../types.js';
@@ -19,12 +20,13 @@ import {
   parseActivateCountries,
   parseActivatePrices,
   parseActivateServices,
+  parseReleaseResponse,
   parseRentResponse,
   parseStatusResponse,
   priceCapUsd,
   type ActivateConfig,
 } from './activateProtocol.js';
-import { changeRoute } from '../changeRoute.js';
+import { changeRoute, rerouteListing } from '../changeRoute.js';
 
 /**
  * smsbower — SMS-Activate-style text API. Wants a `userID` and both
@@ -51,6 +53,7 @@ export class SmsBowerProvider implements SmsProvider {
   async rent(input: RentInput): Promise<RentResult> {
     const cap = priceCapUsd(input);
     const service = mapService(this.cfg, input.serviceSlug);
+    // e.g. US WhatsApp is served from Canada (see changeRoute.ts); the cap matches that country's price.
     const country = changeRoute(mapCountry(this.cfg, input.countryCode), service);
     const text = await activateGet(this.cfg, {
       action: 'getNumber',
@@ -69,9 +72,10 @@ export class SmsBowerProvider implements SmsProvider {
     return parseStatusResponse(text);
   }
 
-  async release(providerRef: string): Promise<void> {
-    await activateGet(this.cfg, { action: 'setStatus', id: providerRef, status: 8 }).catch(
-      () => undefined,
+  async release(providerRef: string): Promise<ReleaseResult> {
+    // status 8 = cancel activation
+    return parseReleaseResponse(
+      await activateGet(this.cfg, { action: 'setStatus', id: providerRef, status: 8 }),
     );
   }
 
@@ -107,10 +111,41 @@ export class SmsBowerProvider implements SmsProvider {
     return parseActivateCountries(await activateJson(this.cfg, { action: 'getCountries' }));
   }
 
+  async listCountryPrices(countryCode: string): Promise<CatalogPrice[]> {
+    const country = mapCountry(this.cfg, countryCode);
+    // getPricesV3 with a country and no service: { "<ctry>": { "<svc>": { "<providerId>": { count, price, provider_id } } } }
+    const json = (await activateJson(this.cfg, { action: 'getPricesV3', country })) as Record<
+      string,
+      Record<string, Record<string, { count?: number; price?: number; provider_id?: unknown }>>
+    >;
+    const byService = json?.[country];
+    if (!byService || typeof byService !== 'object') throw new Error('smsbower getPricesV3: unexpected response');
+    const out: CatalogPrice[] = [];
+    for (const [svc, providers] of Object.entries(byService)) {
+      for (const p of Object.values(providers ?? {})) {
+        const priceMicro = Math.round(Number(p?.price) * 1_000_000);
+        if (priceMicro > 0) {
+          out.push({
+            serviceCode: svc,
+            countryCode,
+            priceMicro,
+            stock: p?.count != null ? Number(p.count) : null,
+            operator: p?.provider_id != null ? String(p.provider_id) : null,
+          });
+        }
+      }
+    }
+    return out;
+  }
+
   async listPrices(q: CatalogQuery): Promise<CatalogPrice[]> {
+    const rows = await this.fetchPrices(q);
+    // One country asked for: rows already come from the rerouted country. All countries: show the destination's tiers.
+    return q.countryCode ? rows : rerouteListing(rows, mapService(this.cfg, q.serviceCode));
+  }
+
+  private async fetchPrices(q: CatalogQuery): Promise<CatalogPrice[]> {
     const svc = mapService(this.cfg, q.serviceCode);
-    // Reroute here too (e.g. US WhatsApp -> Canada) so the quoted price — and the
-    // cap derived from it — matches the country rent() will actually buy from.
     const country = q.countryCode ? changeRoute(mapCountry(this.cfg, q.countryCode), svc) : undefined;
 
     // Preferred: getPricesV3 — one tier per upstream operator (provider_id).

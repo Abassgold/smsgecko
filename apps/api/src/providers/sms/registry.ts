@@ -1,19 +1,17 @@
-import { conflict, providerError } from '../../lib/errors.js';
+import { AppError, conflict, providerError } from '../../lib/errors.js';
 import { bustCatalogCache } from '../../lib/catalog.js';
 import { decryptJson } from '../../lib/secretbox.js';
 import { envCredentials, isEnvProvider } from '../../lib/providerEnv.js';
 import { logger } from '../../lib/logger.js';
 import { ProviderConfig, type ProviderConfigDoc } from '../../models/ProviderConfig.js';
 import type { OrderDoc } from '../../models/Order.js';
-import { CustomHttpProvider, type CustomHttpConfig } from './adapters/customHttp.js';
 import { HeroSmsProvider, type HeroSmsConfig } from './adapters/heroSms.js';
 import { SmsBowerProvider, type SmsBowerConfig } from './adapters/smsBower.js';
-import { SmsCodeProvider, type SmsCodeConfig } from './adapters/smsCode.js';
-import { SmsPoolProvider, type SmsPoolConfig } from './adapters/smsPool.js';
 import { TigerSmsProvider, type TigerSmsConfig } from './adapters/tigerSms.js';
 import {
   NoStockError,
   ProviderConfigError,
+  ProviderUnavailableError,
   type HealthResult,
   type RentInput,
   type RentResult,
@@ -26,11 +24,8 @@ export type AdapterFactory = (
 ) => SmsProvider;
 
 const ADAPTERS: Record<string, AdapterFactory> = {
-  custom_http: (cfg, decrypted) => new CustomHttpProvider(decrypted as CustomHttpConfig, cfg.label),
   hero_sms: (cfg, decrypted) => new HeroSmsProvider(decrypted as HeroSmsConfig, cfg.label),
   sms_bower: (cfg, decrypted) => new SmsBowerProvider(decrypted as SmsBowerConfig, cfg.label),
-  sms_code: (cfg, decrypted) => new SmsCodeProvider(decrypted as SmsCodeConfig, cfg.label),
-  sms_pool: (cfg, decrypted) => new SmsPoolProvider(decrypted as SmsPoolConfig, cfg.label),
   tiger_sms: (cfg, decrypted) => new TigerSmsProvider(decrypted as TigerSmsConfig, cfg.label),
 };
 
@@ -53,7 +48,8 @@ const NULL_PROVIDER: SmsProvider = {
     return { status: 'waiting' };
   },
   async release() {
-    /* nothing to release */
+    // No adapter to ask (config deleted / legacy row): nothing can be confirmed, so the number is simply let go.
+    return { status: 'canceled' as const };
   },
   async finish() {
     /* nothing to finish */
@@ -128,7 +124,10 @@ export async function getProviderForOrder(order: OrderDoc): Promise<SmsProvider>
   return NULL_PROVIDER;
 }
 
-/** Best-effort release of a rented number by its provider config id. */
+/**
+ * Hand back a number we rented but cannot keep (the order could not be saved). Nothing else can undo it, so a
+ * failure is logged loudly instead of swallowed: it means a number we paid for is still active upstream.
+ */
 export async function releaseNumber(
   providerConfigId: string | null | undefined,
   providerRef: string,
@@ -136,9 +135,13 @@ export async function releaseNumber(
   if (!providerConfigId) return;
   try {
     const cfg = await ProviderConfig.findById(providerConfigId);
-    if (cfg) await instantiate(cfg).release(providerRef);
-  } catch {
-    /* best-effort */
+    if (!cfg) return;
+    const res = await instantiate(cfg).release(providerRef);
+    if (res.status !== 'canceled') {
+      logger.error({ providerRef, providerConfigId, result: res.status }, '[registry] rented number could not be released: still billed upstream');
+    }
+  } catch (err) {
+    logger.error({ err, providerRef, providerConfigId }, '[registry] rented number could not be released: still billed upstream');
   }
 }
 
@@ -219,7 +222,7 @@ export async function rentWithFallback(input: RentInput): Promise<RentWithFallba
       const outcome =
         err instanceof NoStockError
           ? 'no_numbers'
-          : err instanceof ProviderConfigError
+          : err instanceof ProviderConfigError || err instanceof ProviderUnavailableError
             ? 'provider_unavailable'
             : 'provider_error';
       await bumpStat(cfg._id, {
@@ -240,6 +243,11 @@ export async function rentWithFallback(input: RentInput): Promise<RentWithFallba
   // names: which reseller we use is never exposed)
   // is the most a client ever sees of what went wrong.
   logger.warn({ errors }, 'no provider could supply a number');
+  // Only a stock answer from every provider means "no numbers". If any was unreachable / out of balance / unrecognised
+  // we cannot say that: report the outage, never "no numbers" (manesms: NoNumbersError 422 vs ProviderUnavailableError 503).
+  if (attempts.some((a) => a.outcome !== 'no_numbers')) {
+    throw new AppError(503, 'PROVIDER_UNAVAILABLE', 'Numbers are temporarily unavailable. Please try again shortly.', { attempts });
+  }
   throw providerError('No numbers are available for this service right now — please try again shortly.', {
     attempts,
   });
@@ -249,5 +257,5 @@ export async function recordOtpReceived(order: OrderDoc): Promise<void> {
   if (order.providerConfigId) await bumpStat(order.providerConfigId, { otpReceived: 1 });
 }
 
-export { NoStockError, ProviderConfigError };
+export { NoStockError, ProviderConfigError, ProviderUnavailableError };
 export type { SmsProvider, RentInput, RentResult, HealthResult };

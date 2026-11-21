@@ -5,6 +5,7 @@ import { StripeProvider } from './stripe.js';
 import { NowPaymentsProvider } from './nowpayments.js';
 import { BachsProvider } from './bachs.js';
 import { CryptomusProvider } from './cryptomus.js';
+import { TrybitProvider, trybitEnabled } from './trybit.js';
 
 export interface CreateChargeInput {
   amountMicro: number;
@@ -34,6 +35,9 @@ const cryptomusProvider =
     ? new CryptomusProvider(env.CRYPTOMUS_MERCHANT_ID, env.CRYPTOMUS_API_KEY)
     : null;
 
+// Trybit's keys are read when a payment starts (not once at import), so it is built once and checked each time.
+const trybitProvider = new TrybitProvider();
+
 const PROVIDER_BY_METHOD: Partial<Record<DepositMethod, PaymentProvider | null>> = {
   card: stripeProvider,
   crypto_usdt: nowPaymentsProvider,
@@ -42,6 +46,10 @@ const PROVIDER_BY_METHOD: Partial<Record<DepositMethod, PaymentProvider | null>>
 };
 
 export function getPaymentProvider(method: DepositMethod): PaymentProvider {
+  if (method === 'trybit') {
+    if (!trybitEnabled()) throw badRequest('trybit deposits are not available right now');
+    return trybitProvider;
+  }
   const provider = PROVIDER_BY_METHOD[method];
   if (!provider) throw badRequest(`${method} deposits are not available right now`);
   return provider;
@@ -51,5 +59,6 @@ export function getPaymentProviderByName(name: string): PaymentProvider | null {
   if (name === 'nowpayments') return nowPaymentsProvider;
   if (name === 'bachs') return bachsProvider;
   if (name === 'cryptomus') return cryptomusProvider;
+  if (name === 'trybit') return trybitEnabled() ? trybitProvider : null;
   return null;
 }

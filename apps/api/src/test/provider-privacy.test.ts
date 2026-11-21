@@ -17,8 +17,8 @@ async function waitingOrder() {
     countryFlagEmoji: '🇺🇸',
     phoneNumber: '+15550100',
     priceMicro: 250_000,
-    provider: 'sms_pool',
-    providerLabel: 'smspool',
+    provider: 'tiger_sms',
+    providerLabel: 'tiger-sms',
     providerRef: 'ref-1',
     status: 'waiting',
     source: 'api',
@@ -28,8 +28,8 @@ async function waitingOrder() {
 
 describe('SMS sender never names the reseller', () => {
   it.each([
-    ['the provider label', 'smspool'],
-    ['the adapter key', 'sms_pool'],
+    ['the provider label', 'tiger-sms'],
+    ['the adapter key', 'tiger_sms'],
     ['a generic placeholder', 'SMS'],
     ['nothing', ''],
   ])('replaces %s with the service name', async (_what, sender) => {

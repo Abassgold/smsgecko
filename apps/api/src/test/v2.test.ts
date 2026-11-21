@@ -433,7 +433,7 @@ describe('v2 API (Bearer)', () => {
     expect(losing.json().error.code).toBe('REQUEST_IN_PROGRESS');
   });
 
-  it('reports PROVIDER_ERROR with per-attempt outcomes when every provider fails to rent', async () => {
+  it('reports PROVIDER_UNAVAILABLE with per-attempt outcomes when every provider fails to rent', async () => {
     const { serviceCode, countryCode } = await makeCatalog({ priceMicro: 150_000, stock: 5 });
     // The lone 'mock' provider config makeCatalog just set up — flip it to fail
     // `rent()` while keeping the same catalog, so pricing still succeeds and
@@ -462,8 +462,9 @@ describe('v2 API (Bearer)', () => {
       headers: { authorization: `Bearer ${key}` },
       payload: { catalog_product_id: `${serviceCode}::${countryCode}` },
     });
-    expect(res.statusCode).toBe(422);
-    expect(res.json().error.code).toBe('PROVIDER_ERROR');
+    // Not a stock answer, so it is reported as an outage (503), never as "no numbers" (manesms: NoNumbers 422 vs Unavailable 503).
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error.code).toBe('PROVIDER_UNAVAILABLE');
     expect(res.json().error.details.attempts).toEqual([{ outcome: 'provider_error' }]);
     expect(JSON.stringify(res.json())).not.toMatch(/mock sim bank/i); // reseller never named
   });

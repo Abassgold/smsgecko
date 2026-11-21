@@ -30,20 +30,6 @@ export const RESELLER_ENV: Record<string, ResellerEnvSpec> = {
       { field: 'baseUrl', name: 'SMSBOWER_BASE_URL', required: false },
     ],
   },
-  sms_code: {
-    defaultBaseUrl: 'https://api.smscode.gg/v2',
-    vars: [
-      { field: 'apiKey', name: 'SMSCODE_API_KEY', required: true },
-      { field: 'baseUrl', name: 'SMSCODE_BASE_URL', required: false },
-    ],
-  },
-  sms_pool: {
-    defaultBaseUrl: 'https://api.smspool.net',
-    vars: [
-      { field: 'apiKey', name: 'SMSPOOL_API_KEY', required: true },
-      { field: 'baseUrl', name: 'SMSPOOL_BASE_URL', required: false },
-    ],
-  },
   tiger_sms: {
     defaultBaseUrl: 'https://api.tiger-sms.com/stubs/handler_api.php',
     vars: [

@@ -71,6 +71,17 @@ const envSchema = z.object({
   BACHS_WEBHOOK_SECRET: z.string().optional(),
   /** Use Bachs' sandbox API host instead of the production one. */
   BACHS_SANDBOX: bool.default(true),
+  /** Trybit (hosted crypto checkout, https://docs.trybit.com): the project's API key and shop id create invoices. When either is unset, trybit deposits are unavailable. */
+  TRYBIT_API_KEY: z.string().optional(),
+  TRYBIT_SHOP_ID: z.string().optional(),
+  /** Secret key of the Trybit project: verifies the signed token on every postback. Without it no postback is trusted. */
+  TRYBIT_SECRET_KEY: z.string().optional(),
+  TRYBIT_BASE_URL: z.string().default('https://api.trybit.com'),
+  /** Web Push (browser notifications when a code arrives). Generate a pair with `npx web-push generate-vapid-keys`. Unset = push disabled. */
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  /** `mailto:` or https URL identifying the sender to push services; defaults to WEB_ORIGIN. */
+  VAPID_SUBJECT: z.string().optional(),
   /** Cryptomus merchant UUID. When unset (or the API key below is), cryptomus deposits are unavailable. */
   CRYPTOMUS_MERCHANT_ID: z.string().optional(),
   /** Cryptomus payment API key — signs outgoing requests and verifies inbound webhooks. */
@@ -136,6 +147,16 @@ export function loadEnv(overrides: Record<string, string | undefined> = process.
       .map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`)
       .join('\n');
     throw new Error(`Invalid environment configuration:\n${issues}`);
+  }
+  // Every email link, the logo and the unsubscribe header are built from WEB_ORIGIN. Left on the localhost default in
+  // production they all break silently and mail lands in spam, so refuse to start instead.
+  if (
+    parsed.data.NODE_ENV === 'production' &&
+    !/^https:\/\/(?!localhost\b|127\.0\.0\.1\b)[^\s/]+\/?$/i.test(parsed.data.WEB_ORIGIN)
+  ) {
+    throw new Error(
+      `WEB_ORIGIN must be the public https address of the web app in production (got "${parsed.data.WEB_ORIGIN}")`,
+    );
   }
   cached = parsed.data;
   if (

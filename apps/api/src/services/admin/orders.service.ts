@@ -3,9 +3,9 @@ import { Order, type OrderDoc } from '../../models/Order.js';
 import { SmsMessage } from '../../models/SmsMessage.js';
 import { Transaction, type TransactionDoc } from '../../models/Transaction.js';
 import { User } from '../../models/User.js';
-import { refundWaitingOrder } from '../../lib/orderLifecycle.js';
+import { cancelWithProvider } from '../../lib/orderLifecycle.js';
 import { pollOrderOnce } from '../../workers/index.js';
-import { conflict, notFound } from '../../lib/errors.js';
+import { cancelTooEarly, conflict, notFound, providerError } from '../../lib/errors.js';
 import { toOrderView } from '../orders.mapper.js';
 import { logAdminAction } from '../../lib/adminLog.js';
 import type { AdminOrdersQuery } from '../../lib/validation/admin/orders.schema.js';
@@ -87,7 +87,17 @@ export async function cancelOrder(id: string, actingUserId: string) {
   const order = await Order.findById(id);
   if (!order) throw notFound('Order not found');
   if (order.status !== 'waiting') throw conflict(`Order is already ${order.status}`);
-  const canceled = await refundWaitingOrder(order._id, 'canceled');
+  // Same rule as a customer cancel: the provider confirms first, so a refused or unreachable cancel is shown to the
+  // admin (retry shortly) instead of refunding money the provider never gave back.
+  let outcome;
+  try {
+    outcome = await cancelWithProvider(order, 'canceled');
+  } catch {
+    throw providerError('The provider could not be reached to cancel this number. Try again shortly.');
+  }
+  if (outcome.kind === 'too_early') throw cancelTooEarly('The provider refuses to cancel this number yet. Try again in a minute.');
+  if (outcome.kind === 'received') throw conflict('A code arrived just now: the order was completed, not cancelled');
+  const canceled = outcome.order;
   void logAdminAction(
     actingUserId,
     'order_cancel',

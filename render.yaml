@@ -77,9 +77,5 @@ services:
         sync: false
       - key: SMSBOWER_USER_ID
         sync: false
-      - key: SMSCODE_API_KEY
-        sync: false
-      - key: SMSPOOL_API_KEY
-        sync: false
       - key: TIGERSMS_API_KEY
         sync: false

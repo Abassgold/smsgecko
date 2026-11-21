@@ -97,10 +97,10 @@ ones by ascending `priority` and rents from the first with stock.
   waiting|received|canceled, code?, messages? }`; `release(providerRef)`; `healthCheck()`.
   `NoStockError` / `ProviderConfigError` from `rent()` make the router fall through.
 - **Adapters** (`adapters/`): `MockSmsProvider` (decides delivery up front from
-  `Setting`, encoded as `mockDeliverAt`); `CustomHttpProvider` — a config-driven client
-  (templated `rentPath`/`statusPath`/`cancelPath` with `{service}{country}{ref}`, a
-  response `map`, `authMode` query/header/bearer, text or JSON parsing). Reseller APIs
-  (SMS-Activate / 5SIM / SMSHub-style) are just `custom_http` configs.
+  `Setting`, encoded as `mockDeliverAt`); the three real resellers we sell through —
+  `TigerSmsProvider`, `HeroSmsProvider` and `SmsBowerProvider` — all speak the SMS-Activate
+  protocol (`activateProtocol.ts`). Any other provider is out of scope: there is no generic
+  HTTP adapter.
 - **`ProviderConfig` model**: `key`, `label`, `enabled`, `priority`, `configEnc`
   (AES-256-GCM blob — `lib/secretbox.ts`, key `SETTINGS_ENC_KEY`; returned **masked** to
   admins), `stats { rentAttempts, rentSuccess, rentNoStock, rentError, otpReceived,

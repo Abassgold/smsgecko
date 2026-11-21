@@ -7,6 +7,7 @@ import type {
   PollContext,
   PollResult,
   RentInput,
+  ReleaseResult,
   RentResult,
   SmsProvider,
 } from '../types.js';
@@ -19,11 +20,13 @@ import {
   parseActivateCountries,
   parseActivatePrices,
   parseActivateServices,
+  parseReleaseResponse,
   parseRentResponse,
   parseStatusResponse,
   priceCapUsd,
   type ActivateConfig,
 } from './activateProtocol.js';
+import { changeRoute, rerouteListing } from '../changeRoute.js';
 
 /**
  * tiger-sms.com — SMS-Activate-style text API.
@@ -47,10 +50,12 @@ export class TigerSmsProvider implements SmsProvider {
   ) {}
 
   async rent(input: RentInput): Promise<RentResult> {
+    const service = mapService(this.cfg, input.serviceSlug);
     const text = await activateGet(this.cfg, {
       action: 'getNumber',
-      service: mapService(this.cfg, input.serviceSlug),
-      country: mapCountry(this.cfg, input.countryCode),
+      service,
+      // e.g. US WhatsApp is served from Canada (see changeRoute.ts); the cap matches that country's price.
+      country: changeRoute(mapCountry(this.cfg, input.countryCode), service),
       maxPrice: priceCapUsd(input),
     });
     const { providerRef, phoneNumber } = parseRentResponse(text);
@@ -64,10 +69,10 @@ export class TigerSmsProvider implements SmsProvider {
     return parseStatusResponse(text);
   }
 
-  async release(providerRef: string): Promise<void> {
+  async release(providerRef: string): Promise<ReleaseResult> {
     // status 8 = cancel activation
-    await activateGet(this.cfg, { action: 'setStatus', id: providerRef, status: 8 }).catch(
-      () => undefined,
+    return parseReleaseResponse(
+      await activateGet(this.cfg, { action: 'setStatus', id: providerRef, status: 8 }),
     );
   }
 
@@ -79,7 +84,9 @@ export class TigerSmsProvider implements SmsProvider {
   }
 
   async resend(providerRef: string): Promise<void> {
-    // status 3 = request another SMS on the same activation
+    // status 3 = another SMS on the same activation. Only ever called on a COMPLETED order (orders.service.retryOrder):
+    // cancelling a waiting activation after status 3 answers ACCESS_CANCEL but refunds nothing on tiger-sms (confirmed
+    // live), which is why the order keeps `otpHistory` and a cancel/expiry in that state never refunds.
     assertResendAccepted(
       await activateGet(this.cfg, { action: 'setStatus', id: providerRef, status: 3 }),
     );
@@ -103,9 +110,37 @@ export class TigerSmsProvider implements SmsProvider {
     return parseActivateCountries(await activateJson(this.cfg, { action: 'getCountries' }));
   }
 
+  async listCountryPrices(countryCode: string): Promise<CatalogPrice[]> {
+    const country = mapCountry(this.cfg, countryCode);
+    // getPricesV2 with a country and no service: { "<ctry>": { "<svc>": { prices: { "<price>": <numbers at that price or below> } } } }
+    // (getPricesV3 needs a service, so it is no use for a one-call-per-country crawl.)
+    const json = (await activateJson(this.cfg, { action: 'getPricesV2', country })) as Record<
+      string,
+      Record<string, { prices?: Record<string, number | string> }>
+    >;
+    const byService = json?.[country];
+    if (!byService || typeof byService !== 'object') throw new Error('tiger-sms getPricesV2: unexpected response');
+    const out: CatalogPrice[] = [];
+    for (const [svc, row] of Object.entries(byService)) {
+      for (const [price, count] of Object.entries(row?.prices ?? {})) {
+        const priceMicro = Math.round(Number(price) * 1_000_000);
+        if (priceMicro > 0) {
+          out.push({ serviceCode: svc, countryCode, priceMicro, stock: count != null ? Math.floor(Number(count)) : null, operator: null });
+        }
+      }
+    }
+    return out;
+  }
+
   async listPrices(q: CatalogQuery): Promise<CatalogPrice[]> {
+    const rows = await this.fetchPrices(q);
+    // One country asked for: rows already come from the rerouted country. All countries: show the destination's tiers.
+    return q.countryCode ? rows : rerouteListing(rows, mapService(this.cfg, q.serviceCode));
+  }
+
+  private async fetchPrices(q: CatalogQuery): Promise<CatalogPrice[]> {
     const svc = mapService(this.cfg, q.serviceCode);
-    const country = q.countryCode ? mapCountry(this.cfg, q.countryCode) : undefined;
+    const country = q.countryCode ? changeRoute(mapCountry(this.cfg, q.countryCode), svc) : undefined;
 
     // Preferred: getPricesV3 — one tier per upstream operator. Needs a country
     // (BAD_COUNTRY without one). Unlike smsbower, operators sit under

@@ -11,6 +11,7 @@ import { attachUser } from './middleware/auth.js';
 import authRoutes from './routes/auth.routes.js';
 import apiKeyRoutes from './routes/apikeys.routes.js';
 import v2Routes from './routes/v2.routes.js';
+import activateRoutes from './routes/activate.routes.js';
 import catalogRoutes from './routes/catalog.routes.js';
 import orderRoutes from './routes/orders.routes.js';
 import walletRoutes from './routes/wallet.routes.js';
@@ -19,6 +20,7 @@ import webhookRoutes from './routes/webhooks.routes.js';
 import webhookConfigRoutes from './routes/webhook.routes.js';
 import affiliateRoutes from './routes/affiliate.routes.js';
 import notificationRoutes from './routes/notifications.routes.js';
+import pushRoutes from './routes/push.routes.js';
 import adminRoutes from './routes/admin/index.js';
 import unsubscribeRoutes from './routes/unsubscribe.routes.js';
 import sesNotificationRoutes from './routes/sesNotifications.routes.js';
@@ -68,6 +70,11 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<Application>
       // reaches errorHandler/classifyError below — match their JSON shape here
       // by hand so 429 isn't the one response in the whole API that isn't JSON.
       handler: (req, res) => {
+        // The SMS-Activate-compatible text API answers in plain tokens, like every other response on it.
+        if (req.path === '/stubs/handler_api.php' || req.path === '/api/handler_api') {
+          res.status(429).type('text/plain').send('RATE_LIMITED');
+          return;
+        }
         const body = { code: 'RATE_LIMITED', message: 'Too many requests' };
         res.status(429).json(req.path.startsWith('/api/v2') ? { success: false, error: body } : { error: body });
       },
@@ -97,8 +104,11 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<Application>
   app.use('/api/v1/api-keys', apiKeyRoutes);
   app.use('/api/v1/webhook', webhookConfigRoutes);
   app.use('/api/v1/notifications', notificationRoutes);
+  app.use('/api/v1/push', pushRoutes);
   app.use('/api/v1/admin', adminRoutes);
   app.use('/api/v2', v2Routes);
+  // SMS-Activate-compatible text API (/api/handler_api, /stubs/handler_api.php).
+  app.use(activateRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

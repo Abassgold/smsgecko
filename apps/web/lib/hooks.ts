@@ -301,6 +301,7 @@ export interface DepositCounts {
   confirmed: number;
   failed: number;
   expired: number;
+  partial: number;
 }
 
 export function useDeposits(status: string, page: number) {

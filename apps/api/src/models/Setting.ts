@@ -11,6 +11,21 @@ const settingSchema = new Schema(
     numberMarkupFlatMicro: { type: Number, default: 0, min: 0 },
     signupsEnabled: { type: Boolean, default: true },
     maintenanceMode: { type: Boolean, default: false },
+    /** Last catalog sync (see services/catalogSync.ts). Null until the first one ran. */
+    catalogSync: {
+      type: new Schema(
+        {
+          at: { type: Date, default: null },
+          providerConfigId: { type: String, default: null },
+          offersUpdated: { type: Number, default: 0 },
+          offersInStock: { type: Number, default: 0 },
+          skippedCountries: { type: [String], default: [] },
+          error: { type: String, default: null },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
   },
   { timestamps: true, _id: false },
 );

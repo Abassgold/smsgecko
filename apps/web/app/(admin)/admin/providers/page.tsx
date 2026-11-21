@@ -75,7 +75,7 @@ export default function AdminProvidersPage() {
                   <td className="px-4 py-3">
                     <div className="font-medium">{p.label}</div>
                     <div className="text-xs text-faint">
-                      {p.key === 'custom_http' ? 'generic HTTP' : `${p.key} adapter`}
+                      {p.key} adapter
                     </div>
                     {p.missingEnvVars.length ? (
                       <div className="mt-1 max-w-xs text-xs text-warning">

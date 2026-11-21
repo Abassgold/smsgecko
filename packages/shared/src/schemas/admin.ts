@@ -3,11 +3,8 @@ import type { OrderSource, OrderStatus, TransactionType, DepositStatus } from '.
 /* ---------------- providers ---------------- */
 
 export const PROVIDER_KEYS = [
-  'custom_http',
   'hero_sms',
   'sms_bower',
-  'sms_code',
-  'sms_pool',
   'tiger_sms',
 ] as const;
 export type ProviderKey = (typeof PROVIDER_KEYS)[number];

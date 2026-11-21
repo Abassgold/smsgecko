@@ -7,6 +7,7 @@ import type {
   PollContext,
   PollResult,
   RentInput,
+  ReleaseResult,
   RentResult,
   SmsProvider,
 } from '../types.js';
@@ -20,12 +21,13 @@ import {
   parseActivateCountries,
   parseActivatePrices,
   parseActivateServices,
+  parseReleaseResponse,
   parseRentResponse,
   parseStatusResponse,
   priceCapUsd,
   type ActivateConfig,
 } from './activateProtocol.js';
-import { changeRoute } from '../changeRoute.js';
+import { changeRoute, rerouteListing } from '../changeRoute.js';
 
 /**
  * hero-sms.com — SMS-Activate-style text API.
@@ -68,10 +70,10 @@ export class HeroSmsProvider implements SmsProvider {
     return parseStatusResponse(text);
   }
 
-  async release(providerRef: string): Promise<void> {
+  async release(providerRef: string): Promise<ReleaseResult> {
     // status 8 = cancel activation
-    await activateGet(this.cfg, { action: 'setStatus', id: providerRef, status: 8 }).catch(
-      () => undefined,
+    return parseReleaseResponse(
+      await activateGet(this.cfg, { action: 'setStatus', id: providerRef, status: 8 }),
     );
   }
 
@@ -124,7 +126,31 @@ export class HeroSmsProvider implements SmsProvider {
     return res.json();
   }
 
+  async listCountryPrices(countryCode: string): Promise<CatalogPrice[]> {
+    const country = mapCountry(this.cfg, countryCode);
+    // { data: { "<svc>": { "<ctry>": { map: { "<price>": <numbers at that price or below> } } } } }
+    const json = (await this.offersApi({ countries: country })) as {
+      data?: Record<string, Record<string, { map?: Record<string, number> }>>;
+    };
+    if (!json?.data || typeof json.data !== 'object') throw new Error('hero-sms offers: unexpected response');
+    const out: CatalogPrice[] = [];
+    for (const [svc, byCountry] of Object.entries(json.data)) {
+      for (const [price, count] of Object.entries(byCountry?.[country]?.map ?? {})) {
+        const priceMicro = Math.round(parseFloat(price) * 1_000_000);
+        if (priceMicro > 0) {
+          out.push({ serviceCode: svc, countryCode, priceMicro, stock: count != null ? Number(count) : null, operator: null });
+        }
+      }
+    }
+    return out;
+  }
+
   async listPrices(q: CatalogQuery): Promise<CatalogPrice[]> {
+    const rows = await this.fetchPrices(q);
+    return q.countryCode ? rows : rerouteListing(rows, mapService(this.cfg, q.serviceCode));
+  }
+
+  private async fetchPrices(q: CatalogQuery): Promise<CatalogPrice[]> {
     const svc = mapService(this.cfg, q.serviceCode);
     // Reroute here too (e.g. US WhatsApp -> Canada) so the quoted price — and the
     // cap derived from it — matches the country rent() will actually buy from.

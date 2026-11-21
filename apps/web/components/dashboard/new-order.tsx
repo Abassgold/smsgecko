@@ -29,7 +29,7 @@ export function NewOrder() {
 
   // Client-side filter over the full (once-fetched) catalog — see the comment on
   // useServices/useCountries. Capped after filtering, not before: a provider's
-  // full service list can run into the thousands (e.g. smspool ~1,400), so we
+  // full service list can run into the thousands (a provider can list well over a thousand), so we
   // still search the whole thing but only mount a manageable number of chips.
   const CHIP_RENDER_CAP = 60;
   const filteredServices = useMemo(() => {

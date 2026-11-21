@@ -20,6 +20,10 @@ import {
   sellPriceMicro,
 } from '../lib/catalog.js';
 import { getSettings, type ResolvedSettings } from '../lib/settings.js';
+import { CatalogOffer, type CatalogOfferAttrs } from '../models/CatalogOffer.js';
+import { storedFresh } from './catalogSync.js';
+import { changeRoute, rerouteListing, routeSources } from '../providers/sms/changeRoute.js';
+import { isActivateStyle } from '../lib/providerPolicy.js';
 import { logger } from '../lib/logger.js';
 
 export { bustCatalogCache };
@@ -58,10 +62,73 @@ async function countries(): Promise<CatalogCountry[]> {
   }
 }
 
-/** Uncached — prices move. Returns [] on any provider/network error. */
-async function prices(serviceCode: string, countryCode?: string): Promise<CatalogPrice[]> {
+/* ---------------- stored catalog (filled by the sync) ---------------- */
+
+type StoredOffer = Pick<CatalogOfferAttrs, 'countryCode'> & { tiers: { priceMicro: number; stock?: number | null; operator?: string | null }[] };
+
+function toRows(docs: StoredOffer[], serviceCode: string): CatalogPrice[] {
+  return docs.flatMap((d) =>
+    d.tiers.map((t) => ({
+      serviceCode,
+      countryCode: d.countryCode,
+      priceMicro: t.priceMicro,
+      stock: t.stock ?? null,
+      operator: t.operator ?? null,
+    })),
+  );
+}
+
+/**
+ * Prices from the stored catalog, shaped like the provider's live answer (including the USA→Canada WhatsApp reroute
+ * for the SMS-Activate-style providers, and without admin-disabled offers). null = no fresh stored copy: ask live.
+ */
+async function storedPrices(
+  a: { id: string; provider: SmsProvider },
+  serviceCode: string,
+  countryCode?: string,
+): Promise<CatalogPrice[] | null> {
+  if (!(await storedFresh(a.id))) return null;
+  const reroute = isActivateStyle(a.provider.key);
+  const disabled = new Set(
+    (await CatalogOffer.find({ providerConfigId: a.id, serviceCode, adminDisabled: true }).select('countryCode').lean()).map(
+      (d) => d.countryCode,
+    ),
+  );
+  if (countryCode) {
+    if (disabled.has(countryCode)) return [];
+    const from = reroute ? changeRoute(countryCode, serviceCode) : countryCode;
+    const doc = await CatalogOffer.findOne({ providerConfigId: a.id, serviceCode, countryCode: from }).lean();
+    return toRows(doc ? [doc] : [], serviceCode);
+  }
+  const docs = await CatalogOffer.find({ providerConfigId: a.id, serviceCode, 'tiers.0': { $exists: true } }).lean();
+  let rows = toRows(docs, serviceCode);
+  if (reroute) rows = rerouteListing(rows, serviceCode);
+  return rows.filter((r) => !disabled.has(r.countryCode));
+}
+
+/** Has an admin switched this service × country off? (customer-facing codes) */
+export async function isOfferDisabled(serviceCode: string, countryCode: string): Promise<boolean> {
+  const a = await active();
+  if (!a) return false;
+  return !!(await CatalogOffer.exists({ providerConfigId: a.id, serviceCode, countryCode, adminDisabled: true }));
+}
+
+/**
+ * Stored prices when a fresh sync exists, else the provider live. Pass `live` for anything that spends money:
+ * checkout must never trust a copy that may be a couple of hours old.
+ * Returns [] on any provider/network error.
+ */
+async function prices(serviceCode: string, countryCode?: string, live = false): Promise<CatalogPrice[]> {
   const a = await active();
   if (!a) return [];
+  if (!live) {
+    try {
+      const stored = await storedPrices(a, serviceCode, countryCode);
+      if (stored) return stored;
+    } catch (err) {
+      logger.warn({ err }, '[catalog] stored prices unavailable, asking the provider');
+    }
+  }
   try {
     return await a.provider.listPrices({ serviceCode, countryCode });
   } catch (err) {
@@ -142,9 +209,10 @@ export async function priceTiers(
   serviceCode: string,
   countryCode: string,
   settings?: ResolvedSettings,
+  live = false,
 ): Promise<Tier[]> {
   const s = settings ?? (await getSettings());
-  return toTiers(await prices(serviceCode, countryCode), s);
+  return toTiers(await prices(serviceCode, countryCode, live), s);
 }
 
 /**
@@ -164,6 +232,45 @@ export async function priceTiersByCountry(
     byCountry.set(row.countryCode, list);
   }
   return new Map([...byCountry].map(([c, rows]) => [c, toTiers(rows, s)]));
+}
+
+/**
+ * Tiers for EVERY service (optionally one country) from the stored catalog, keyed service → country. null when there
+ * is no fresh stored copy: pricing every service live would be hundreds of provider calls, so callers must refuse.
+ */
+export async function priceTiersAllServices(
+  settings?: ResolvedSettings,
+  countryCode?: string,
+): Promise<Map<string, Map<string, Tier[]>> | null> {
+  const a = await active();
+  if (!a || !(await storedFresh(a.id))) return null;
+  const s = settings ?? (await getSettings());
+  const reroute = isActivateStyle(a.provider.key);
+
+  const countries = countryCode ? (reroute ? routeSources(countryCode) : [countryCode]) : null;
+  const [docs, disabledDocs] = await Promise.all([
+    CatalogOffer.find({ providerConfigId: a.id, 'tiers.0': { $exists: true }, ...(countries ? { countryCode: { $in: countries } } : {}) }).lean(),
+    CatalogOffer.find({ providerConfigId: a.id, adminDisabled: true }).select('serviceCode countryCode').lean(),
+  ]);
+  const disabled = new Set(disabledDocs.map((d) => `${d.serviceCode}\u0000${d.countryCode}`));
+
+  const byService = new Map<string, CatalogPrice[]>();
+  for (const d of docs) {
+    const list = byService.get(d.serviceCode) ?? [];
+    list.push(...toRows([d], d.serviceCode));
+    byService.set(d.serviceCode, list);
+  }
+  const out = new Map<string, Map<string, Tier[]>>();
+  for (const [serviceCode, rows] of byService) {
+    let list = reroute ? rerouteListing(rows, serviceCode) : rows;
+    if (countryCode) list = list.filter((r) => r.countryCode === countryCode);
+    list = list.filter((r) => !disabled.has(`${serviceCode}\u0000${r.countryCode}`));
+    const perCountry = new Map<string, CatalogPrice[]>();
+    for (const r of list) perCountry.set(r.countryCode, [...(perCountry.get(r.countryCode) ?? []), r]);
+    const tiers = new Map([...perCountry].map(([c, rs]) => [c, toTiers(rs, s)] as const));
+    if (tiers.size) out.set(serviceCode, tiers);
+  }
+  return out;
 }
 
 type PriceTier = Awaited<ReturnType<typeof priceTiers>>[number];
@@ -269,7 +376,10 @@ export async function resolveForOrder(
   tierIndex?: number,
   operator?: string,
 ): Promise<ResolvedOrderCatalog | null> {
-  const allTiers = await priceTiers(serviceCode, countryCode, settings);
+  // An admin switched this offer off: not for sale, whatever the provider has.
+  if (await isOfferDisabled(serviceCode, countryCode)) return null;
+  // Checkout always asks the provider live: the stored copy is for browsing only.
+  const allTiers = await priceTiers(serviceCode, countryCode, settings, true);
   // `operator` narrows to one carrier and then takes the cheapest in-stock tier
   // (a tierIndex from an offerId indexes the full list, so it's ignored here).
   const tiers = operator ? allTiers.filter((t) => t.operator === operator) : allTiers;

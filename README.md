@@ -6,7 +6,7 @@ for the OTP within a time window; if no SMS arrives the order auto-expires and r
 
 A full-stack build (flows modeled on [smscode.gg](https://smscode.gg)). SMS delivery and
 payments run behind provider interfaces — real adapters are wired in (Stripe, NowPayments,
-Bachs, Cryptomus for payments; HeroSMS, SMS Bower, SMS Code, SMS Pool for SMS)
+Bachs, Cryptomus for payments; Tiger SMS, Hero SMS and SMS Bower for SMS)
 alongside mock adapters, so you can run everything locally with no external accounts. See
 [`docs/architecture.md`](docs/architecture.md) for the design.
 
@@ -47,8 +47,7 @@ ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='a strong password' npm run create-ad
 npm run dev          # api on :4000, web on :3000  → open http://localhost:3000
 ```
 
-`npm run seed` is an **idempotent bootstrap** — it upserts the `Setting` doc, the `mock` +
-`Reseller A` provider rows, and the reference catalog (~40 services, ~40 countries,
+`npm run seed` is an **idempotent bootstrap** — it upserts the `Setting` doc and the reference catalog (~40 services, ~40 countries,
 placeholder offers), and never overwrites rows you've customised. It creates **no** demo
 user or fake history. Prefix `SEED_FRESH=1` to drop the owned collections first (throwaway
 DBs only).
@@ -88,9 +87,8 @@ lives in **Settings** in the admin panel — no restart needed. To see refunds q
       `docs/architecture.md`
 - [x] **Multi-provider SMS + admin panel** — a `ProviderConfig` registry with an ordered
       **fallback chain** (rent from provider #1, fall through to #2 on no-stock/error),
-      poll-based `SmsProvider` interface, mock + real reseller adapters (HeroSMS,
-      SMS Bower, SMS Code, SMS Pool, ActivateProtocol) + generic `custom_http`, encrypted
-      credentials. Admin panel (`/admin`, sidebar shell, `requireAdmin`): Overview KPIs,
+      poll-based `SmsProvider` interface, mock + the three real reseller adapters we sell
+      through (Tiger SMS, Hero SMS, SMS Bower), credentials from env. Admin panel (`/admin`, sidebar shell, `requireAdmin`): Overview KPIs,
       **Providers** (enable / reorder / test / edit — the switch), Users (search /
       balance-adjust / role / suspend), Orders (global + force-cancel + re-poll), Catalog
       CRUD + bulk pricing, Finance (ledger + deposit confirm/fail), DB-backed Settings.

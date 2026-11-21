@@ -79,24 +79,27 @@ export interface CatalogQuery {
 }
 
 export interface SmsProvider {
-  /** Adapter kind, e.g. "mock" | "custom_http". */
+  /** Adapter kind, e.g. "mock" | "tiger_sms". */
   readonly key: string;
   /** Admin-facing display name (from the ProviderConfig). */
   readonly label: string;
 
   rent(input: RentInput): Promise<RentResult>;
   poll(ctx: PollContext): Promise<PollResult>;
-  /** Cancel an active rental (SMS-Activate status 8, smscode /orders/cancel, smspool /sms/cancel). */
-  release(providerRef: string): Promise<void>;
   /**
-   * Tell the provider we're done with the number (SMS-Activate status 6,
-   * smscode /orders/finish). Optional — providers that auto-finalise omit it.
+   * Cancel an active rental (SMS-Activate status 8) and say what
+   * the provider answered. MUST throw when it cannot tell (unreachable, unexpected reply): the caller refunds the
+   * customer only on `canceled`, so guessing here would refund money the provider never gave back.
+   */
+  release(providerRef: string): Promise<ReleaseResult>;
+  /**
+   * Tell the provider we're done with the number (SMS-Activate status 6). Optional — providers that auto-finalise omit it.
    * Best-effort; never throws to the caller.
    */
   finish?(providerRef: string): Promise<void>;
   /**
    * Ask the upstream for another SMS on a still-active rental (SMS-Activate
-   * status 3, smscode /orders/resend). Optional. MUST throw when the provider refused or
+   * status 3). Optional. MUST throw when the provider refused or
    * could not be reached, so the API can tell the caller instead of reporting a fake success.
    */
   resend?(providerRef: string): Promise<void>;
@@ -112,13 +115,41 @@ export interface SmsProvider {
   listServices(): Promise<CatalogService[]>;
   listCountries(): Promise<CatalogCountry[]>;
   listPrices(query: CatalogQuery): Promise<CatalogPrice[]>;
+  /**
+   * Every service's price tiers in ONE country: the unit of work of the catalog sync (a price crawl by service would
+   * be ~1000 calls, by country ~200). Rows carry the provider's own service code and the given country, with NO
+   * rerouting applied (that is a read-time rule). Optional: providers without it are not synced and stay live.
+   * MUST throw when the provider cannot answer, so the sync keeps that country's old data instead of wiping it.
+   */
+  listCountryPrices?(countryCode: string): Promise<CatalogPrice[]>;
 }
+
+/** What the provider said to a cancel. */
+export type ReleaseResult =
+  /** Cancelled: the provider takes the number back (and refunds us). */
+  | { status: 'canceled' }
+  /** The SMS beat the cancel: the number stays active and the customer keeps the code. */
+  | { status: 'received'; code: string | null }
+  /** Too soon after purchase: the provider refuses cancels for a while. Try again later. */
+  | { status: 'too_early' };
 
 /** No number available for this service/country — the router falls through to the next provider. */
 export class NoStockError extends Error {
   constructor(message = 'No stock at provider') {
     super(message);
     this.name = 'NoStockError';
+  }
+}
+
+/**
+ * The provider could not be used right now and nothing says the stock is the problem: unreachable, timed out, rate
+ * limited, 5xx, our provider account out of balance, an unrecognised reply. Not the customer's fault and not safe to
+ * guess about: never reported as "no numbers".
+ */
+export class ProviderUnavailableError extends Error {
+  constructor(message = 'Provider unavailable') {
+    super(message);
+    this.name = 'ProviderUnavailableError';
   }
 }
 

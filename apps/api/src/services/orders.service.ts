@@ -14,12 +14,19 @@ import { resolveForOrder } from './catalog.service.js';
 import { getSettings } from '../lib/settings.js';
 import { logger } from '../lib/logger.js';
 import { parseOfferId } from '../lib/catalog.js';
+import { randomInt } from 'node:crypto';
 import { sha256, friendlyCode } from '../lib/crypto.js';
 import { debit } from '../lib/ledger.js';
-import { applyOtpToOrder, refundWaitingOrder } from '../lib/orderLifecycle.js';
-// import { dispatchWebhook } from '../lib/webhooks.js';
-import { holdRemainingSeconds, minHoldSecondsFor } from '../lib/providerPolicy.js';
 import {
+  applyOtpToOrder,
+  cancelWithProvider,
+  refundWaitingOrder,
+  revertToCompleted,
+} from '../lib/orderLifecycle.js';
+// import { dispatchWebhook } from '../lib/webhooks.js';
+import { holdRemainingSeconds, isActivateStyle, minHoldSecondsFor } from '../lib/providerPolicy.js';
+import {
+  AppError,
   badRequest,
   cancelTooEarly,
   conflict,
@@ -32,6 +39,9 @@ import {
   serviceUnavailable,
   unprocessable,
 } from '../lib/errors.js';
+
+/** Orders still being created (money held, number not rented yet) are invisible to customers. */
+const VISIBLE = { provisioning: { $ne: true } } as const;
 
 function isDuplicateKey(err: unknown): boolean {
   const e = err as { code?: number; cause?: { code?: number } };
@@ -58,7 +68,18 @@ const HEX24 = /^[a-f0-9]{24}$/i;
 /** An API-supplied order id may be the short publicId ("SG-8FQ3-K2") or the
  *  raw 24-hex _id — resolve it to the right lookup filter. */
 function orderIdFilter(orderId: string): Record<string, unknown> {
-  return HEX24.test(orderId) ? { _id: orderId } : { publicId: orderId };
+  if (HEX24.test(orderId)) return { _id: orderId };
+  // The SMS-Activate-style API's numeric id.
+  if (/^\d{10}$/.test(orderId)) return { activationId: orderId };
+  return { publicId: orderId };
+}
+
+/** A fresh, unique 10-digit numeric activation id. */
+async function newActivationId(): Promise<string> {
+  for (;;) {
+    const id = String(randomInt(1_000_000_000, 10_000_000_000));
+    if (!(await Order.exists({ activationId: id }))) return id;
+  }
 }
 
 /** A fresh, unique, human-friendly order reference like "SG-8FQ3-K2". */
@@ -70,6 +91,15 @@ async function newOrderPublicId(): Promise<string> {
   }
   const c = friendlyCode(9); // vanishingly unlikely fallback: more entropy
   return `SG-${c.slice(0, 4)}-${c.slice(4, 7)}-${c.slice(7)}`;
+}
+
+/**
+ * A purchase whose number could not be rented: give the held money back and free the idempotency key so the customer
+ * can simply try again. The order stays hidden (still `provisioning`), as in manesms.
+ */
+async function failProvisioning(order: OrderDoc): Promise<void> {
+  await refundWaitingOrder(order._id, 'canceled');
+  await Order.updateOne({ _id: order._id }, { $unset: { idempotencyKey: 1, idempotencyBodyHash: 1 } });
 }
 
 export interface CreateOrderResult {
@@ -90,6 +120,7 @@ export async function createOrder(
       if (existing.idempotencyBodyHash && existing.idempotencyBodyHash !== bodyHash) {
         throw idempotencyKeyReused();
       }
+      if (existing.provisioning) throw requestInProgress(); // still being created
       return { order: existing, reused: true };
     }
 
@@ -138,20 +169,20 @@ export async function createOrder(
     }
     if (price > user.balanceMicro) throw paymentRequired();
 
-    // Rent from the first provider in the fallback chain that has stock. The cap
-    // is the active provider's *raw* price, so we're never billed above what we quoted.
-    const rent = await rentWithFallback({
-      serviceSlug: serviceCode,
-      countryCode,
-      dialCode: '',
-      maxPriceMicro: cat.rawPriceMicro,
-    });
-
+    /*
+     * Phase 1: HOLD THE CUSTOMER'S MONEY FIRST (same sequence as manesms). The order is created as `provisioning`
+     * (hidden, never polled) together with the debit, in one transaction. The provider call cannot be rolled back
+     * by Mongo, so we never spend our own money before the customer's is safely taken: parallel purchases with a
+     * low balance fail here, at the guarded debit, before any number is rented.
+     */
     const publicId = await newOrderPublicId();
+    const activationId = await newActivationId();
+    const ttlMs = Math.max(settings.orderTtlSeconds, 0) * 1000;
     const data = {
       userId: user._id,
       source,
       publicId,
+      activationId,
       serviceId: serviceCode,
       countryId: countryCode,
       serviceSlug: cat.serviceSlug,
@@ -160,95 +191,120 @@ export async function createOrder(
       countryName: cat.countryName,
       countryCode: cat.countryCode,
       countryFlagEmoji: cat.countryFlagEmoji,
-      phoneNumber: rent.result.phoneNumber,
+      phoneNumber: '',
       priceMicro: price,
       status: 'waiting' as const,
-      provider: rent.providerKey,
-      providerConfigId: rent.providerConfigId,
-      providerLabel: rent.providerLabel,
-      providerRef: rent.result.providerRef,
-      providerCostMicro: rent.result.costMicro ?? cat.rawPriceMicro,
+      provisioning: true,
+      provider: 'unknown',
+      providerRef: null,
       ...(body.idempotencyKey
         ? { idempotencyKey: body.idempotencyKey, idempotencyBodyHash: bodyHash }
         : {}),
-      deliverAt: rent.result.deliverAt ?? null,
-      // Never auto-expire before the provider's minimum hold — some upstreams
-      // still bill us for the number until then (mirrors FloZap's per-provider grace).
-      expiresAt: new Date(
-        Date.now() + Math.max(settings.orderTtlSeconds, minHoldSecondsFor(rent.providerKey)) * 1000,
-      ),
+      deliverAt: null,
+      expiresAt: new Date(Date.now() + ttlMs),
     };
 
-    if (supportsTransactions()) {
-      const session = await mongoose.startSession();
-      try {
-        let created: OrderDoc | undefined;
-        await session.withTransaction(async () => {
-          // Create the order first so the payment transaction can carry its id.
-          const [doc] = await Order.create([data], { session });
-          if (!doc) throw new Error('order creation returned no document');
+    let held: OrderDoc;
+    try {
+      if (supportsTransactions()) {
+        const session = await mongoose.startSession();
+        try {
+          let created: OrderDoc | undefined;
+          await session.withTransaction(async () => {
+            // Create the order first so the payment transaction can carry its id.
+            const [doc] = await Order.create([data], { session });
+            if (!doc) throw new Error('order creation returned no document');
+            // Throws 402 when the balance is too low, aborting the whole transaction.
+            await debit(user._id, price, {
+              type: 'order_payment',
+              description: 'Order payment',
+              session,
+              orderId: doc._id,
+              reference: String(doc._id),
+            });
+            created = doc;
+          });
+          if (!created) throw new Error('order creation returned no document');
+          held = created;
+        } finally {
+          await session.endSession();
+        }
+      } else {
+        // No replica set (dev): sequential, undone by hand if the debit fails.
+        const doc = await Order.create(data);
+        try {
           await debit(user._id, price, {
             type: 'order_payment',
             description: 'Order payment',
-            session,
             orderId: doc._id,
             reference: String(doc._id),
           });
-          created = doc;
-        });
-        if (!created) throw new Error('order creation returned no document');
-        // order.created webhooks are switched off for now.
-        // void dispatchWebhook(user, 'order.created', created);
-        return { order: created, reused: false };
-      } catch (err) {
-        // Order never persisted — hand the rented number back to the provider.
-        await releaseNumber(rent.providerConfigId, rent.result.providerRef);
-        if (isDuplicateKey(err) && body.idempotencyKey) {
-          const existing = await Order.findOne({
-            userId: user._id,
-            idempotencyKey: body.idempotencyKey,
-          });
-          if (existing) return { order: existing, reused: true };
+        } catch (err) {
+          await doc.deleteOne();
+          throw err;
         }
-        throw err;
-      } finally {
-        await session.endSession();
+        held = doc;
       }
-    }
-
-    // Fallback (no replica set): sequential with compensation.
-    let doc: OrderDoc;
-    try {
-      doc = await Order.create(data);
     } catch (err) {
-      await releaseNumber(rent.providerConfigId, rent.result.providerRef);
       if (isDuplicateKey(err) && body.idempotencyKey) {
-        const existing = await Order.findOne({
-          userId: user._id,
-          idempotencyKey: body.idempotencyKey,
-        });
-        if (existing) return { order: existing, reused: true };
+        const existing = await Order.findOne({ userId: user._id, idempotencyKey: body.idempotencyKey });
+        if (existing) {
+          if (existing.provisioning && existing.status === 'waiting') throw requestInProgress();
+          return { order: existing, reused: true };
+        }
       }
       throw err;
     }
 
+    /*
+     * Phase 2: actually rent the number, from the first provider in the fallback chain that has stock. The cap is the
+     * active provider's *raw* price, so we're never billed above what we quoted. If it fails, the money held in
+     * phase 1 goes straight back (the reaper does the same if this process dies mid-call).
+     */
+    let rent: Awaited<ReturnType<typeof rentWithFallback>>;
     try {
-      await debit(user._id, price, {
-        type: 'order_payment',
-        description: 'Order payment',
-        orderId: doc._id,
-        reference: String(doc._id),
+      rent = await rentWithFallback({
+        serviceSlug: serviceCode,
+        countryCode,
+        dialCode: '',
+        maxPriceMicro: cat.rawPriceMicro,
       });
     } catch (err) {
-      // Payment failed after the order was written — undo it.
-      await doc.deleteOne();
-      await releaseNumber(rent.providerConfigId, rent.result.providerRef);
-      throw err;
+      await failProvisioning(held);
+      if (err instanceof AppError) throw err; // 422 no numbers / 503 provider unavailable (typed by the router)
+      logger.error({ err, orderId: String(held._id) }, '[orders] provider rent failed');
+      throw new AppError(503, 'PROVIDER_UNAVAILABLE', 'Numbers are temporarily unavailable. Please try again shortly.');
     }
 
-    // order.created webhooks are switched off for now.
-    // void dispatchWebhook(user, 'order.created', doc);
-    return { order: doc, reused: false };
+    // The timer restarts now, so the customer gets the full window — never less than the provider's minimum hold
+    // (some upstreams still bill us for the number until then).
+    const expiresAt = new Date(
+      Date.now() + Math.max(settings.orderTtlSeconds, minHoldSecondsFor(rent.providerKey)) * 1000,
+    );
+    // Only if the reaper has not already refunded this order while the provider was slow.
+    const live = await Order.findOneAndUpdate(
+      { _id: held._id, provisioning: true, status: 'waiting' },
+      {
+        $set: {
+          phoneNumber: rent.result.phoneNumber,
+          provider: rent.providerKey,
+          providerConfigId: rent.providerConfigId,
+          providerLabel: rent.providerLabel,
+          providerRef: rent.result.providerRef,
+          providerCostMicro: rent.result.costMicro ?? cat.rawPriceMicro,
+          deliverAt: rent.result.deliverAt ?? null,
+          provisioning: false,
+          expiresAt,
+        },
+      },
+      { returnDocument: 'after' },
+    );
+    if (!live) {
+      // Refunded in the meantime: the number we just rented has no order. Hand it back.
+      await releaseNumber(rent.providerConfigId, rent.result.providerRef);
+      throw new AppError(503, 'PROVIDER_UNAVAILABLE', 'Numbers are temporarily unavailable. Please try again shortly.');
+    }
+    return { order: live, reused: false };
   } finally {
     if (body.idempotencyKey) {
       await IdempotencyLock.deleteOne({ userId: user._id, key: body.idempotencyKey });
@@ -263,7 +319,7 @@ export interface ListOrdersParams {
 }
 
 export async function listOrders(user: UserDoc, params: ListOrdersParams) {
-  const filter: Record<string, unknown> = { userId: user._id };
+  const filter: Record<string, unknown> = { userId: user._id, ...VISIBLE };
   if (params.status === 'active') filter.status = 'waiting';
   else if (params.status !== 'all') filter.status = params.status;
 
@@ -279,14 +335,14 @@ export async function listOrders(user: UserDoc, params: ListOrdersParams) {
 }
 
 export async function getOrderWithMessages(user: UserDoc, orderId: string) {
-  const order = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id });
+  const order = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id, ...VISIBLE });
   if (!order) throw notFound('Order not found');
   const messages = await SmsMessage.find({ orderId: order._id }).sort({ receivedAt: 1 });
   return { order, messages };
 }
 
 export async function finishOrder(user: UserDoc, orderId: string): Promise<OrderDoc> {
-  const order = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id });
+  const order = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id, ...VISIBLE });
   if (!order) throw notFound('Order not found');
   if (order.status === 'completed' && !order.finishedAt) {
     order.finishedAt = new Date();
@@ -295,7 +351,7 @@ export async function finishOrder(user: UserDoc, orderId: string): Promise<Order
     // (resolved from order.providerConfigId, not the currently-active provider).
     try {
       const provider = await getProviderForOrder(order);
-      await provider.finish?.(order.providerRef);
+      await provider.finish?.(order.providerRef!);
     } catch {
       /* best-effort — the order is already marked finished locally */
     }
@@ -304,12 +360,18 @@ export async function finishOrder(user: UserDoc, orderId: string): Promise<Order
 }
 
 export async function cancelOrder(user: UserDoc, orderId: string): Promise<OrderDoc> {
-  const order = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id });
+  const order = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id, ...VISIBLE });
   if (!order) throw notFound('Order not found');
   if (order.status !== 'waiting') {
     throw conflict(`Order is already ${order.status}`);
   }
   if (order.otpCode) throw conflict('Order already received a code');
+
+  // Waiting for a *second* SMS: the first one was delivered and paid for, so there is nothing to refund.
+  if (order.otpHistory.length > 0) {
+    await revertToCompleted(order._id);
+    return (await Order.findById(order._id)) ?? order;
+  }
 
   // A number is locked in for a few minutes after purchase; block the cancel
   // until that lock-in has elapsed. Never name the upstream provider.
@@ -322,18 +384,32 @@ export async function cancelOrder(user: UserDoc, orderId: string): Promise<Order
     );
   }
 
-  const canceled = await refundWaitingOrder(order._id, 'canceled');
-  if (!canceled) {
+  // Ask the provider first: the customer is refunded only if it accepts the cancel.
+  let outcome: Awaited<ReturnType<typeof cancelWithProvider>>;
+  try {
+    outcome = await cancelWithProvider(order, 'canceled');
+  } catch (err) {
+    logger.error({ err, orderId: String(order._id) }, '[orders] provider cancel failed');
+    throw new AppError(503, 'PROVIDER_UNAVAILABLE', 'Could not cancel right now. Please try again shortly.');
+  }
+  if (outcome.kind === 'too_early') {
+    throw cancelTooEarly('This number can be cancelled a couple of minutes after purchase. Please try again shortly.', {
+      retryAfterSeconds: 30,
+    });
+  }
+  // The SMS beat the cancel: the number stays active and the customer keeps the code.
+  if (outcome.kind === 'received') throw conflict('Order already received a code');
+  if (!outcome.order) {
     // Lost a race with the worker/delivery — re-read and report current state.
     const fresh = await Order.findById(order._id);
     throw conflict(`Order is already ${fresh?.status ?? 'resolved'}`);
   }
-  return canceled;
+  return outcome.order;
 }
 
 /** Every still-`waiting` order for the user, newest first. */
 export async function listActiveOrders(user: UserDoc): Promise<OrderDoc[]> {
-  return Order.find({ userId: user._id, status: 'waiting' }).sort({ createdAt: -1 });
+  return Order.find({ userId: user._id, status: 'waiting', ...VISIBLE }).sort({ createdAt: -1 });
 }
 
 export type InboundOtpResult =
@@ -375,14 +451,19 @@ export async function deliverOtpByProviderRef(
  * rental, no charge. The polling worker picks up whatever arrives next.
  */
 export async function resendOrder(user: UserDoc, orderId: string): Promise<OrderDoc> {
-  const order = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id });
+  const order = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id, ...VISIBLE });
   if (!order) throw notFound('Order not found');
   if (order.status !== 'waiting') throw conflict(`Order is already ${order.status}`);
 
+  // SMS-Activate-style providers only take "another SMS" AFTER a code arrived (see retryOrder), and cancelling a
+  // waiting activation after it would not be refunded. Same rule as manesms.
+  if (isActivateStyle(order.provider)) {
+    throw conflict('Another code can only be requested after the first one has arrived');
+  }
   const provider = await getProviderForOrder(order);
   if (!provider.resend) throw conflict('This number does not support requesting another code');
   try {
-    await provider.resend(order.providerRef);
+    await provider.resend(order.providerRef!);
   } catch (err) {
     // The provider refused or could not be reached: say so. Never report "another code requested" when it was not.
     logger.warn({ err, orderId: String(order._id) }, '[orders] resend failed');
@@ -390,6 +471,37 @@ export async function resendOrder(user: UserDoc, orderId: string): Promise<Order
   }
   // Force the next worker tick to poll this order immediately.
   await Order.updateOne({ _id: order._id, status: 'waiting' }, { $set: { lastPolledAt: null } });
+  return (await Order.findById(order._id)) ?? order;
+}
+
+/**
+ * "Request another SMS" (setStatus 3), the manesms way: only for a COMPLETED order that has not expired. Free, no new
+ * rental. The delivered code moves into `otpHistory` so the poller can tell the new SMS from the old one, and the
+ * order goes back to `waiting`. Cancelling or expiring in that state never refunds (see revertToCompleted).
+ */
+export async function retryOrder(user: UserDoc, orderId: string): Promise<OrderDoc> {
+  const order = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id, ...VISIBLE });
+  if (!order) throw notFound('Order not found');
+  if (order.status !== 'completed' || !order.otpCode) {
+    throw conflict('Another SMS can only be requested after a code has arrived');
+  }
+  if (order.expiresAt.getTime() <= Date.now()) throw conflict('This number has expired');
+
+  const provider = await getProviderForOrder(order);
+  if (!provider.resend) throw conflict('This number does not support requesting another code');
+  try {
+    await provider.resend(order.providerRef!);
+  } catch (err) {
+    logger.error({ err, orderId: String(order._id) }, '[orders] provider retry failed');
+    throw new AppError(503, 'PROVIDER_UNAVAILABLE', 'Could not request another SMS right now. Please try again shortly.');
+  }
+  await Order.updateOne(
+    { _id: order._id, status: 'completed' },
+    {
+      $set: { status: 'waiting', otpCode: null, completedAt: null, lastPolledAt: null },
+      $push: { otpHistory: order.otpCode },
+    },
+  );
   return (await Order.findById(order._id)) ?? order;
 }
 
@@ -407,12 +519,12 @@ export async function reactivateOrder(user: UserDoc, orderId: string): Promise<O
   // twice. Only one call can win this update; the loser gets a clear
   // conflict instead of a duplicate charge.
   const order = await Order.findOneAndUpdate(
-    { ...orderIdFilter(orderId), userId: user._id, status: 'completed', reactivatingAt: null },
+    { ...orderIdFilter(orderId), userId: user._id, ...VISIBLE, status: 'completed', reactivatingAt: null },
     { $set: { reactivatingAt: new Date() } },
     { returnDocument: 'after' },
   );
   if (!order) {
-    const existing = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id });
+    const existing = await Order.findOne({ ...orderIdFilter(orderId), userId: user._id, ...VISIBLE });
     if (!existing) throw notFound('Order not found');
     if (existing.reactivatingAt) {
       throw conflict('A reactivation for this order is already in progress');
@@ -429,7 +541,7 @@ export async function reactivateOrder(user: UserDoc, orderId: string): Promise<O
     if (!cat) throw noOfferAvailable();
     if (cat.priceMicro > user.balanceMicro) throw paymentRequired();
 
-    const result = await provider.reactivate(order.providerRef).catch(() => null);
+    const result = await provider.reactivate(order.providerRef!).catch(() => null);
     if (!result) throw conflict('The provider could not reactivate this number');
 
     await debit(user._id, cat.priceMicro, {

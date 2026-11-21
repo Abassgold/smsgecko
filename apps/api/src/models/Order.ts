@@ -10,6 +10,8 @@ const orderSchema = new Schema(
      *  customers and accepted on the API instead of the raw 24-hex _id. Unset
      *  on pre-existing orders — they fall back to _id. */
     publicId: { type: String, default: null },
+    /** 10-digit numeric id for the SMS-Activate-compatible text API (clients there parse the id as an integer). Unset on older orders. */
+    activationId: { type: String, default: null },
     /** The active provider's own service / country codes at order time. */
     serviceId: { type: String, required: true },
     countryId: { type: String, required: true },
@@ -22,18 +24,26 @@ const orderSchema = new Schema(
     countryCode: { type: String, required: true },
     countryFlagEmoji: { type: String, required: true },
 
-    phoneNumber: { type: String, required: true },
+    /** Empty while `provisioning`: filled in once the provider hands the number over. */
+    phoneNumber: { type: String, default: '' },
     priceMicro: { type: Number, required: true, min: 0 },
 
     status: { type: String, enum: ORDER_STATUSES, default: 'waiting', index: true },
     otpCode: { type: String, default: null },
 
-    /** Adapter key (e.g. "hero_sms" | "custom_http") of the provider that fulfilled the rent. */
+    /** Adapter key (e.g. "hero_sms" | "tiger_sms") of the provider that fulfilled the rent. */
     provider: { type: String, default: 'unknown' },
     /** The ProviderConfig row that fulfilled it (null for legacy / dev rows). */
     providerConfigId: { type: Schema.Types.ObjectId, ref: 'ProviderConfig', default: null },
     providerLabel: { type: String, default: null },
-    providerRef: { type: String, required: true },
+    /** Null while `provisioning`: the number has not been rented yet. */
+    providerRef: { type: String, default: null },
+    /** Funds are held but the provider has not handed over a number yet. Hidden from the customer, never polled, and
+     *  refunded by the reaper if it sticks (crash, timeout). Same hold-first sequence as manesms. */
+    provisioning: { type: Boolean, default: false },
+    /** Earlier codes on this activation. Non-empty after "another SMS" (setStatus 3); lets the poller tell the new
+     *  SMS from the old one, and means a cancel or expiry while waiting for the second code never refunds. */
+    otpHistory: { type: [String], default: [] },
     /** What the provider charged us, if known (margin reporting). */
     providerCostMicro: { type: Number, default: null },
     /** Last time the polling worker asked the provider for this order's status. */
@@ -76,9 +86,15 @@ orderSchema.index({ status: 1, lastPolledAt: 1 });
 orderSchema.index({ status: 1, expiresAt: 1 });
 orderSchema.index({ providerConfigId: 1 });
 orderSchema.index({ providerRef: 1 }); // inbound SMS webhook lookup
+orderSchema.index({ createdAt: 1 }, { partialFilterExpression: { provisioning: true } }); // the reaper
 orderSchema.index(
   { publicId: 1 },
   { unique: true, partialFilterExpression: { publicId: { $type: 'string' } } },
+);
+
+orderSchema.index(
+  { activationId: 1 },
+  { unique: true, partialFilterExpression: { activationId: { $type: 'string' } } },
 );
 
 export type OrderAttrs = InferSchemaType<typeof orderSchema>;

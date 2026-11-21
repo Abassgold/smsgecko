@@ -11,14 +11,12 @@ import { useCreateProvider, useUpdateProvider } from '@/lib/admin-hooks';
 type Mode = { kind: 'create' } | { kind: 'edit'; provider: ProviderConfigView };
 type ProviderKey = ProviderConfigView['key'];
 
-/** Adapters ported from FloZap — each takes a plain JSON config blob. */
-const RESELLER_KEYS = ['hero_sms', 'sms_bower', 'sms_code', 'sms_pool', 'tiger_sms'] as const;
+/** The three providers we sell through. Each takes a plain JSON config blob; credentials come from env. */
+const RESELLER_KEYS = ['tiger_sms', 'hero_sms', 'sms_bower'] as const;
 const RESELLER_LABELS: Record<(typeof RESELLER_KEYS)[number], string> = {
+  tiger_sms: 'tiger-sms',
   hero_sms: 'hero-sms',
   sms_bower: 'smsbower',
-  sms_code: 'smscode',
-  sms_pool: 'smspool',
-  tiger_sms: 'tiger-sms',
 };
 
 export function ProviderForm({ mode, onDone }: { mode: Mode; onDone: () => void }) {
@@ -26,24 +24,12 @@ export function ProviderForm({ mode, onDone }: { mode: Mode; onDone: () => void 
   const update = useUpdateProvider();
   const editing = mode.kind === 'edit' ? mode.provider : null;
 
-  const [key, setKey] = useState<ProviderKey>(editing?.key ?? 'custom_http');
+  const [key, setKey] = useState<ProviderKey>(editing?.key ?? 'tiger_sms');
   const [label, setLabel] = useState(editing?.label ?? '');
   const [enabled, setEnabled] = useState(editing?.enabled ?? false);
   const [priority, setPriority] = useState(String(editing?.priority ?? 100));
 
   const c = (editing?.config ?? {}) as Record<string, unknown>;
-  const [baseUrl, setBaseUrl] = useState(String(c.baseUrl ?? ''));
-  const [apiKey, setApiKey] = useState(String(c.apiKey ?? ''));
-  const [authMode, setAuthMode] = useState(String(c.authMode ?? 'query'));
-  const [authParam, setAuthParam] = useState(String(c.authParam ?? ''));
-  const [parseMode, setParseMode] = useState(String(c.parseMode ?? 'text'));
-  const [method, setMethod] = useState(String(c.method ?? 'GET'));
-  const [rentPath, setRentPath] = useState(String(c.rentPath ?? ''));
-  const [statusPath, setStatusPath] = useState(String(c.statusPath ?? ''));
-  const [cancelPath, setCancelPath] = useState(String(c.cancelPath ?? ''));
-  const [healthPath, setHealthPath] = useState(String(c.healthPath ?? ''));
-  const [mapJson, setMapJson] = useState(JSON.stringify(c.map ?? {}, null, 2));
-  const [mapErr, setMapErr] = useState<string | null>(null);
 
   // Reseller credentials come from env on the API (never stored); only
   // optional extras (serviceMap / countryMap / pricingOption…) are edited here.
@@ -52,52 +38,20 @@ export function ProviderForm({ mode, onDone }: { mode: Mode; onDone: () => void 
   );
   const [configJson, setConfigJson] = useState(JSON.stringify(extraConfig, null, 2));
   const [configErr, setConfigErr] = useState<string | null>(null);
-  const isReseller = (RESELLER_KEYS as readonly string[]).includes(key);
 
   const pending = create.isPending || update.isPending;
   const err = create.error ?? update.error;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    let map: unknown = {};
-    if (key === 'custom_http') {
-      try {
-        map = mapJson.trim() ? JSON.parse(mapJson) : {};
-        setMapErr(null);
-      } catch {
-        setMapErr('Response map is not valid JSON');
-        return;
-      }
+    let config: unknown = {};
+    try {
+      config = configJson.trim() ? JSON.parse(configJson) : {};
+      setConfigErr(null);
+    } catch {
+      setConfigErr('Adapter config is not valid JSON');
+      return;
     }
-    let resellerConfig: unknown = {};
-    if (isReseller) {
-      try {
-        resellerConfig = configJson.trim() ? JSON.parse(configJson) : {};
-        setConfigErr(null);
-      } catch {
-        setConfigErr('Adapter config is not valid JSON');
-        return;
-      }
-    }
-
-    const config =
-      key === 'custom_http'
-        ? {
-            baseUrl,
-            apiKey,
-            authMode,
-            ...(authParam ? { authParam } : {}),
-            parseMode,
-            method,
-            rentPath,
-            statusPath,
-            cancelPath,
-            healthPath,
-            map,
-          }
-        : isReseller
-          ? resellerConfig
-          : {};
 
     if (mode.kind === 'create') {
       create.mutate(
@@ -125,7 +79,6 @@ export function ProviderForm({ mode, onDone }: { mode: Mode; onDone: () => void 
             onChange={(e) => setKey(e.target.value as ProviderKey)}
             className={inputClass}
           >
-            <option value="custom_http">Generic HTTP</option>
             {RESELLER_KEYS.map((k) => (
               <option key={k} value={k}>
                 {RESELLER_LABELS[k]}
@@ -147,102 +100,36 @@ export function ProviderForm({ mode, onDone }: { mode: Mode; onDone: () => void 
         </div>
       </div>
 
-      {key === 'custom_http' ? (
-        <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface-2/50 p-4">
-          <div className="text-xs uppercase tracking-widest text-faint">HTTP config</div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Base URL">
-              <TextInput value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.reseller.com" />
-            </Field>
-            <Field label="API key">
-              <TextInput
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={editing ? 'leave masked value to keep' : ''}
-              />
-            </Field>
-            <Field label="Auth mode">
-              <select value={authMode} onChange={(e) => setAuthMode(e.target.value)} className={inputClass}>
-                <option value="query">Query param</option>
-                <option value="header">Header</option>
-                <option value="bearer">Bearer</option>
-              </select>
-            </Field>
-            <Field label="Auth param name" hint="e.g. api_key or X-API-Key">
-              <TextInput value={authParam} onChange={(e) => setAuthParam(e.target.value)} />
-            </Field>
-            <Field label="Parse mode">
-              <select value={parseMode} onChange={(e) => setParseMode(e.target.value)} className={inputClass}>
-                <option value="text">Text (handler-style)</option>
-                <option value="json">JSON</option>
-              </select>
-            </Field>
-            <Field label="HTTP method">
-              <select value={method} onChange={(e) => setMethod(e.target.value)} className={inputClass}>
-                <option value="GET">GET</option>
-                <option value="POST">POST</option>
-              </select>
-            </Field>
-          </div>
-          <Field label="Rent path" hint="{service} {country} placeholders">
-            <TextInput value={rentPath} onChange={(e) => setRentPath(e.target.value)} placeholder="/handler_api.php?action=getNumber&service={service}&country={country}" />
-          </Field>
-          <Field label="Status path" hint="{ref} placeholder">
-            <TextInput value={statusPath} onChange={(e) => setStatusPath(e.target.value)} placeholder="/handler_api.php?action=getStatus&id={ref}" />
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Cancel path">
-              <TextInput value={cancelPath} onChange={(e) => setCancelPath(e.target.value)} />
-            </Field>
-            <Field label="Health path">
-              <TextInput value={healthPath} onChange={(e) => setHealthPath(e.target.value)} />
-            </Field>
-          </div>
-          <Field label="Response map (JSON)" error={mapErr ?? undefined}>
-            <textarea
-              value={mapJson}
-              onChange={(e) => setMapJson(e.target.value)}
-              rows={6}
-              className={`${inputClass} font-mono text-xs`}
-              spellCheck={false}
-            />
-          </Field>
-        </div>
-      ) : null}
-
-      {isReseller ? (
-        <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface-2/50 p-4">
-          <div className="text-xs uppercase tracking-widest text-faint">Credentials</div>
-          <p className="text-xs text-muted">
-            Read from the API&apos;s environment (Render → Environment), never stored here:{' '}
-            {(editing?.envVars ?? []).length ? (
-              (editing?.envVars ?? []).map((v, i) => (
-                <span key={v}>
-                  {i ? ' + ' : ''}
-                  <code>{v}</code>
-                </span>
-              ))
-            ) : (
-              <span>the provider&apos;s API key variable</span>
-            )}
-            .
-          </p>
-          <Field
-            label="Advanced config (JSON, optional)"
-            hint="serviceMap / countryMap translate SMSGecko codes into this provider's own codes."
-            error={configErr ?? undefined}
-          >
-            <textarea
-              value={configJson}
-              onChange={(e) => setConfigJson(e.target.value)}
-              rows={5}
-              className={`${inputClass} font-mono text-xs`}
-              spellCheck={false}
-            />
-          </Field>
-        </div>
-      ) : null}
+      <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface-2/50 p-4">
+        <div className="text-xs uppercase tracking-widest text-faint">Credentials</div>
+        <p className="text-xs text-muted">
+          Read from the API&apos;s environment (Render → Environment), never stored here:{' '}
+          {(editing?.envVars ?? []).length ? (
+            (editing?.envVars ?? []).map((v, i) => (
+              <span key={v}>
+                {i ? ' + ' : ''}
+                <code>{v}</code>
+              </span>
+            ))
+          ) : (
+            <span>the provider&apos;s API key variable</span>
+          )}
+          .
+        </p>
+        <Field
+          label="Advanced config (JSON, optional)"
+          hint="serviceMap / countryMap translate SMSGecko codes into this provider's own codes."
+          error={configErr ?? undefined}
+        >
+          <textarea
+            value={configJson}
+            onChange={(e) => setConfigJson(e.target.value)}
+            rows={5}
+            className={`${inputClass} font-mono text-xs`}
+            spellCheck={false}
+          />
+        </Field>
+      </div>
 
       {err ? (
         <p className="text-sm text-danger">

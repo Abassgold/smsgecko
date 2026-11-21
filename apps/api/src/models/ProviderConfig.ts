@@ -2,11 +2,8 @@ import { Schema, model, type InferSchemaType, type HydratedDocument } from 'mong
 
 export const PROVIDER_ADAPTER_KEYS = [
   'mock',
-  'custom_http',
   'hero_sms',
   'sms_bower',
-  'sms_code',
-  'sms_pool',
   'tiger_sms',
 ] as const;
 export type ProviderAdapterKey = (typeof PROVIDER_ADAPTER_KEYS)[number];

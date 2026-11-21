@@ -251,6 +251,7 @@ describe('deposits', () => {
       confirmed: 1,
       failed: 0,
       expired: 0,
+      partial: 0,
     });
 
     const confirmedOnly = await inject({

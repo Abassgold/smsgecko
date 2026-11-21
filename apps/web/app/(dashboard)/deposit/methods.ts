@@ -36,6 +36,13 @@ export const DEPOSIT_METHOD_INFO: DepositMethodInfo[] = [
     fee: '0.5%',
   },
   {
+    method: 'trybit',
+    label: 'Trybit',
+    blurb: 'Crypto checkout in USDT, on any major network.',
+    group: 'crypto',
+    fee: 'network fee',
+  },
+  {
     method: 'cryptomus',
     label: 'Cryptomus',
     blurb: 'Alternative crypto checkout — BTC, ETH, USDT & more.',
