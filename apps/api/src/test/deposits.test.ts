@@ -372,8 +372,8 @@ describe('deposits', () => {
         inject({ method: 'POST', url: '/api/v1/webhooks/payments/bachs', headers: { 'x-bachs-signature-v2': signBachs(raw) }, payload: body }),
       ),
     );
-    // Whatever each duplicate is told, money moves once: one ledger row, one credit.
-    expect(replies.some((r) => r.statusCode === 200)).toBe(true);
+    // Every duplicate is told "received" (a 409 would make the provider count a failed delivery and retry), and money moves once.
+    expect(replies.map((r) => r.statusCode)).toEqual(Array(8).fill(200));
     expect((await User.findById(userId))!.balanceMicro).toBe(10_000_000);
     expect(await Transaction.countDocuments({ userId, type: 'deposit' })).toBe(1);
     expect((await Deposit.findById(deposit!._id))!.status).toBe('confirmed');

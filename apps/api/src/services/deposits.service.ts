@@ -14,7 +14,7 @@ import { notify } from '../models/Notification.js';
 import { credit } from '../lib/ledger.js';
 import { getSettings } from '../lib/settings.js';
 import { env } from '../config/env.js';
-import { badRequest, conflict, notFound, serviceUnavailable } from '../lib/errors.js';
+import { AppError, badRequest, conflict, notFound, serviceUnavailable } from '../lib/errors.js';
 
 export function toDepositView(d: DepositDoc) {
   return {
@@ -140,7 +140,15 @@ export async function confirmDeposit(deposit: DepositDoc): Promise<DepositDoc> {
 async function confirmByProviderRef(providerName: string, providerRef: string): Promise<void> {
   const deposit = await Deposit.findOne({ providerRef, provider: providerName });
   if (!deposit) throw notFound('Deposit not found');
-  if (deposit.status === 'pending') await confirmDeposit(deposit);
+  if (deposit.status !== 'pending') return;
+  try {
+    await confirmDeposit(deposit);
+  } catch (err) {
+    // The provider sent the same event twice at once and the other request settled the deposit first. The money moved
+    // exactly once, so this duplicate is a success: answering 409 would make the provider count a failure and retry.
+    if (err instanceof AppError && err.statusCode === 409) return;
+    throw err;
+  }
 }
 
 /** Minimal shape `handleWebhook` needs from the inbound request — matches
