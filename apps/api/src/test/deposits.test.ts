@@ -344,6 +344,22 @@ describe('deposits', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('bachs: the signature is accepted under the Bachs-Signature header name too, and a bad one is still refused', async () => {
+    const { cookie, userId } = await makeUser(app);
+    const create = await inject({ method: 'POST', url: '/api/v1/deposits', headers: { cookie }, payload: { method: 'bachs', amountMicro: 10_000_000 } });
+    const deposit = await Deposit.findById(create.json().id);
+    const body = bachsCollectionEvent(deposit!.providerRef);
+    const raw = JSON.stringify(body);
+
+    const bad = await inject({ method: 'POST', url: '/api/v1/webhooks/payments/bachs', headers: { 'bachs-signature': `t=${Math.floor(Date.now() / 1000)},v1=${'0'.repeat(64)}` }, payload: body });
+    expect(bad.statusCode).toBe(400);
+    expect((await User.findById(userId))!.balanceMicro).toBe(0);
+
+    const good = await inject({ method: 'POST', url: '/api/v1/webhooks/payments/bachs', headers: { 'bachs-signature': signBachs(raw) }, payload: body });
+    expect(good.statusCode).toBe(200);
+    expect((await User.findById(userId))!.balanceMicro).toBe(10_000_000);
+  });
+
   it('rejects a bachs webhook with an invalid signature', async () => {
     const res = await inject({
       method: 'POST',

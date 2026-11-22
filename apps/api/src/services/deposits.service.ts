@@ -190,7 +190,9 @@ export async function handleWebhook(providerName: string, req: WebhookRequest): 
 
   if (providerName === 'bachs') {
     if (!env.BACHS_WEBHOOK_SECRET) throw badRequest('Bachs webhooks are not configured');
-    const signature = req.header('x-bachs-signature-v2');
+    // Bachs's portal names this header `Bachs-Signature`; the v2 scheme arrives as `X-Bachs-Signature-V2`. Take either one.
+    // The value is checked exactly the same way, so accepting both names loosens nothing.
+    const signature = req.header('x-bachs-signature-v2') ?? req.header('bachs-signature');
     if (!req.rawBody || !verifyBachsSignature(req.rawBody, signature, env.BACHS_WEBHOOK_SECRET)) {
       throw badRequest('Invalid Bachs signature');
     }
