@@ -360,6 +360,25 @@ describe('deposits', () => {
     expect((await User.findById(userId))!.balanceMicro).toBe(10_000_000);
   });
 
+  it('bachs: the same webhook arriving many times at once credits the wallet exactly once', async () => {
+    const { cookie, userId } = await makeUser(app);
+    const create = await inject({ method: 'POST', url: '/api/v1/deposits', headers: { cookie }, payload: { method: 'bachs', amountMicro: 10_000_000 } });
+    const deposit = await Deposit.findById(create.json().id);
+    const body = bachsCollectionEvent(deposit!.providerRef);
+    const raw = JSON.stringify(body);
+
+    const replies = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        inject({ method: 'POST', url: '/api/v1/webhooks/payments/bachs', headers: { 'x-bachs-signature-v2': signBachs(raw) }, payload: body }),
+      ),
+    );
+    // Whatever each duplicate is told, money moves once: one ledger row, one credit.
+    expect(replies.some((r) => r.statusCode === 200)).toBe(true);
+    expect((await User.findById(userId))!.balanceMicro).toBe(10_000_000);
+    expect(await Transaction.countDocuments({ userId, type: 'deposit' })).toBe(1);
+    expect((await Deposit.findById(deposit!._id))!.status).toBe('confirmed');
+  });
+
   it('rejects a bachs webhook with an invalid signature', async () => {
     const res = await inject({
       method: 'POST',
