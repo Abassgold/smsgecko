@@ -22,6 +22,7 @@
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0",
+    "geoip-country": "5.0.202611110258",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "libphonenumber-js": "^1.13.14",

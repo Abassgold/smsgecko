@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Geist, Geist_Mono, Space_Grotesk } from 'next/font/google';
 import Script from 'next/script';
 import { Providers } from './providers';
+import { AttributionCapture } from '@/components/attribution-capture';
 import './globals.css';
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-geist' });
@@ -97,6 +98,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <iframe src={`https://www.googletagmanager.com/ns.html?id=${GTM_ID}`} height="0" width="0" style={{ display: 'none', visibility: 'hidden' }} />
         </noscript>
         <div className="page-backdrop" aria-hidden />
+        <AttributionCapture />
         <Providers>
           {children}
           {/* <div className='text-center text-4xl'>

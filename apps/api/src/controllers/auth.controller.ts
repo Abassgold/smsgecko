@@ -30,6 +30,7 @@ import {
   verifyEmail as verifyEmailToken,
   verifyTwoFactorLogin,
 } from '../services/auth.service.js';
+import { signupContext } from '../lib/attribution.js';
 
 function sessionMeta(req: { headers: Record<string, unknown>; ip?: string }) {
   return {
@@ -39,7 +40,7 @@ function sessionMeta(req: { headers: Record<string, unknown>; ip?: string }) {
 }
 
 export const register = asyncHandler(async (req, res) => {
-  const user = await registerUser(req.body as RegisterBody);
+  const user = await registerUser(req.body as RegisterBody, signupContext(req));
   const { accessToken, refreshToken } = await issueSession(user, sessionMeta(req));
   setAuthCookies(res, accessToken, refreshToken);
   res.status(201).json({ user: toPublicUser(user) });

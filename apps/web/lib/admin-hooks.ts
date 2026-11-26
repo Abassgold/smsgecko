@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  AdminAudience,
   AdminActionRow,
   AdminDepositRow,
   AdminOverview,
@@ -94,7 +95,7 @@ export function useReorderProviders() {
 }
 
 /* ---------- users ---------- */
-export function useAdminUsers(params: { q?: string; status?: string; role?: string; page: number }) {
+export function useAdminUsers(params: { q?: string; status?: string; role?: string; country?: string; page: number }) {
   return useQuery({
     queryKey: ['admin', 'users', params],
     queryFn: () =>
@@ -208,6 +209,14 @@ export function useAdminLogs(params: Record<string, string | number | undefined>
     queryKey: ['admin', 'logs', params],
     queryFn: () =>
       apiFetch<Paginated<AdminActionRow>>(`/v1/admin/logs/?${qs({ ...params, limit: 25 })}`),
+  });
+}
+
+/* ---------- audience ---------- */
+export function useAdminAudience(days: number) {
+  return useQuery({
+    queryKey: ['admin', 'audience', days],
+    queryFn: () => apiFetch<AdminAudience>(`/v1/admin/audience/?${qs({ days })}`),
   });
 }
 

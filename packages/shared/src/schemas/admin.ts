@@ -93,6 +93,34 @@ export interface AdminUserView {
   balanceMicro: number;
   ordersCount: number;
   createdAt: string;
+  /** ISO alpha-2 country at signup; null = unknown or before tracking. */
+  signupCountry: string | null;
+  signupSource: AdminSignupSource | null;
+}
+
+export interface AdminSignupSource {
+  channel: string;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  referrer: string | null;
+  landing: string | null;
+}
+
+export interface AdminAudienceRow {
+  key: string;
+  signups: number;
+  /** Signups who have deposited at least once. */
+  payers: number;
+  depositsMicro: number;
+}
+
+export interface AdminAudience {
+  days: number;
+  totalSignups: number;
+  tracked: number;
+  countries: AdminAudienceRow[];
+  sources: Array<AdminAudienceRow & { topCountries: Array<{ country: string; signups: number }> }>;
 }
 
 export interface AdminUserDetail extends AdminUserView {

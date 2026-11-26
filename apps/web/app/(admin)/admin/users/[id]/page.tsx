@@ -14,6 +14,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { formatBalanceUsd, formatShortDateTime, formatUsd, parseUsd } from '@/lib/format';
 import { ApiError } from '@/lib/api';
 import { useAdjustBalance, useAdminUser, useUpdateUser } from '@/lib/admin-hooks';
+import { countryLabel } from '@/lib/country';
 
 export default function AdminUserDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -57,6 +58,24 @@ export default function AdminUserDetailPage() {
           <div className="mt-1 text-xs text-faint">
             Joined {formatShortDateTime(u.createdAt)} · Affiliate code{' '}
             <span className="font-mono">{u.affiliateCode}</span> · {u.ordersCount} orders
+          </div>
+          <div className="mt-1 text-xs text-faint">
+            Signed up from <span className="text-muted">{u.signupCountry ? countryLabel(u.signupCountry) : 'unknown'}</span>
+            {u.signupSource ? (
+              <>
+                {' '}via <span className="text-muted">{u.signupSource.channel}</span>
+                {[
+                  u.signupSource.utmMedium && `medium ${u.signupSource.utmMedium}`,
+                  u.signupSource.utmCampaign && `campaign ${u.signupSource.utmCampaign}`,
+                  u.signupSource.referrer && `from ${u.signupSource.referrer}`,
+                  u.signupSource.landing && `landed on ${u.signupSource.landing}`,
+                ]
+                  .filter(Boolean)
+                  .map((t) => <span key={t as string}> · {t}</span>)}
+              </>
+            ) : u.signupCountry ? null : (
+              <span> (signed up before tracking started)</span>
+            )}
           </div>
         </div>
         <div className="text-right">

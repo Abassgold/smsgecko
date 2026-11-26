@@ -8,12 +8,15 @@ export const adminUsersQuery = yup.object({
     .oneOf(['all', 'active', 'suspended'])
     .default('all'),
   role: yup.mixed<'all' | 'user' | 'admin'>().oneOf(['all', 'user', 'admin']).default('all'),
+  /** ISO alpha-2, 'unknown' (no country recorded) or 'all'. */
+  country: yup.string().matches(/^([A-Z]{2}|all|unknown)$/).default('all'),
   ...paginationFields(100, 20),
 });
 export interface AdminUsersQuery {
   q?: string;
   status: 'all' | 'active' | 'suspended';
   role: 'all' | 'user' | 'admin';
+  country: string;
   page: number;
   limit: number;
 }

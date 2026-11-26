@@ -16,3 +16,11 @@ Monorepo (npm workspaces): `apps/web`, `apps/api`, `packages/shared`.
   `LayoutProps` in committed code — type props explicitly.
 - The web app talks to the API **same-origin** via a rewrite in `apps/web/next.config.ts`
   (`/api/*` → `:4000`), so auth cookies just work.
+
+## Signup attribution
+
+`lib/attribution.ts` sets `User.signupCountry` (offline `geoip-country` lookup of the left-most public X-Forwarded-For
+address, or `cf-ipcountry`; the IP itself is never stored) and `User.signupSource` (first-touch `gecko_src` cookie
+written by `components/attribution-capture.tsx`: utm tags, gclid/fbclid/ttclid, external referrer, landing path) at
+registration. Analytics only and spoofable: never use it for security. Admin → Audience (`GET /admin/audience?days=`)
+groups signups by country and source with payers and deposits; `GET /admin/users?country=` filters the list.

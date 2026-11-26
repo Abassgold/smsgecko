@@ -19,14 +19,27 @@ export async function toRow(u: UserDoc): Promise<AdminUserView> {
     balanceMicro: u.balanceMicro,
     ordersCount: await Order.countDocuments({ userId: u._id }),
     createdAt: (u.get('createdAt') as Date).toISOString(),
+    signupCountry: u.signupCountry ?? null,
+    signupSource: u.signupSource
+      ? {
+          channel: u.signupSource.channel,
+          utmSource: u.signupSource.utmSource ?? null,
+          utmMedium: u.signupSource.utmMedium ?? null,
+          utmCampaign: u.signupSource.utmCampaign ?? null,
+          referrer: u.signupSource.referrer ?? null,
+          landing: u.signupSource.landing ?? null,
+        }
+      : null,
   };
 }
 
 export async function listUsers(query: AdminUsersQuery) {
-  const { q, status, role, page, limit } = query;
+  const { q, status, role, country, page, limit } = query;
   const filter: Record<string, unknown> = {};
   if (status !== 'all') filter.status = status;
   if (role !== 'all') filter.role = role;
+  if (country === 'unknown') filter.signupCountry = null;
+  else if (country && country !== 'all') filter.signupCountry = country;
   if (q) {
     const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     filter.$or = [{ email: rx }, { username: rx }];

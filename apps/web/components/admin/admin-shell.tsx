@@ -14,6 +14,7 @@ const NAV = [
   { href: '/admin', label: 'Overview', icon: '▦' },
   { href: '/admin/providers', label: 'Providers', icon: '⇄' },
   { href: '/admin/users', label: 'Users', icon: '☺' },
+  { href: '/admin/audience', label: 'Audience', icon: '◎' },
   { href: '/admin/orders', label: 'Orders', icon: '▤' },
   { href: '/admin/finance', label: 'Finance', icon: '$' },
   { href: '/admin/broadcasts', label: 'Broadcasts', icon: '✉' },

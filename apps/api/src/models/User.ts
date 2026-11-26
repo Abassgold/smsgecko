@@ -37,9 +37,29 @@ const userSchema = new Schema(
      * link. Transactional email (verification, password reset, etc.) is
      * unaffected — this only gates the broadcast worker's audience query. */
     unsubscribedFromBroadcasts: { type: Boolean, default: false },
+
+    /** Country the account was created from (ISO alpha-2, from the IP at signup; the IP itself is not kept). Null = unknown or before tracking. */
+    signupCountry: { type: String, default: null },
+    /** First-touch traffic source at signup (lib/attribution.ts). Null for accounts from before tracking. */
+    signupSource: {
+      type: new Schema(
+        {
+          channel: { type: String, default: 'direct' },
+          utmSource: { type: String, default: null },
+          utmMedium: { type: String, default: null },
+          utmCampaign: { type: String, default: null },
+          referrer: { type: String, default: null },
+          landing: { type: String, default: null },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
   },
   { timestamps: true },
 );
+
+userSchema.index({ createdAt: -1, signupCountry: 1 });
 
 export type UserAttrs = InferSchemaType<typeof userSchema>;
 export type UserDoc = HydratedDocument<UserAttrs>;

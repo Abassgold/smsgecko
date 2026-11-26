@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,17 +11,35 @@ import { LoadingRow } from '@/components/ui/spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { formatBalanceUsd, formatShortDateTime } from '@/lib/format';
 import { useAdminUsers } from '@/lib/admin-hooks';
+import { countryLabel } from '@/lib/country';
 
 export default function AdminUsersPage() {
+  return (
+    <Suspense>
+      <AdminUsers />
+    </Suspense>
+  );
+}
+
+function AdminUsers() {
   const router = useRouter();
+  // ?country=NG comes from the Audience page.
+  const country = useSearchParams().get('country') ?? 'all';
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('all');
   const [page, setPage] = useState(1);
-  const users = useAdminUsers({ q, status, page });
+  const users = useAdminUsers({ q, status, country, page });
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="font-display text-2xl font-bold">Users</h1>
+      <h1 className="font-display text-2xl font-bold">
+        Users
+        {country !== 'all' && (
+          <button type="button" onClick={() => router.push('/admin/users')} className="ml-3 rounded-full border border-border px-2.5 py-1 align-middle text-xs font-medium">
+            {countryLabel(country)} ✕
+          </button>
+        )}
+      </h1>
 
       <div className="flex flex-wrap items-center gap-3">
         <TextInput
@@ -62,6 +80,7 @@ export default function AdminUsersPage() {
                 <th className="px-4 py-3 font-medium">Verified</th>
                 <th className="px-4 py-3 font-medium">Balance</th>
                 <th className="px-4 py-3 font-medium">Orders</th>
+                <th className="px-4 py-3 font-medium">From</th>
                 <th className="px-4 py-3 font-medium">Joined</th>
               </tr>
             </thead>
@@ -87,6 +106,10 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-4 py-3 font-mono">{formatBalanceUsd(u.balanceMicro)}</td>
                   <td className="px-4 py-3 font-mono text-muted">{u.ordersCount}</td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    {u.signupCountry ? countryLabel(u.signupCountry, false) : <span className="text-faint">—</span>}
+                    {u.signupSource ? <span className="ml-2 text-xs text-muted">{u.signupSource.channel}</span> : null}
+                  </td>
                   <td className="px-4 py-3 text-muted">{formatShortDateTime(u.createdAt)}</td>
                 </tr>
               ))}

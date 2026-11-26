@@ -27,6 +27,7 @@ import { sendPasswordResetEmail, sendVerificationEmail } from '../lib/email.js';
 import { assertDeliverableEmail } from '../lib/emailValidation.js';
 import { isSuppressed } from '../lib/emailSuppression.js';
 import { decryptJson, encryptJson } from '../lib/secretbox.js';
+import type { SignupContext } from '../lib/attribution.js';
 import { generateTotpSecret, totpUri, verifyTotp } from '../lib/totp.js';
 
 export interface SessionMeta {
@@ -62,7 +63,7 @@ async function uniqueUsername(seed: string): Promise<string> {
   return `${suffixBase}${randomToken(4)}`;
 }
 
-export async function registerUser(body: RegisterBody): Promise<UserDoc> {
+export async function registerUser(body: RegisterBody, ctx?: SignupContext): Promise<UserDoc> {
   const email = body.email.toLowerCase().trim();
   if (!(await getSettings()).signupsEnabled) {
     throw forbidden('New sign-ups are currently disabled');
@@ -96,6 +97,8 @@ export async function registerUser(body: RegisterBody): Promise<UserDoc> {
     affiliateCode: await uniqueAffiliateCode(),
     affiliateTermsVersion: null,
     referredBy: referredBy?._id ?? null,
+    signupCountry: ctx?.country ?? null,
+    signupSource: ctx?.source ?? null,
   });
 
   await issueEmailVerification(user);
