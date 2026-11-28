@@ -11,6 +11,7 @@ import { cn } from '@/lib/cn';
 const NAV = [
   { href: '/pricing', label: 'Pricing' },
   { href: '/platforms', label: 'Platforms' },
+  { href: '/sms-api', label: 'API' },
   { href: '/faq', label: 'FAQ' },
   { href: '/contact', label: 'Contact' },
 ];

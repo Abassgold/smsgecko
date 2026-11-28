@@ -16,7 +16,7 @@ const display = Space_Grotesk({
 
 const GTM_ID = 'GTM-TZPBW4C5';
 
-const SITE_URL = 'https://smsgecko.com';
+const SITE_URL = 'https://www.smsgecko.com';
 const SITE_NAME = 'SMSGecko';
 const DESCRIPTION =
   'Buy virtual numbers for OTP & SMS verification across 200+ countries and 1,000+ platforms — pay-per-use, instant delivery, developer-friendly API.';

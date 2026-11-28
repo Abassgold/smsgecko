@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
 
-const SITE_URL = 'https://smsgecko.com';
+const SITE_URL = 'https://www.smsgecko.com';
 
 // Mirrors proxy.ts's PUBLIC_EXACT/PUBLIC_PREFIXES: everything gated behind a
 // session there is disallowed here too, so crawlers don't spend budget on
@@ -12,6 +12,7 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       disallow: [
         '/api/',
+        '/stubs/',
         '/dashboard',
         '/orders',
         '/deposit',

@@ -21,12 +21,15 @@ const PUBLIC_EXACT = new Set([
   '/faq',
   '/platforms',
   '/pricing',
+  '/sms-api',
+  '/sms-activate-alternative',
+  '/blog',
   '/login',
   '/register',
   '/verify-email',
 ]);
 
-const PUBLIC_PREFIXES = ['/docs/', '/verify-email/'];
+const PUBLIC_PREFIXES = ['/docs/', '/verify-email/', '/blog/'];
 
 const AUTH_ONLY = new Set(['/login', '/register']);
 

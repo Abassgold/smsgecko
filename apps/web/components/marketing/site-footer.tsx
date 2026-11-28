@@ -15,7 +15,10 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
   {
     title: 'Resources',
     links: [
+      { label: 'SMS API', href: '/sms-api' },
       { label: 'API Docs', href: '/docs' },
+      { label: 'SMS-Activate alternative', href: '/sms-activate-alternative' },
+      { label: 'Blog', href: '/blog' },
       { label: 'Use Cases', href: '/faq' },
       { label: 'Status', href: '/' },
     ],

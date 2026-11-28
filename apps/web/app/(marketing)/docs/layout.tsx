@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
 export const metadata: Metadata = {
-  title: 'API Reference',
+  title: 'SMS Verification API Docs: getNumber, getStatus, Webhooks',
   description:
-    'The SMSGecko SMS-Activate-compatible API — buy virtual numbers and receive OTP codes with any SMS-Activate client.',
+    'SMS activation API reference: every handler_api.php method (getNumber, getStatus, setStatus, getPrices) with examples, plus the REST API and HMAC-signed webhooks.',
   alternates: { canonical: '/docs' },
 };
 
